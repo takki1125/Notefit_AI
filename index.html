@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>筋トレAI - 接続テスト</title>
+    <style>
+        /* デザインは後回し！あえて最小限にしています */
+        body { padding: 20px; font-family: sans-serif; }
+        .input-group { margin-bottom: 10px; border: 1px solid #ccc; padding: 10px; }
+        .card { border: 1px solid #333; padding: 10px; margin-bottom: 10px; background: #f9f9f9; }
+        .status-completed { color: green; font-weight: bold; }
+        .status-pending { color: orange; }
+    </style>
+</head>
+<body>
+
+    <h1>💪 筋トレ記録テスト</h1>
+
+    <div class="input-group">
+        <h3>新しい記録を入力</h3>
+        <input type="date" id="dateInput" value="2026-02-02"><br><br>
+        <textarea id="memoInput" placeholder="メモ（例：胸の調子が良い）" rows="3" style="width:100%"></textarea><br><br>
+        
+        <div>
+            <input type="text" id="exName" placeholder="種目名（例：ベンチプレス）">
+            <input type="number" id="exWeight" placeholder="重量(kg)" style="width:60px">
+            <input type="number" id="exReps" placeholder="回数" style="width:60px">
+        </div>
+        <br>
+        <button onclick="saveWorkout()" style="padding:10px 20px; background:blue; color:white;">🔥 記録を保存</button>
+    </div>
+
+    <hr>
+
+    <h3>📝 履歴 & AIアドバイス</h3>
+    <div id="workoutList">読み込み中...</div>
+
+    <script type="module">
+        // 必要な機能をインポート（CDN経由なのでインストール不要！）
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-app.js";
+        import { getFirestore, collection, addDoc, onSnapshot, query, orderBy } 
+            from "https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore.js";
+
+        // ▼▼▼ ここにさっきの firebaseConfig を貼り付けて！ ▼▼▼
+        const firebaseConfig = {
+            apiKey: "ここにAPIキーを貼る",
+            authDomain: "xxxx.firebaseapp.com",
+            projectId: "xxxx",
+            storageBucket: "xxxx.appspot.com",
+            messagingSenderId: "xxxx",
+            appId: "xxxx"
+        };
+        // ▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲
+
+        // 初期化
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+        
+        // テスト用にユーザーIDを固定（本番ではログイン機能をつける）
+        const TEST_USER_ID = "test_user_1";
+        const workoutsRef = collection(db, `users/${TEST_USER_ID}/workouts`);
+
+        // 1. データを保存する関数（グローバルに公開）
+        window.saveWorkout = async () => {
+            const date = document.getElementById("dateInput").value;
+            const memo = document.getElementById("memoInput").value;
+            const name = document.getElementById("exName").value;
+            const weight = document.getElementById("exWeight").value;
+            const reps = document.getElementById("exReps").value;
+
+            if(!name) { alert("種目名は必須です"); return; }
+
+            try {
+                // バックエンド指定のフォーマットで保存
+                await addDoc(workoutsRef, {
+                    date: date,
+                    memo: memo,
+                    status: "pending", // ここが重要！サーバーが検知する合図
+                    exercises: [
+                        { 
+                            name: name, 
+                            sets: [{ weight: weight, reps: reps }] 
+                        }
+                    ],
+                    createdAt: new Date()
+                });
+                alert("保存しました！AIの反応を待ってね");
+            } catch (e) {
+                console.error("エラー:", e);
+                alert("保存失敗…コンソールを見て");
+            }
+        };
+
+        // 2. リアルタイムでデータを表示する機能
+        // データが変わると（AIが書き込むと）勝手に画面が更新される！
+        const q = query(workoutsRef, orderBy("createdAt", "desc"));
+        onSnapshot(q, (snapshot) => {
+            const list = document.getElementById("workoutList");
+            list.innerHTML = ""; // クリア
+
+            snapshot.forEach((doc) => {
+                const data = doc.data();
+                const statusColor = data.status === "completed" ? "status-completed" : "status-pending";
+                
+                const html = `
+                    <div class="card">
+                        <div><strong>日付:</strong> ${data.date}</div>
+                        <div><strong>メモ:</strong> ${data.memo}</div>
+                        <div><strong>種目:</strong> ${data.exercises[0].name} ${data.exercises[0].sets[0].weight}kg x ${data.exercises[0].sets[0].reps}回</div>
+                        <hr>
+                        <div>
+                            <strong>ステータス:</strong> <span class="${statusColor}">${data.status}</span>
+                        </div>
+                        <div style="background:#eef; padding:5px; margin-top:5px;">
+                            <strong>🤖 AIアドバイス:</strong><br>
+                            ${data.ai_advice || "（解析待ち...）"}
+                        </div>
+                    </div>
+                `;
+                list.innerHTML += html;
+            });
+        });
+    </script>
+</body>
+</html>
