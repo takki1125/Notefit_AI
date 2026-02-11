@@ -1,6 +1,7 @@
 // firebaseConfig.ts
 import { initializeApp } from "firebase/app";
 import { getFirestore } from "firebase/firestore";
+import { getAuth } from "firebase/auth";
 
 // 瀧本さんのプロジェクトの鍵情報
 const firebaseConfig = {
@@ -16,3 +17,4 @@ const firebaseConfig = {
 // アプリとデータベースを起動して、使える状態にしておく
 const app = initializeApp(firebaseConfig);
 export const db = getFirestore(app);
+export const auth = getAuth(app);
