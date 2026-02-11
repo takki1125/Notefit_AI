@@ -20,7 +20,7 @@ export const useSaveWorkout = () => {
     try {
       // "workouts" というコレクションに保存する
       await addDoc(collection(db, "workouts"), {
-        uid: "test_user_1", // 本番ではログインIDに変える
+        uid: user.uid, // ← ログインしている人のIDを使う！ 
         exercise: exerciseName,
         weight: Number(weight),
         reps: Number(reps),
