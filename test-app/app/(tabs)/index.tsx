@@ -1,75 +1,73 @@
-import { Alert, Button, FlatList, Text, View } from "react-native";
-import { useSaveWorkout } from "../../hooks/useSaveWorkout";
-import { useWorkoutHistory } from "../../hooks/useWorkoutHistory"; // ★追加
+// app/(tabs)/index.tsx
+import { useState } from "react";
+import { Text, View, TextInput, Button, Alert } from "react-native";
+import { useAuth } from "../../hooks/useAuth";
 
 export default function Index() {
-  const { saveWorkout, saving } = useSaveWorkout();
-  // ★履歴取得機能を使う
-  const { history, fetchHistory } = useWorkoutHistory();
+  const { user, login, signup, logout } = useAuth();
+  
+  // 入力欄のための変数
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
 
-  const handlePress = async () => {
-    await saveWorkout("ベンチプレス", 100, 10);
-    Alert.alert("完了", "保存しました！");
-    // 保存したら、リストを更新して最新の状態にする
-    fetchHistory();
+  const handleLogin = async () => {
+    try {
+      await login(email, password);
+    } catch (e: any) {
+      Alert.alert("エラー", "ログインできませんでした");
+    }
   };
 
-  return (
-    <View
-      style={{
-        flex: 1,
-        backgroundColor: "#000",
-        paddingTop: 50,
-        paddingHorizontal: 20,
-      }}
-    >
-      <Text
-        style={{
-          fontSize: 24,
-          fontWeight: "bold",
-          color: "#fff",
-          marginBottom: 20,
-          textAlign: "center",
-        }}
-      >
-        📊 履歴管理システム
-      </Text>
+  const handleSignup = async () => {
+    try {
+      await signup(email, password);
+      Alert.alert("成功", "アカウントを作成しました！");
+    } catch (e: any) {
+      Alert.alert("エラー", "登録に失敗しました");
+    }
+  };
 
-      {/* 保存ボタンエリア */}
-      <View style={{ marginBottom: 30 }}>
-        <Button
-          title={saving ? "送信中..." : "ベンチ 100kg x10 を記録"}
-          onPress={handlePress}
-          disabled={saving}
-        />
+  // もしログインしていたら...
+  if (user) {
+    return (
+      <View style={{ flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: "#000" }}>
+        <Text style={{ color: "#fff", fontSize: 20, marginBottom: 20 }}>
+          ようこそ、{user.email} さん！
+        </Text>
+        <Text style={{ color: "#aaa", marginBottom: 40 }}>UID: {user.uid}</Text>
+        <Button title="ログアウト" onPress={logout} color="red" />
       </View>
+    );
+  }
 
-      {/* 履歴リストエリア */}
-      <Text style={{ color: "#aaa", marginBottom: 10 }}>
-        最近のトレーニング:
+  // ログインしていないなら...
+  return (
+    <View style={{ flex: 1, justifyContent: "center", padding: 20, backgroundColor: "#000" }}>
+      <Text style={{ color: "#fff", fontSize: 24, marginBottom: 20, textAlign: "center" }}>
+        Notefit AI ログイン
       </Text>
-
-      <FlatList
-        data={history}
-        keyExtractor={(item) => item.id}
-        renderItem={({ item }) => (
-          <View
-            style={{
-              backgroundColor: "#333",
-              padding: 15,
-              borderRadius: 8,
-              marginBottom: 10,
-            }}
-          >
-            <Text style={{ color: "#fff", fontSize: 18, fontWeight: "bold" }}>
-              {item.exercise}
-            </Text>
-            <Text style={{ color: "#0f0", fontSize: 16 }}>
-              {item.weight}kg × {item.reps}回
-            </Text>
-          </View>
-        )}
+      
+      <TextInput 
+        placeholder="メールアドレス" 
+        placeholderTextColor="#aaa"
+        value={email}
+        onChangeText={setEmail}
+        style={{ backgroundColor: "#333", color: "#fff", padding: 15, borderRadius: 8, marginBottom: 10 }}
       />
+      
+      <TextInput 
+        placeholder="パスワード" 
+        placeholderTextColor="#aaa"
+        value={password}
+        onChangeText={setPassword}
+        secureTextEntry // パスワードを●●にする
+        style={{ backgroundColor: "#333", color: "#fff", padding: 15, borderRadius: 8, marginBottom: 20 }}
+      />
+
+      <View style={{ gap: 10 }}>
+        <Button title="ログイン" onPress={handleLogin} />
+        <Button title="新規登録" onPress={handleSignup} color="#888" />
+      </View>
     </View>
   );
 }
