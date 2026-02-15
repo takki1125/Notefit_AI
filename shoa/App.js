@@ -1,16 +1,21 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
     StyleSheet, Text, View, ScrollView, TouchableOpacity, SafeAreaView,
-    Modal, FlatList, ActivityIndicator, TextInput, Alert, KeyboardAvoidingView, Platform
+    Modal, FlatList, SectionList, ActivityIndicator, TextInput, Alert, KeyboardAvoidingView, Platform,
+    Linking
 } from 'react-native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createStackNavigator } from '@react-navigation/stack';
-import { NavigationContainer } from '@react-navigation/native';
-import { Home, Dumbbell, Utensils, MoreHorizontal, Check, Clock, ChevronDown, Plus, X, Settings as SettingsIcon, LogOut } from 'lucide-react-native';
+import { NavigationContainer, useFocusEffect } from '@react-navigation/native';
 
-// Firebase関連
-import { collection, getDocs } from 'firebase/firestore';
-import { onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut } from 'firebase/auth';
+// ↓↓↓ ここに Trash2 を追加 ↓↓↓
+import { Home, Dumbbell, Utensils, MoreHorizontal, Check, Clock, ChevronDown, Plus, X, Settings as SettingsIcon, LogOut, Trash2 } from 'lucide-react-native';
+
+// Firestoreのクエリ用関数を追加
+import { collection, getDocs, addDoc, serverTimestamp, query, orderBy, limit, deleteDoc, doc } from 'firebase/firestore';
+
+// ↓↓↓ ここに deleteUser を追加 ↓↓↓
+import { onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, deleteUser } from 'firebase/auth';
 import { db, auth } from './firebaseConfig';
 
 // --- 定数・データ ---
@@ -18,14 +23,21 @@ const DAYS = Array.from({ length: 28 }, (_, i) => i + 1);
 const WEEKDAYS = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
 const TRAINED_DAYS = [1, 5, 8, 12, 15, 20];
 
-// --- コンポーネント: ログイン・新規登録画面 ---
+// --- コンポーネント: ログイン・新規登録画面 (利用規約対応版) ---
 function LoginScreen() {
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [isSignUp, setIsSignUp] = useState(false); // ログインか新規登録かの切り替え
     const [loading, setLoading] = useState(false);
+    const [agreed, setAgreed] = useState(false); // 利用規約の同意状態
 
     const handleAuthAction = async () => {
+        // 新規登録かつ同意していない場合はブロック
+        if (isSignUp && !agreed) {
+            Alert.alert('確認', '利用規約への同意が必要です。\n規約を確認し、チェックを入れてください。');
+            return;
+        }
+
         setLoading(true);
         try {
             if (isSignUp) {
@@ -35,7 +47,6 @@ function LoginScreen() {
             } else {
                 // ログイン
                 await signInWithEmailAndPassword(auth, email, password);
-                // ログイン成功すると自動的に画面が切り替わるのでアラートは不要
             }
         } catch (error) {
             let errorMessage = 'エラーが発生しました。';
@@ -50,10 +61,16 @@ function LoginScreen() {
         }
     };
 
+    // 利用規約を開く
+    const openTerms = () => {
+        Linking.openURL('https://takki1125.github.io/Notefit-AI-docs/');
+    };
+
     return (
         <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={styles.loginContainer}>
             <View style={styles.loginBox}>
                 <Text style={styles.loginTitle}>{isSignUp ? 'アカウント作成' : 'ログイン'}</Text>
+
                 <TextInput
                     style={styles.inputField}
                     placeholder="メールアドレス"
@@ -71,6 +88,25 @@ function LoginScreen() {
                     onChangeText={setPassword}
                     secureTextEntry
                 />
+
+                {/* ★ 新規登録時のみ表示する利用規約チェックエリア ★ */}
+                {isSignUp && (
+                    <View style={styles.termsContainer}>
+                        <TouchableOpacity
+                            style={[styles.checkbox, agreed && styles.checkboxChecked]}
+                            onPress={() => setAgreed(!agreed)}
+                        >
+                            {agreed && <Check size={14} color="#000" />}
+                        </TouchableOpacity>
+                        <View style={{ flex: 1 }}>
+                            <Text style={styles.termsText}>
+                                <Text style={styles.linkText} onPress={openTerms}>利用規約</Text>
+                                に同意する
+                            </Text>
+                        </View>
+                    </View>
+                )}
+
                 <TouchableOpacity style={styles.loginButton} onPress={handleAuthAction} disabled={loading}>
                     {loading ? <ActivityIndicator color="#000" /> : <Text style={styles.loginButtonText}>{isSignUp ? '新規登録' : 'ログイン'}</Text>}
                 </TouchableOpacity>
@@ -85,8 +121,9 @@ function LoginScreen() {
     );
 }
 
-// --- コンポーネント: 設定画面 ---
+// --- コンポーネント: 設定画面 (削除機能付き) ---
 function SettingsScreen({ navigation }) {
+    // ログアウト処理
     const handleSignOut = () => {
         Alert.alert('ログアウト', 'ログアウトしますか？', [
             { text: 'キャンセル', style: 'cancel' },
@@ -104,47 +141,182 @@ function SettingsScreen({ navigation }) {
         ]);
     };
 
+    // アカウント削除処理
+    const handleDeleteAccount = () => {
+        Alert.alert(
+            'アカウント削除',
+            '本当にアカウントを削除しますか？\nこの操作は取り消せません。\n(記録データも全て失われます)',
+            [
+                { text: 'キャンセル', style: 'cancel' },
+                {
+                    text: '完全に削除する',
+                    style: 'destructive', // 赤文字にするスタイル
+                    onPress: async () => {
+                        try {
+                            const user = auth.currentUser;
+                            if (user) {
+                                await deleteUser(user);
+                                // 成功すると onAuthStateChanged が反応して自動的にログイン画面に戻る
+                            }
+                        } catch (error) {
+                            console.error(error);
+                            // セキュリティ上、ログインから時間が経っていると削除できない場合がある
+                            if (error.code === 'auth/requires-recent-login') {
+                                Alert.alert('エラー', 'セキュリティのため、一度ログアウトして再ログインしてから実行してください。');
+                            } else {
+                                Alert.alert('エラー', 'アカウントの削除に失敗しました。');
+                            }
+                        }
+                    }
+                },
+            ]
+        );
+    };
+
     return (
         <SafeAreaView style={styles.container}>
             <View style={styles.headerRowSimple}>
                 <TouchableOpacity onPress={() => navigation.goBack()}><X color="#fff" size={24} /></TouchableOpacity>
                 <Text style={styles.headerTitle}>設定</Text>
-                <View style={{ width: 24 }} /> {/* レイアウト調整用のダミー */}
+                <View style={{ width: 24 }} />
             </View>
             <ScrollView contentContainerStyle={styles.contentContainer}>
+
+                {/* 通常の設定項目 */}
                 <View style={styles.card}>
                     <TouchableOpacity style={styles.settingsItem} onPress={handleSignOut}>
                         <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                            <LogOut color="#ff4444" size={20} style={{ marginRight: 10 }} />
-                            <Text style={{ color: '#ff4444', fontSize: 16 }}>ログアウト</Text>
+                            <LogOut color="#fff" size={20} style={{ marginRight: 10 }} />
+                            <Text style={{ color: '#fff', fontSize: 16 }}>ログアウト</Text>
                         </View>
                     </TouchableOpacity>
                 </View>
-                {/* ここに将来的に他の設定項目を追加 */}
+
+                {/* 危険なエリア（少し間隔を空けて配置） */}
+                <View style={[styles.card, { marginTop: 20, borderColor: '#ff4444', borderWidth: 1 }]}>
+                    <TouchableOpacity style={styles.settingsItem} onPress={handleDeleteAccount}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                            <Trash2 color="#ff4444" size={20} style={{ marginRight: 10 }} />
+                            <Text style={{ color: '#ff4444', fontSize: 16, fontWeight: 'bold' }}>アカウントを削除</Text>
+                        </View>
+                    </TouchableOpacity>
+                </View>
+
             </ScrollView>
         </SafeAreaView>
     );
 }
 
-// --- コンポーネント: カレンダー画面 (Home) ---
-const CalendarSection = () => {
+// --- コンポーネント: ワークアウト詳細表示モーダル (削除機能付き) ---
+const WorkoutDetailModal = ({ visible, onClose, workout, onDelete }) => {
+    if (!workout) return null;
+
+    // 削除前の確認アラート
+    const confirmDelete = () => {
+        Alert.alert(
+            "記録を削除",
+            "このトレーニング記録を削除しますか？\nこの操作は元に戻せません。",
+            [
+                { text: "キャンセル", style: "cancel" },
+                {
+                    text: "削除する",
+                    style: "destructive",
+                    onPress: () => onDelete(workout.id)
+                }
+            ]
+        );
+    };
+
+    return (
+        <Modal visible={visible} animationType="fade" transparent={true}>
+            <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.8)', justifyContent: 'center', padding: 20 }}>
+                <View style={{ backgroundColor: '#2a2a2a', borderRadius: 20, maxHeight: '80%' }}>
+                    {/* ヘッダー */}
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 16, borderBottomWidth: 1, borderColor: '#444' }}>
+                        <View>
+                            <Text style={{ color: '#888', fontSize: 12 }}>{workout.dateStr}</Text>
+                            <Text style={{ color: '#fff', fontSize: 18, fontWeight: 'bold' }}>{workout.routineName}</Text>
+                        </View>
+
+                        <View style={{ flexDirection: 'row', gap: 15 }}>
+                            {/* 削除ボタン */}
+                            <TouchableOpacity onPress={confirmDelete}>
+                                <Trash2 color="#ff4444" size={24} />
+                            </TouchableOpacity>
+
+                            {/* 閉じるボタン */}
+                            <TouchableOpacity onPress={onClose}>
+                                <X color="#fff" size={24} />
+                            </TouchableOpacity>
+                        </View>
+                    </View>
+
+                    {/* 中身 (スクロール可能) */}
+                    <ScrollView contentContainerStyle={{ padding: 16 }}>
+                        {workout.exercises.map((ex, i) => (
+                            <View key={i} style={{ marginBottom: 20 }}>
+                                <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}>
+                                    <View style={{ width: 4, height: 16, backgroundColor: '#2ecc71', marginRight: 8 }} />
+                                    <Text style={{ color: '#fff', fontSize: 16, fontWeight: 'bold' }}>{ex.name}</Text>
+                                </View>
+                                {/* セット内容 */}
+                                {ex.sets.map((set, k) => (
+                                    <View key={k} style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 4, paddingHorizontal: 12, borderBottomWidth: 1, borderColor: '#333' }}>
+                                        <Text style={{ color: '#888', fontSize: 12 }}>SET {k + 1}</Text>
+                                        <Text style={{ color: '#fff' }}>
+                                            {set.weight}kg  ×  {set.reps}reps
+                                        </Text>
+                                        {set.done && <Check size={14} color="#2ecc71" />}
+                                    </View>
+                                ))}
+                            </View>
+                        ))}
+                    </ScrollView>
+                </View>
+            </View>
+        </Modal>
+    );
+};
+
+// --- コンポーネント: カレンダー画面 (タップ機能付き) ---
+const CalendarSection = ({ trainedDays, onDayPress }) => {
+    const today = new Date();
+    const currentDay = today.getDate();
+    const currentYear = today.getFullYear();
+    const currentMonth = today.getMonth() + 1;
+    const daysInMonth = new Date(currentYear, currentMonth, 0).getDate();
+    const DAYS = Array.from({ length: daysInMonth }, (_, i) => i + 1);
+
     return (
         <View style={styles.card}>
             <View style={styles.calendarHeader}>
-                <Text style={styles.monthText}>2</Text>
-                <Text style={styles.yearText}>2026</Text>
+                <Text style={styles.monthText}>{currentMonth}</Text>
+                <Text style={styles.yearText}>{currentYear}</Text>
             </View>
             <View style={styles.weekRow}>
                 {WEEKDAYS.map((day, index) => <Text key={index} style={styles.weekDayText}>{day}</Text>)}
             </View>
             <View style={styles.daysGrid}>
                 {DAYS.map((day) => {
-                    const isToday = day === 11; // 仮で今日を11日とする
-                    const isTrained = TRAINED_DAYS.includes(day);
+                    const isToday = day === currentDay;
+                    const isTrained = trainedDays.includes(day);
+
                     return (
-                        <TouchableOpacity key={day} style={styles.dayCell}>
-                            <View style={[styles.dayCircle, isToday && styles.activeDayCircle, isTrained && styles.trainedDayCircle]}>
-                                <Text style={[styles.dayText, isToday && styles.activeDayText, isTrained && styles.trainedDayText]}>{day}</Text>
+                        <TouchableOpacity
+                            key={day}
+                            style={styles.dayCell}
+                            onPress={() => onDayPress(day)} // タップしたら親に伝える
+                        >
+                            <View style={[
+                                styles.dayCircle,
+                                isToday && styles.activeDayCircle,
+                                isTrained && !isToday && styles.trainedDayCircle
+                            ]}>
+                                <Text style={[
+                                    styles.dayText,
+                                    isToday && styles.activeDayText,
+                                    isTrained && !isToday && styles.trainedDayText
+                                ]}>{day}</Text>
                             </View>
                         </TouchableOpacity>
                     );
@@ -154,11 +326,86 @@ const CalendarSection = () => {
     );
 };
 
-// ホーム画面 (ヘッダーに歯車追加)
+// --- ホーム画面 (削除機能連携版) ---
 function HomeScreen({ navigation }) {
+    const [history, setHistory] = useState([]);
+    const [trainedDays, setTrainedDays] = useState([]);
+    const [lastWorkout, setLastWorkout] = useState(null);
+    const [modalVisible, setModalVisible] = useState(false);
+    const [selectedWorkout, setSelectedWorkout] = useState(null);
+
+    // データ取得関数
+    const fetchHistory = useCallback(async () => {
+        const user = auth.currentUser;
+        if (!user) return;
+
+        try {
+            const q = query(collection(db, "users", user.uid, "workouts"), orderBy("date", "desc"));
+            const snapshot = await getDocs(q);
+
+            const historyData = [];
+            const days = [];
+
+            snapshot.docs.forEach((doc) => {
+                const data = doc.data();
+                const dateObj = data.date ? data.date.toDate() : new Date();
+
+                historyData.push({
+                    id: doc.id,
+                    ...data,
+                    dateObj: dateObj,
+                    dateStr: dateObj.toLocaleDateString(),
+                    day: dateObj.getDate()
+                });
+                days.push(dateObj.getDate());
+            });
+
+            setHistory(historyData);
+            setTrainedDays([...new Set(days)]);
+            if (historyData.length > 0) {
+                setLastWorkout(historyData[0]);
+            } else {
+                setLastWorkout(null); // データが空になった場合の対応
+            }
+        } catch (e) {
+            console.error(e);
+        }
+    }, []);
+
+    useFocusEffect(
+        useCallback(() => {
+            fetchHistory();
+        }, [fetchHistory])
+    );
+
+    const handleDayPress = (day) => {
+        const targetWorkout = history.find(item => item.day === day);
+        if (targetWorkout) {
+            setSelectedWorkout(targetWorkout);
+            setModalVisible(true);
+        }
+    };
+
+    // ★ 削除実行関数
+    const handleDeleteWorkout = async (workoutId) => {
+        try {
+            const user = auth.currentUser;
+            if (!user) return;
+
+            // Firestoreから削除
+            await deleteDoc(doc(db, "users", user.uid, "workouts", workoutId));
+
+            Alert.alert("削除完了", "記録を削除しました。");
+            setModalVisible(false); // モーダルを閉じる
+            fetchHistory(); // 画面を更新
+        } catch (error) {
+            console.error("削除エラー:", error);
+            Alert.alert("エラー", "削除に失敗しました。");
+        }
+    };
+
     return (
         <SafeAreaView style={styles.container}>
-            {/* ホーム画面専用ヘッダー */}
             <View style={styles.homeHeader}>
                 <View>
                     <Text style={styles.headerLabel}>Welcome back,</Text>
@@ -170,75 +417,126 @@ function HomeScreen({ navigation }) {
             </View>
 
             <ScrollView contentContainerStyle={styles.scrollContent}>
-                <CalendarSection />
+                <CalendarSection trainedDays={trainedDays} onDayPress={handleDayPress} />
 
-                <TouchableOpacity
-                    style={styles.card}
-                    onPress={() => navigation.navigate('TrainingTab')}
-                >
+                <TouchableOpacity style={styles.card} onPress={() => navigation.navigate('TrainingTab')}>
                     <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 15 }}>
                         <View>
-                            <Text style={{ color: '#888', fontSize: 12, marginBottom: 4 }}>TODAY'S PLAN</Text>
-                            <Text style={{ color: '#fff', fontSize: 20, fontWeight: 'bold' }}>胸・三頭筋の日 A</Text>
+                            <Text style={{ color: '#888', fontSize: 12, marginBottom: 4 }}>LATEST WORKOUT</Text>
+                            <Text style={{ color: '#fff', fontSize: 20, fontWeight: 'bold' }}>
+                                {lastWorkout ? lastWorkout.routineName : "START WORKOUT"}
+                            </Text>
+                            {lastWorkout && (
+                                <Text style={{ color: '#2ecc71', fontSize: 12, marginTop: 4 }}>{lastWorkout.dateStr}</Text>
+                            )}
                         </View>
                         <View style={{ backgroundColor: '#2ecc71', borderRadius: 20, width: 40, height: 40, justifyContent: 'center', alignItems: 'center' }}>
                             <Dumbbell color="#000" size={20} />
                         </View>
                     </View>
                     <View style={{ gap: 8 }}>
-                        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                            <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: '#2ecc71', marginRight: 8 }} />
-                            <Text style={{ color: '#ccc' }}>ベンチプレス</Text>
-                            <Text style={{ color: '#666', marginLeft: 'auto' }}>80kg x 10</Text>
-                        </View>
-                        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                            <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: '#2ecc71', marginRight: 8 }} />
-                            <Text style={{ color: '#ccc' }}>インクラインダンベル</Text>
-                            <Text style={{ color: '#666', marginLeft: 'auto' }}>24kg x 12</Text>
-                        </View>
-                        <View style={{ marginTop: 5 }}>
-                            <Text style={{ color: '#666', fontSize: 12 }}>+ 他 3 種目</Text>
-                        </View>
+                        {lastWorkout ? (
+                            lastWorkout.exercises.slice(0, 3).map((ex, i) => (
+                                <View key={i} style={{ flexDirection: 'row', alignItems: 'center' }}>
+                                    <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: '#2ecc71', marginRight: 8 }} />
+                                    <Text style={{ color: '#ccc' }}>{ex.name}</Text>
+                                    <Text style={{ color: '#666', marginLeft: 'auto' }}>{ex.sets.filter(s => s.done).length} sets</Text>
+                                </View>
+                            ))
+                        ) : (
+                            <Text style={{ color: '#666' }}>タップしてトレーニングを開始</Text>
+                        )}
                     </View>
                 </TouchableOpacity>
 
+                {/* Statsなどは省略（変更なし） */}
                 <View style={styles.card}>
                     <Text style={styles.sectionTitle}>Stats</Text>
                     <View style={styles.statsRow}>
-                        <View style={styles.calorieBox}><Text style={styles.calorieLabel}>摂取カロリー</Text><Text style={styles.calorieValue}>1800kcal</Text></View>
-                        <View style={styles.aiBox}><Text style={{ color: '#000', padding: 10 }}>AIアドバイス...</Text></View>
+                        <View style={styles.calorieBox}><Text style={styles.calorieLabel}>合計ワークアウト</Text><Text style={styles.calorieValue}>{trainedDays.length}回</Text></View>
+                        <View style={styles.aiBox}><Text style={{ color: '#000', padding: 10 }}>継続は力なり！</Text></View>
                     </View>
                 </View>
             </ScrollView>
+
+            {/* 詳細表示モーダル (onDeleteを追加) */}
+            <WorkoutDetailModal
+                visible={modalVisible}
+                onClose={() => setModalVisible(false)}
+                workout={selectedWorkout}
+                onDelete={handleDeleteWorkout} // 削除関数を渡す
+            />
         </SafeAreaView>
     );
 }
 
-// --- コンポーネント: 種目選択モーダル ---
-// (前のコードと同じなので省略なしで記載)
+// --- コンポーネント: 種目選択モーダル (セクション表示対応版) ---
 const ExerciseSelectorModal = ({ visible, onClose, onSelect }) => {
-    const [categories, setCategories] = useState([]);
+    const [categories, setCategories] = useState([]); // ここには部位(Chest, Arms等)が入る
     const [loading, setLoading] = useState(true);
-    const [selectedCategory, setSelectedCategory] = useState(null);
+    const [selectedCategory, setSelectedCategory] = useState(null); // 選択中の部位
 
     useEffect(() => {
         if (!visible) return;
+
         const fetchData = async () => {
+            setLoading(true);
             try {
                 const querySnapshot = await getDocs(collection(db, "master_data"));
                 const data = [];
+
                 querySnapshot.forEach((doc) => {
-                    data.push({ id: doc.id, ...doc.data() });
+                    const docData = doc.data();
+                    let sections = [];
+
+                    // パターン1: 新しいデータ構造 (categories -> 小カテゴリ -> exercises)
+                    if (docData.categories && typeof docData.categories === 'object') {
+                        Object.keys(docData.categories).forEach((key) => {
+                            const subCat = docData.categories[key];
+                            if (subCat && Array.isArray(subCat.exercises) && subCat.exercises.length > 0) {
+                                // セクションを作成 (title: "フリーウエイト", data: ["ベンチプレス"...])
+                                sections.push({
+                                    title: key,
+                                    data: subCat.exercises
+                                });
+                            }
+                        });
+                    }
+
+                    // パターン2: 旧データ構造 (直下に exercises がある場合)
+                    if (Array.isArray(docData.exercises) && docData.exercises.length > 0) {
+                        sections.push({
+                            title: 'その他', // または 'General'
+                            data: docData.exercises
+                        });
+                    }
+
+                    // データとして整形
+                    data.push({
+                        id: doc.id,
+                        label: docData.label || doc.id,
+                        sections: sections // ここにセクションデータを入れる
+                    });
                 });
+
                 setCategories(data);
-                if (data.length > 0) setSelectedCategory(data[0]);
+
+                // データがある部位を初期選択
+                const firstValid = data.find(c => c.sections.length > 0);
+                if (firstValid) {
+                    setSelectedCategory(firstValid);
+                } else if (data.length > 0) {
+                    setSelectedCategory(data[0]);
+                }
+
             } catch (e) {
                 console.error("Error fetching data: ", e);
-                Alert.alert("エラー", "データの取得に失敗しました。");
+                Alert.alert("エラー", "データの読み込みに失敗しました。");
             } finally {
                 setLoading(false);
             }
         };
+
         fetchData();
     }, [visible]);
 
@@ -249,32 +547,58 @@ const ExerciseSelectorModal = ({ visible, onClose, onSelect }) => {
                     <Text style={styles.modalTitle}>種目を選択</Text>
                     <TouchableOpacity onPress={onClose}><X color="#fff" size={24} /></TouchableOpacity>
                 </View>
+
                 {loading ? (
                     <ActivityIndicator size="large" color="#2ecc71" style={{ marginTop: 50 }} />
                 ) : (
                     <View style={{ flex: 1 }}>
+                        {/* 部位タブ (Chest, Armsなど) */}
                         <View style={{ height: 50 }}>
                             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.tabScroll}>
                                 {categories.map((cat) => (
                                     <TouchableOpacity
                                         key={cat.id}
-                                        style={[styles.tabBtn, selectedCategory?.id === cat.id && styles.activeTabBtn]}
+                                        style={[
+                                            styles.tabBtn,
+                                            selectedCategory?.id === cat.id && styles.activeTabBtn,
+                                            cat.sections.length === 0 && { opacity: 0.5 }
+                                        ]}
                                         onPress={() => setSelectedCategory(cat)}
                                     >
-                                        <Text style={[styles.tabText, selectedCategory?.id === cat.id && styles.activeTabText]}>{cat.label}</Text>
+                                        <Text style={[styles.tabText, selectedCategory?.id === cat.id && styles.activeTabText]}>
+                                            {cat.label}
+                                        </Text>
                                     </TouchableOpacity>
                                 ))}
                             </ScrollView>
                         </View>
-                        <FlatList
-                            data={selectedCategory?.exercises || []}
-                            keyExtractor={(item, index) => index.toString()}
+
+                        {/* セクション付きリスト (FlatListの進化版) */}
+                        <SectionList
+                            sections={selectedCategory?.sections || []}
+                            keyExtractor={(item, index) => item + index}
+                            stickySectionHeadersEnabled={false} // ヘッダーを固定するかどうか
+
+                            // ★セクションのヘッダー（フリーウエイト、マシンなど）のデザイン
+                            renderSectionHeader={({ section: { title } }) => (
+                                <View style={styles.sectionHeader}>
+                                    <Text style={styles.sectionHeaderText}>{title}</Text>
+                                </View>
+                            )}
+
+                            // 種目のデザイン
                             renderItem={({ item }) => (
                                 <TouchableOpacity style={styles.exerciseListItem} onPress={() => { onSelect(item); onClose(); }}>
                                     <Text style={styles.exerciseListText}>{item}</Text>
                                     <Plus color="#2ecc71" size={20} />
                                 </TouchableOpacity>
                             )}
+
+                            ListEmptyComponent={
+                                <View style={{ padding: 20, alignItems: 'center' }}>
+                                    <Text style={{ color: '#666' }}>種目がありません</Text>
+                                </View>
+                            }
                         />
                     </View>
                 )}
@@ -283,77 +607,364 @@ const ExerciseSelectorModal = ({ visible, onClose, onSelect }) => {
     );
 };
 
-// --- コンポーネント: トレーニング画面 (メイン) ---
-function TrainingScreen() {
-    const [modalVisible, setModalVisible] = useState(false);
-    const [menu, setMenu] = useState([
-        { id: 1, name: 'ベンチプレス', target: '80kg x 10', sets: [{ weight: 80, reps: 10, done: true }, { weight: 80, reps: 8, done: false }] }
+// --- コンポーネント: ルーティン管理モーダル (保存 & 読み込み) ---
+const RoutineModal = ({ visible, onClose, currentMenu, onLoadRoutine }) => {
+  const [routines, setRoutines] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [newRoutineName, setNewRoutineName] = useState("");
+  const [mode, setMode] = useState('list'); // 'list' (一覧) or 'save' (保存画面)
+
+  // ルーティン一覧を取得
+  const fetchRoutines = async () => {
+    const user = auth.currentUser;
+    if (!user) return;
+    setLoading(true);
+    try {
+      const q = query(collection(db, "users", user.uid, "routines"), orderBy("createdAt", "desc"));
+      const snapshot = await getDocs(q);
+      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      setRoutines(data);
+    } catch (e) {
+      console.error(e);
+      Alert.alert("エラー", "ルーティンの取得に失敗しました");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // モーダルが開くたびに一覧を更新
+  useEffect(() => {
+    if (visible) {
+      fetchRoutines();
+      setMode('list');
+      setNewRoutineName("");
+    }
+  }, [visible]);
+
+  // ルーティンを保存
+  const handleSaveRoutine = async () => {
+    if (!newRoutineName.trim()) {
+      Alert.alert("エラー", "ルーティン名を入力してください");
+      return;
+    }
+    if (currentMenu.length === 0) {
+      Alert.alert("エラー", "種目が追加されていません");
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const user = auth.currentUser;
+      // ルーティン用データを作成 (セットの中身は空にするか、重量を残すか選べるが、今回は重量も残す設定)
+      const routineData = {
+        name: newRoutineName,
+        exercises: currentMenu,
+        createdAt: serverTimestamp()
+      };
+      
+      await addDoc(collection(db, "users", user.uid, "routines"), routineData);
+      Alert.alert("保存完了", `「${newRoutineName}」を保存しました`);
+      setMode('list');
+      fetchRoutines(); // リスト更新
+    } catch (e) {
+      console.error(e);
+      Alert.alert("エラー", "保存に失敗しました");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // ルーティン削除
+  const handleDeleteRoutine = async (id) => {
+    Alert.alert("削除", "このルーティンを削除しますか？", [
+      { text: "キャンセル", style: "cancel" },
+      {
+        text: "削除", style: "destructive",
+        onPress: async () => {
+          try {
+            const user = auth.currentUser;
+            await deleteDoc(doc(db, "users", user.uid, "routines", id));
+            fetchRoutines();
+          } catch(e) {
+            Alert.alert("エラー", "削除できませんでした");
+          }
+        }
+      }
     ]);
+  };
 
-    const handleAddExercise = (exerciseName) => {
-        const newExercise = {
-            id: Date.now(),
-            name: exerciseName,
-            target: '- kg x -',
-            sets: [{ weight: '', reps: '', done: false }, { weight: '', reps: '', done: false }, { weight: '', reps: '', done: false }]
-        };
-        setMenu([...menu, newExercise]);
-    };
+  return (
+    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet">
+      <SafeAreaView style={styles.modalContainer}>
+        <View style={styles.modalHeader}>
+          <Text style={styles.modalTitle}>
+            {mode === 'list' ? 'ルーティンを選択' : 'ルーティンを保存'}
+          </Text>
+          <TouchableOpacity onPress={onClose}><X color="#fff" size={24} /></TouchableOpacity>
+        </View>
 
-    return (
-        <SafeAreaView style={styles.container}>
-            <View style={styles.headerRow}>
-                <View>
-                    <Text style={styles.headerLabel}>Today's Workout</Text>
-                    <TouchableOpacity style={styles.routineSelector}>
-                        <Text style={styles.routineText}>自由メニュー</Text>
-                        <ChevronDown color="#2ecc71" size={20} />
-                    </TouchableOpacity>
-                </View>
-                <TouchableOpacity style={styles.timerButton}>
-                    <Clock color="#000" size={20} />
-                    <Text style={styles.timerText}>02:00</Text>
-                </TouchableOpacity>
-            </View>
+        {mode === 'list' ? (
+          <View style={{flex:1, padding:16}}>
+            {/* 新規保存ボタン */}
+            <TouchableOpacity 
+              style={styles.createRoutineBtn} 
+              onPress={() => setMode('save')}
+            >
+              <Plus color="#000" size={20} />
+              <Text style={styles.createRoutineText}>現在のメニューを保存する</Text>
+            </TouchableOpacity>
 
-            <ScrollView contentContainerStyle={styles.scrollContent}>
-                {menu.map((item) => (
-                    <View key={item.id} style={styles.exerciseCard}>
-                        <View style={styles.exerciseHeader}>
-                            <Text style={styles.exerciseName}>{item.name}</Text>
-                            <MoreHorizontal color="#888" size={20} />
-                        </View>
-                        <View style={styles.exerciseInfo}>
-                            <Text style={styles.infoText}>目標: <Text style={styles.highlightText}>{item.target}</Text></Text>
-                        </View>
-                        <View style={styles.setRowHeader}>
-                            <Text style={styles.colLabel}>SET</Text>
-                            <Text style={styles.colLabel}>KG</Text>
-                            <Text style={styles.colLabel}>REPS</Text>
-                            <Text style={styles.colLabel}>DONE</Text>
-                        </View>
-                        {item.sets.map((set, index) => (
-                            <View key={index} style={styles.setRow}>
-                                <View style={styles.setBadge}><Text style={styles.setText}>{index + 1}</Text></View>
-                                <View style={styles.inputBox}><Text style={styles.inputValue}>{set.weight}</Text></View>
-                                <View style={styles.inputBox}><Text style={styles.inputValue}>{set.reps}</Text></View>
-                                <TouchableOpacity style={[styles.checkBtn, set.done && styles.checkedBtn]}>
-                                    <Check color={set.done ? "#000" : "#444"} size={16} />
-                                </TouchableOpacity>
-                            </View>
-                        ))}
+            <Text style={{color:'#666', marginTop:20, marginBottom:10}}>SAVED ROUTINES</Text>
+            
+            {loading ? <ActivityIndicator /> : (
+              <FlatList
+                data={routines}
+                keyExtractor={item => item.id}
+                ListEmptyComponent={<Text style={{color:'#444', textAlign:'center', marginTop:20}}>保存されたルーティンはありません</Text>}
+                renderItem={({item}) => (
+                  <TouchableOpacity 
+                    style={styles.routineItem} 
+                    onPress={() => { onLoadRoutine(item); onClose(); }}
+                  >
+                    <View>
+                      <Text style={styles.routineNameText}>{item.name}</Text>
+                      <Text style={styles.routineDescText}>{item.exercises.length} 種目</Text>
                     </View>
-                ))}
+                    <TouchableOpacity onPress={() => handleDeleteRoutine(item.id)} style={{padding:10}}>
+                      <Trash2 color="#444" size={20} />
+                    </TouchableOpacity>
+                  </TouchableOpacity>
+                )}
+              />
+            )}
+          </View>
+        ) : (
+          <View style={{flex:1, padding:20}}>
+            <Text style={{color:'#ccc', marginBottom:10}}>現在のメニュー内容をルーティンとして保存します。</Text>
+            <Text style={{color:'#fff', fontWeight:'bold', marginBottom:20}}>
+              {currentMenu.map(e => e.name).join(', ')}
+            </Text>
+            
+            <TextInput
+              style={styles.inputField}
+              placeholder="ルーティン名 (例: 胸の日 A)"
+              placeholderTextColor="#666"
+              value={newRoutineName}
+              onChangeText={setNewRoutineName}
+              autoFocus
+            />
+            
+            <View style={{flexDirection:'row', gap:10, marginTop:20}}>
+              <TouchableOpacity style={[styles.loginButton, {backgroundColor:'#444', flex:1}]} onPress={() => setMode('list')}>
+                <Text style={{color:'#fff'}}>キャンセル</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={[styles.loginButton, {flex:1}]} onPress={handleSaveRoutine}>
+                <Text style={{fontWeight:'bold'}}>保存</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        )}
+      </SafeAreaView>
+    </Modal>
+  );
+};
 
-                <TouchableOpacity style={styles.addExerciseBtn} onPress={() => setModalVisible(true)}>
-                    <Plus color="#000" size={20} />
-                    <Text style={styles.addExerciseBtnText}>種目を追加する</Text>
-                </TouchableOpacity>
-            </ScrollView>
+// --- コンポーネント: トレーニング画面 (ルーティン機能完備) ---
+function TrainingScreen({ navigation }) {
+  const [modalVisible, setModalVisible] = useState(false);
+  const [routineModalVisible, setRoutineModalVisible] = useState(false); // ★追加
+  const [loading, setLoading] = useState(false);
+  
+  const [menu, setMenu] = useState([]);
+  const [currentRoutineName, setCurrentRoutineName] = useState("自由メニュー"); // ★追加
 
-            <ExerciseSelectorModal visible={modalVisible} onClose={() => setModalVisible(false)} onSelect={handleAddExercise} />
-        </SafeAreaView>
+  // 種目追加
+  const handleAddExercise = (exerciseName) => {
+    const newExercise = {
+      id: Date.now(),
+      name: exerciseName,
+      target: '- kg x -',
+      sets: [{ weight: '', reps: '', done: false }]
+    };
+    setMenu([...menu, newExercise]);
+  };
+
+  // ルーティン読み込み処理 (★New)
+  const handleLoadRoutine = (routine) => {
+    Alert.alert(
+      "ルーティン読み込み",
+      "現在の入力内容は失われますが、よろしいですか？",
+      [
+        { text: "キャンセル", style: "cancel" },
+        { 
+          text: "読み込む", 
+          onPress: () => {
+            // IDを新しく振り直してセット (これ重要！IDが重複するとバグる)
+            const loadedExercises = routine.exercises.map(ex => ({
+              ...ex,
+              id: Date.now() + Math.random(), // ユニークなIDを再生成
+              sets: ex.sets.map(s => ({ ...s, done: false })) // 完了状態はリセット
+            }));
+            setMenu(loadedExercises);
+            setCurrentRoutineName(routine.name);
+          }
+        }
+      ]
     );
+  };
+
+  // ... (削除やセット増減などの関数は前と同じなので省略せず書くけど、コピペ用に全部書くね) ...
+
+  const handleRemoveExercise = (exerciseId) => {
+    Alert.alert("削除", "この種目を削除しますか？", [
+      { text: "キャンセル", style: "cancel" },
+      { text: "削除", style: "destructive", onPress: () => setMenu(menu.filter(item => item.id !== exerciseId)) }
+    ]);
+  };
+
+  const handleAddSet = (exerciseId) => {
+    setMenu(menu.map(ex => ex.id === exerciseId ? { ...ex, sets: [...ex.sets, { weight: '', reps: '', done: false }] } : ex));
+  };
+
+  const handleRemoveSet = (exerciseId, setIndex) => {
+    setMenu(menu.map(ex => {
+      if (ex.id === exerciseId) {
+        if (ex.sets.length <= 1) { handleRemoveExercise(exerciseId); return ex; }
+        return { ...ex, sets: ex.sets.filter((_, i) => i !== setIndex) };
+      }
+      return ex;
+    }));
+  };
+
+  const handleUpdateSet = (exerciseId, setIndex, field, value) => {
+    setMenu(menu.map(ex => ex.id === exerciseId ? {
+      ...ex, sets: ex.sets.map((s, i) => i === setIndex ? { ...s, [field]: value } : s)
+    } : ex));
+  };
+
+  const toggleSetDone = (exerciseId, setIndex) => {
+    setMenu(menu.map(ex => ex.id === exerciseId ? {
+      ...ex, sets: ex.sets.map((s, i) => i === setIndex ? { ...s, done: !s.done } : s)
+    } : ex));
+  };
+
+  const handleFinishWorkout = async () => {
+    if (menu.length === 0) return Alert.alert("エラー", "種目がありません");
+
+    Alert.alert("終了", "保存して終了しますか？", [
+      { text: "キャンセル", style: "cancel" },
+      { 
+        text: "保存して終了", 
+        onPress: async () => {
+          setLoading(true);
+          try {
+            const user = auth.currentUser;
+            await addDoc(collection(db, "users", user.uid, "workouts"), {
+              date: serverTimestamp(),
+              routineName: currentRoutineName, // ルーティン名も保存
+              exercises: menu,
+            });
+            Alert.alert("Good Job!", "保存しました", [{ text: "OK", onPress: () => { setMenu([]); navigation.navigate("HomeTab"); }}]);
+          } catch (e) { Alert.alert("エラー", "保存失敗"); } finally { setLoading(false); }
+        }
+      }
+    ]);
+  };
+
+  return (
+    <SafeAreaView style={styles.container}>
+      <View style={styles.headerRow}>
+        <View>
+            <Text style={styles.headerLabel}>Today's Workout</Text>
+            {/* ★ここをタップ可能に変更 */}
+            <TouchableOpacity 
+              style={styles.routineSelector} 
+              onPress={() => setRoutineModalVisible(true)}
+            >
+              <Text style={styles.routineText}>{currentRoutineName}</Text>
+              <ChevronDown color="#2ecc71" size={20} />
+            </TouchableOpacity>
+        </View>
+        <TouchableOpacity style={styles.timerButton}>
+          <Clock color="#000" size={20} />
+          <Text style={styles.timerText}>02:00</Text>
+        </TouchableOpacity>
+      </View>
+
+      <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={{flex:1}} keyboardVerticalOffset={100}>
+        <ScrollView contentContainerStyle={styles.scrollContent}>
+          {menu.length === 0 && (
+            <View style={{alignItems:'center', marginTop:50, opacity:0.5}}>
+              <Dumbbell color="#666" size={50} />
+              <Text style={{color:'#666', marginTop:10}}>種目を追加するか、上のメニューから{"\n"}ルーティンを読み込んでください</Text>
+            </View>
+          )}
+
+          {menu.map((item) => (
+            <View key={item.id} style={styles.exerciseCard}>
+              <View style={styles.exerciseHeader}>
+                <Text style={styles.exerciseName}>{item.name}</Text>
+                <TouchableOpacity onPress={() => handleRemoveExercise(item.id)} style={{padding:5}}>
+                  <X color="#ff4444" size={24} />
+                </TouchableOpacity>
+              </View>
+              
+              <View style={styles.setRowHeader}>
+                <Text style={[styles.colLabel, {width:'15%'}]}>SET</Text>
+                <Text style={[styles.colLabel, {width:'25%'}]}>KG</Text>
+                <Text style={[styles.colLabel, {width:'25%'}]}>REPS</Text>
+                <Text style={[styles.colLabel, {width:'15%'}]}>DONE</Text>
+                <Text style={[styles.colLabel, {width:'10%'}]}></Text> 
+              </View>
+              
+              {item.sets.map((set, index) => (
+                <View key={index} style={styles.setRow}>
+                  <View style={[styles.setBadge, {width:'15%'}]}><Text style={styles.setText}>{index + 1}</Text></View>
+                  <View style={[styles.inputBox, {width:'25%'}]}>
+                    <TextInput style={styles.inputFieldText} keyboardType="numeric" placeholder="-" placeholderTextColor="#444" value={set.weight.toString()} onChangeText={(val) => handleUpdateSet(item.id, index, 'weight', val)} returnKeyType="done" />
+                  </View>
+                  <View style={[styles.inputBox, {width:'25%'}]}>
+                    <TextInput style={styles.inputFieldText} keyboardType="numeric" placeholder="-" placeholderTextColor="#444" value={set.reps.toString()} onChangeText={(val) => handleUpdateSet(item.id, index, 'reps', val)} returnKeyType="done" />
+                  </View>
+                  <TouchableOpacity style={[styles.checkBtn, set.done && styles.checkedBtn, {width:36, height:36, marginLeft:5}]} onPress={() => toggleSetDone(item.id, index)}>
+                    <Check color={set.done ? "#000" : "#444"} size={16} />
+                  </TouchableOpacity>
+                  <TouchableOpacity style={{width:30, alignItems:'center', marginLeft:5}} onPress={() => handleRemoveSet(item.id, index)}>
+                    <Trash2 color="#444" size={18} />
+                  </TouchableOpacity>
+                </View>
+              ))}
+              <TouchableOpacity style={styles.addSetBtn} onPress={() => handleAddSet(item.id)}>
+                <Plus color="#2ecc71" size={16} />
+                <Text style={styles.addSetBtnText}>セットを追加</Text>
+              </TouchableOpacity>
+            </View>
+          ))}
+
+          <TouchableOpacity style={styles.addExerciseBtn} onPress={() => setModalVisible(true)}>
+            <Plus color="#000" size={20} />
+            <Text style={styles.addExerciseBtnText}>種目を追加する</Text>
+          </TouchableOpacity>
+
+          {menu.length > 0 && (
+            <TouchableOpacity style={[styles.finishBtn, loading && {opacity: 0.7}]} onPress={handleFinishWorkout} disabled={loading}>
+              {loading ? <ActivityIndicator color="#000" /> : <Text style={styles.finishBtnText}>ワークアウトを終了して保存</Text>}
+            </TouchableOpacity>
+          )}
+        </ScrollView>
+      </KeyboardAvoidingView>
+
+      <ExerciseSelectorModal visible={modalVisible} onClose={() => setModalVisible(false)} onSelect={handleAddExercise} />
+      
+      {/* ★ルーティンモーダルを追加 */}
+      <RoutineModal 
+        visible={routineModalVisible} 
+        onClose={() => setRoutineModalVisible(false)} 
+        currentMenu={menu}
+        onLoadRoutine={handleLoadRoutine}
+      />
+    </SafeAreaView>
+  );
 }
 
 // ダミー画面
@@ -481,8 +1092,19 @@ const styles = StyleSheet.create({
     timerText: { color: '#000', fontWeight: 'bold', marginLeft: 5 },
 
     exerciseCard: { backgroundColor: '#2a2a2a', borderRadius: 16, padding: 16, marginBottom: 16 },
-    exerciseHeader: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 },
-    exerciseName: { color: '#fff', fontSize: 18, fontWeight: 'bold' },
+    // styles の中にある exerciseHeader と exerciseName をこれに書き換え
+    exerciseHeader: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center', // これを追加（上下中央揃え）
+        marginBottom: 8
+    },
+    exerciseName: {
+        color: '#fff',
+        fontSize: 18,
+        fontWeight: 'bold',
+        flex: 1, // ★これを追加！（文字が長くてもボタンを押し出さないようにする）
+    },
     exerciseInfo: { flexDirection: 'row', gap: 15, marginBottom: 15 },
     infoText: { color: '#888', fontSize: 12 },
     highlightText: { color: '#2ecc71' },
@@ -515,4 +1137,120 @@ const styles = StyleSheet.create({
 
     // 設定画面のスタイル
     settingsItem: { paddingVertical: 10 },
+
+    // 終了ボタン
+    finishBtn: {
+        backgroundColor: '#fff', // 白背景で目立たせる
+        padding: 18,
+        borderRadius: 10,
+        marginTop: 40, // 少し離す
+        marginBottom: 20,
+        alignItems: 'center',
+    },
+    finishBtnText: {
+        color: '#000',
+        fontSize: 18,
+        fontWeight: 'bold',
+        letterSpacing: 1,
+    },
+
+    sectionHeader: {
+        backgroundColor: '#333', // 少し明るい背景
+        paddingVertical: 8,
+        paddingHorizontal: 16,
+        marginTop: 10,
+    },
+    sectionHeaderText: {
+        color: '#2ecc71', // ネオングリーンで強調
+        fontWeight: 'bold',
+        fontSize: 14,
+    },
+
+    inputFieldText: {
+        color: '#fff',
+        fontSize: 18,
+        fontWeight: 'bold',
+        textAlign: 'center',
+        width: '100%',
+        height: '100%', // 親のinputBoxいっぱいに広げる
+    },
+
+    termsContainer: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        marginBottom: 20,
+        paddingHorizontal: 5,
+    },
+    checkbox: {
+        width: 24,
+        height: 24,
+        borderRadius: 6,
+        borderWidth: 2,
+        borderColor: '#666',
+        marginRight: 10,
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    checkboxChecked: {
+        backgroundColor: '#2ecc71', // チェックされたら緑に光る
+        borderColor: '#2ecc71',
+    },
+    termsText: {
+        color: '#ccc',
+        fontSize: 14,
+    },
+    linkText: {
+        color: '#2ecc71', // リンク文字は緑
+        fontWeight: 'bold',
+        textDecorationLine: 'underline',
+    },
+
+    addSetBtn: {
+        flexDirection: 'row',
+        justifyContent: 'center',
+        alignItems: 'center',
+        paddingVertical: 10,
+        marginTop: 5,
+        borderTopWidth: 1,
+        borderTopColor: '#333',
+    },
+    addSetBtnText: {
+        color: '#2ecc71',
+        fontSize: 14,
+        fontWeight: 'bold',
+        marginLeft: 5,
+    },
+
+  createRoutineBtn: {
+    backgroundColor: '#fff',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 15,
+    borderRadius: 10,
+    marginBottom: 20,
+  },
+  createRoutineText: {
+    color: '#000',
+    fontWeight: 'bold',
+    marginLeft: 10,
+  },
+  routineItem: {
+    backgroundColor: '#2a2a2a',
+    padding: 16,
+    borderRadius: 10,
+    marginBottom: 10,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  routineNameText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
+  routineDescText: {
+    color: '#888',
+    fontSize: 12,
+  },
 });
