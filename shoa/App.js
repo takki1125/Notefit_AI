@@ -19,6 +19,7 @@ import { onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndP
 import { db, auth } from './firebaseConfig';
 
 import { LineChart, BarChart } from 'react-native-chart-kit';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // --- 定数・データ ---
 const DAYS = Array.from({ length: 28 }, (_, i) => i + 1);
@@ -448,6 +449,9 @@ function HomeScreen({ navigation }) {
             } else {
                 setLastWorkout(null); // データが空になった場合の対応
             }
+            // ★ ここを追加！ 取得したデータをスマホ本体に文字列として保存する
+            await AsyncStorage.setItem('@workout_history', JSON.stringify(historyData));
+
         } catch (e) {
             console.error(e);
         }
@@ -1081,56 +1085,118 @@ function TrainingScreen({ navigation }) {
     );
 }
 
-// コンポーネント: 統計(Stats)画面
+// コンポーネント: 統計(Stats)画面 (ローカルキャッシュ連動版)
 function StatsScreen() {
-    const screenWidth = Dimensions.get("window").width;
+  const screenWidth = Dimensions.get("window").width;
+  
+  // グラフ用のデータ状態
+  const [weeklyData, setWeeklyData] = useState([0, 0, 0, 0]); // [3週前, 2週前, 1週前, 今週]
+  const [bodyPartData, setBodyPartData] = useState([0, 0, 0, 0, 0]); // [胸, 背中, 脚, 肩, 腕]
 
-    // グラフのデザイン設定
-    const chartConfig = {
-        backgroundGradientFrom: "#1a1a1a",
-        backgroundGradientTo: "#1a1a1a",
-        color: (opacity = 1) => `rgba(46, 204, 113, ${opacity})`,
-        strokeWidth: 2,
-        barPercentage: 0.5,
-        useShadowColorFromDataset: false,
-        decimalPlaces: 0,
-    };
+  // 画面を開くたびにローカルデータ（本体保存）から読み込んで計算
+  useFocusEffect(
+    useCallback(() => {
+      const loadCachedData = async () => {
+        try {
+          const cachedStr = await AsyncStorage.getItem('@workout_history');
+          if (!cachedStr) return; // データがなければ何もしない
+          
+          const history = JSON.parse(cachedStr);
+          const now = new Date();
+          const currentMonth = now.getMonth();
 
-    return (
-        <SafeAreaView style={styles.container}>
-            <View style={styles.headerRow}>
-                <Text style={styles.headerLabel}>Statistics</Text>
-            </View>
-            <ScrollView contentContainerStyle={{ padding: 20 }}>
+          // 集計用の変数
+          let weeks = [0, 0, 0, 0]; // [今週, 1週前, 2週前, 3週前]
+          let chest = 0, back = 0, legs = 0, shoulders = 0, arms = 0;
 
-                <Text style={{ color: '#fff', fontSize: 18, fontWeight: 'bold', marginBottom: 10 }}>直近のワークアウト回数</Text>
-                <LineChart
-                    data={{
-                        labels: ["1週前", "2週前", "3週前", "今週"],
-                        datasets: [{ data: [3, 2, 4, 5] }]
-                    }}
-                    width={screenWidth - 40}
-                    height={220}
-                    chartConfig={chartConfig}
-                    bezier
-                    style={{ borderRadius: 16, marginBottom: 30 }}
-                />
+          history.forEach(workout => {
+            // 文字列から日付オブジェクトに戻す
+            const wDate = new Date(workout.dateObj);
+            
+            // --- 1. 直近4週間のワークアウト回数を計算 ---
+            const diffTime = Math.abs(now - wDate);
+            const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+            if (diffDays <= 7) weeks[0]++;
+            else if (diffDays <= 14) weeks[1]++;
+            else if (diffDays <= 21) weeks[2]++;
+            else if (diffDays <= 28) weeks[3]++;
 
-                <Text style={{ color: '#fff', fontSize: 18, fontWeight: 'bold', marginBottom: 10 }}>部位別セット数 (今月)</Text>
-                <BarChart
-                    data={{
-                        labels: ["胸", "背中", "脚", "肩", "腕"],
-                        datasets: [{ data: [20, 15, 12, 10, 8] }]
-                    }}
-                    width={screenWidth - 40}
-                    height={220}
-                    chartConfig={chartConfig}
-                    style={{ borderRadius: 16 }}
-                />
+            // --- 2. 部位別のセット数を計算 (今月のみ) ---
+            if (wDate.getMonth() === currentMonth) {
+              workout.exercises.forEach(ex => {
+                const name = ex.name || "";
+                // 完了(done)したセットの数だけを数える
+                const doneSetsCount = ex.sets.filter(s => s.done).length; 
 
-            </ScrollView>
-        </SafeAreaView>
-    );
+                // 種目名に特定のキーワードが含まれていたら部位を加算する簡易判定
+                if (name.includes('ベンチ') || name.includes('フライ') || name.includes('チェスト')) chest += doneSetsCount;
+                else if (name.includes('ラット') || name.includes('ロウ') || name.includes('懸垂') || name.includes('デッド')) back += doneSetsCount;
+                else if (name.includes('スクワット') || name.includes('レッグ')) legs += doneSetsCount;
+                else if (name.includes('ショルダー') || name.includes('レイズ') || name.includes('ミリタリー')) shoulders += doneSetsCount;
+                else if (name.includes('アーム') || name.includes('カール') || name.includes('トライセップ')) arms += doneSetsCount;
+              });
+            }
+          });
+
+          // グラフの左から「古い順」にするために反転させる
+          setWeeklyData(weeks.reverse());
+          setBodyPartData([chest, back, legs, shoulders, arms]);
+
+        } catch (error) {
+          console.error("キャッシュ読み込みエラー:", error);
+        }
+      };
+      
+      loadCachedData();
+    }, [])
+  );
+
+  // グラフのデザイン設定
+  const chartConfig = {
+    backgroundGradientFrom: "#1a1a1a",
+    backgroundGradientTo: "#1a1a1a",
+    color: (opacity = 1) => `rgba(46, 204, 113, ${opacity})`,
+    strokeWidth: 2,
+    barPercentage: 0.5,
+    useShadowColorFromDataset: false,
+    decimalPlaces: 0,
+  };
+
+  return (
+    <SafeAreaView style={styles.container}>
+      <View style={styles.headerRow}>
+        <Text style={styles.headerLabel}>Statistics</Text>
+      </View>
+      <ScrollView contentContainerStyle={{ padding: 20 }}>
+        
+        <Text style={{ color: '#fff', fontSize: 18, fontWeight: 'bold', marginBottom: 10 }}>直近4週間のワークアウト回数</Text>
+        <LineChart
+          data={{
+            labels: ["3週前", "2週前", "1週前", "今週"],
+            datasets: [{ data: weeklyData }]
+          }}
+          width={screenWidth - 40}
+          height={220}
+          chartConfig={chartConfig}
+          bezier
+          style={{ borderRadius: 16, marginBottom: 30 }}
+        />
+
+        <Text style={{ color: '#fff', fontSize: 18, fontWeight: 'bold', marginBottom: 10 }}>部位別セット数 (今月)</Text>
+        <BarChart
+          data={{
+            labels: ["胸", "背中", "脚", "肩", "腕"],
+            datasets: [{ data: bodyPartData }]
+          }}
+          width={screenWidth - 40}
+          height={220}
+          chartConfig={chartConfig}
+          style={{ borderRadius: 16 }}
+        />
+
+      </ScrollView>
+    </SafeAreaView>
+  );
 }
 
 // メインタブナビゲーション
