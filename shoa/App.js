@@ -1135,35 +1135,6 @@ function StatsScreen() {
 
 // メインタブナビゲーション
 const Tab = createBottomTabNavigator();
-function MainTabNavigator() {
-    return (
-        <Tab.Navigator
-            screenOptions={({ route }) => ({
-                headerShown: false,
-                tabBarStyle: { backgroundColor: '#1a1a1a', borderTopColor: '#333' },
-                tabBarActiveTintColor: '#2ecc71',
-                tabBarInactiveTintColor: '#666',
-                tabBarIcon: ({ color, size }) => {
-                    if (route.name === 'HomeTab') return <Home color={color} size={size} />;
-                    if (route.name === 'TrainingTab') return <Dumbbell color={color} size={size} />;
-                    if (route.name === 'FoodTab') return <Utensils color={color} size={size} />;
-                    if (route.name === 'StatsTab') return <BarChart2 color={color} size={size} />;
-                },
-            })}
-        >
-            <Tab.Screen name="HomeTab" component={HomeScreen} options={{ tabBarLabel: 'Home' }} />
-            <Tab.Screen name="TrainingTab" component={TrainingScreen} options={{ tabBarLabel: 'Workout' }} />
-            <Tab.Screen name="FoodTab" component={DummyScreen} options={{ tabBarLabel: 'Food' }} />
-            <Tab.Screen name="StatsTab" component={StatsScreen} options={{ tabBarLabel: 'Stats' }} />
-        </Tab.Navigator>
-    );
-}
-
-// ダミー画面
-function DummyScreen() { return <View style={styles.centered}><Text style={{ color: '#fff' }}>準備中</Text></View>; }
-
-// --- ナビゲーション設定 ---
-const Stack = createStackNavigator();
 
 // タブナビゲーション (ログイン後のメイン画面)
 function MainTabNavigator() {
@@ -1174,16 +1145,23 @@ function MainTabNavigator() {
                 tabBarStyle: styles.tabBar,
                 tabBarActiveTintColor: '#2ecc71',
                 tabBarInactiveTintColor: '#666',
-                tabBarShowLabel: false,
+                tabBarShowLabel: false, // 君の元の設定（文字なし）を維持
             }}
         >
             <Tab.Screen name="HomeTab" component={HomeStackNavigator} options={{ tabBarIcon: ({ color }) => <Home color={color} size={28} /> }} />
             <Tab.Screen name="TrainingTab" component={TrainingScreen} options={{ tabBarIcon: ({ color }) => <Dumbbell color={color} size={28} /> }} />
             <Tab.Screen name="FoodTab" component={DummyScreen} options={{ tabBarIcon: ({ color }) => <Utensils color={color} size={28} /> }} />
-            <Tab.Screen name="OtherTab" component={DummyScreen} options={{ tabBarIcon: ({ color }) => <MoreHorizontal color={color} size={28} /> }} />
+            {/* ★ここをOtherTabからStatsTabに変更！ */}
+            <Tab.Screen name="StatsTab" component={StatsScreen} options={{ tabBarIcon: ({ color }) => <BarChart2 color={color} size={28} /> }} />
         </Tab.Navigator>
     );
 }
+
+// ダミー画面
+function DummyScreen() { return <View style={styles.centered}><Text style={{ color: '#fff' }}>準備中</Text></View>; }
+
+// --- ナビゲーション設定 ---
+const Stack = createStackNavigator();
 
 // ホームタブ内のスタックナビゲーション (ホーム -> 設定画面への遷移用)
 function HomeStackNavigator() {
