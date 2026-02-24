@@ -852,318 +852,317 @@ const RoutineModal = ({ visible, onClose, currentMenu, onLoadRoutine }) => {
 
 // --- コンポーネント: トレーニング画面 (タイマー & 集中モード搭載版) ---
 function TrainingScreen({ navigation }) {
-  const [modalVisible, setModalVisible] = useState(false);
-  const [routineModalVisible, setRoutineModalVisible] = useState(false);
-  const [loading, setLoading] = useState(false);
-  
-  const [menu, setMenu] = useState([]);
-  const [currentRoutineName, setCurrentRoutineName] = useState("自由メニュー");
+    const [modalVisible, setModalVisible] = useState(false);
+    const [routineModalVisible, setRoutineModalVisible] = useState(false);
+    const [loading, setLoading] = useState(false);
 
-  // ★追加: タイマー用の状態
-  const [timerSeconds, setTimerSeconds] = useState(0);
-  const [isTimerActive, setIsTimerActive] = useState(false);
+    const [menu, setMenu] = useState([]);
+    const [currentRoutineName, setCurrentRoutineName] = useState("自由メニュー");
 
-  // ★追加: メニューの増減を監視してタイマーと集中モードを制御
-  useEffect(() => {
-    if (menu.length > 0) {
-      setIsTimerActive(true); // 種目があればタイマー開始
-      // 下のタブメニューを隠す
-      navigation.setOptions({ tabBarStyle: { display: 'none' } });
-    } else {
-      setIsTimerActive(false); // 種目がゼロならタイマー停止
-      setTimerSeconds(0);      // リセット
-      // 下のタブメニューを再表示
-      navigation.setOptions({ tabBarStyle: { backgroundColor: '#1a1a1a', borderTopColor: '#333' } });
-    }
-  }, [menu.length, navigation]);
+    // ★追加: タイマー用の状態
+    const [timerSeconds, setTimerSeconds] = useState(0);
+    const [isTimerActive, setIsTimerActive] = useState(false);
 
-  // ★追加: タイマーを1秒ずつ進める処理
-  useEffect(() => {
-    let interval = null;
-    if (isTimerActive) {
-      interval = setInterval(() => {
-        setTimerSeconds((sec) => sec + 1);
-      }, 1000);
-    } else {
-      clearInterval(interval);
-    }
-    return () => clearInterval(interval);
-  }, [isTimerActive]);
+    // ★追加: メニューの増減を監視してタイマーと集中モードを制御
+    useEffect(() => {
+        if (menu.length > 0) {
+            setIsTimerActive(true); // 種目があればタイマー開始
+            // 下のタブメニューを隠す
+            navigation.setOptions({ tabBarStyle: { display: 'none' } });
+        } else {
+            setIsTimerActive(false); // 種目がゼロならタイマー停止
+            setTimerSeconds(0);      // リセット
+            // 下のタブメニューを再表示
+            navigation.setOptions({ tabBarStyle: { backgroundColor: '#1a1a1a', borderTopColor: '#333' } });
+        }
+    }, [menu.length, navigation]);
 
-  // ★追加: 秒数を MM:SS に変換する関数
-  const formatTime = (totalSeconds) => {
-    const h = Math.floor(totalSeconds / 3600);
-    const m = Math.floor((totalSeconds % 3600) / 60).toString().padStart(2, '0');
-    const s = (totalSeconds % 60).toString().padStart(2, '0');
-    return h > 0 ? `${h}:${m}:${s}` : `${m}:${s}`;
-  };
+    // ★追加: タイマーを1秒ずつ進める処理
+    useEffect(() => {
+        let interval = null;
+        if (isTimerActive) {
+            interval = setInterval(() => {
+                setTimerSeconds((sec) => sec + 1);
+            }, 1000);
+        } else {
+            clearInterval(interval);
+        }
+        return () => clearInterval(interval);
+    }, [isTimerActive]);
 
-  const handleAddExercise = (exerciseName) => {
-    const newExercise = {
-      id: Date.now(),
-      name: exerciseName,
-      target: '- kg x -',
-      sets: [{ weight: '', reps: '', done: false }]
+    // ★追加: 秒数を MM:SS に変換する関数
+    const formatTime = (totalSeconds) => {
+        const h = Math.floor(totalSeconds / 3600);
+        const m = Math.floor((totalSeconds % 3600) / 60).toString().padStart(2, '0');
+        const s = (totalSeconds % 60).toString().padStart(2, '0');
+        return h > 0 ? `${h}:${m}:${s}` : `${m}:${s}`;
     };
-    setMenu([...menu, newExercise]);
-  };
 
-  const handleLoadRoutine = (routine) => {
-    Alert.alert(
-      "ルーティン読み込み",
-      "現在の入力内容は失われますが、よろしいですか？",
-      [
-        { text: "キャンセル", style: "cancel" },
-        { 
-          text: "読み込む", 
-          onPress: () => {
-            const loadedExercises = routine.exercises.map(ex => ({
-              ...ex,
-              id: Date.now() + Math.random(),
-              sets: ex.sets.map(s => ({ ...s, done: false }))
-            }));
-            setMenu(loadedExercises);
-            setCurrentRoutineName(routine.name);
-            setTimerSeconds(0); // ルーティンを読み込んだらタイマーをリセットして再スタート
-          }
-        }
-      ]
-    );
-  };
+    const handleAddExercise = (exerciseName) => {
+        const newExercise = {
+            id: Date.now(),
+            name: exerciseName,
+            target: '- kg x -',
+            sets: [{ weight: '', reps: '', done: false }]
+        };
+        setMenu([...menu, newExercise]);
+    };
 
-  const handleRemoveExercise = (exerciseId) => {
-    Alert.alert("削除", "この種目を削除しますか？", [
-      { text: "キャンセル", style: "cancel" },
-      { text: "削除", style: "destructive", onPress: () => setMenu(menu.filter(item => item.id !== exerciseId)) }
-    ]);
-  };
+    const handleLoadRoutine = (routine) => {
+        Alert.alert(
+            "ルーティン読み込み",
+            "現在の入力内容は失われますが、よろしいですか？",
+            [
+                { text: "キャンセル", style: "cancel" },
+                {
+                    text: "読み込む",
+                    onPress: () => {
+                        const loadedExercises = routine.exercises.map(ex => ({
+                            ...ex,
+                            id: Date.now() + Math.random(),
+                            sets: ex.sets.map(s => ({ ...s, done: false }))
+                        }));
+                        setMenu(loadedExercises);
+                        setCurrentRoutineName(routine.name);
+                        setTimerSeconds(0); // ルーティンを読み込んだらタイマーをリセットして再スタート
+                    }
+                }
+            ]
+        );
+    };
 
-  const handleAddSet = (exerciseId) => {
-    setMenu(menu.map(ex => ex.id === exerciseId ? { ...ex, sets: [...ex.sets, { weight: '', reps: '', done: false }] } : ex));
-  };
+    const handleRemoveExercise = (exerciseId) => {
+        Alert.alert("削除", "この種目を削除しますか？", [
+            { text: "キャンセル", style: "cancel" },
+            { text: "削除", style: "destructive", onPress: () => setMenu(menu.filter(item => item.id !== exerciseId)) }
+        ]);
+    };
 
-  const handleRemoveSet = (exerciseId, setIndex) => {
-    setMenu(menu.map(ex => {
-      if (ex.id === exerciseId) {
-        if (ex.sets.length <= 1) { handleRemoveExercise(exerciseId); return ex; }
-        return { ...ex, sets: ex.sets.filter((_, i) => i !== setIndex) };
-      }
-      return ex;
-    }));
-  };
+    const handleAddSet = (exerciseId) => {
+        setMenu(menu.map(ex => ex.id === exerciseId ? { ...ex, sets: [...ex.sets, { weight: '', reps: '', done: false }] } : ex));
+    };
 
-  const handleUpdateSet = (exerciseId, setIndex, field, value) => {
-    setMenu(menu.map(ex => ex.id === exerciseId ? {
-      ...ex, sets: ex.sets.map((s, i) => i === setIndex ? { ...s, [field]: value } : s)
-    } : ex));
-  };
+    const handleRemoveSet = (exerciseId, setIndex) => {
+        setMenu(menu.map(ex => {
+            if (ex.id === exerciseId) {
+                if (ex.sets.length <= 1) { handleRemoveExercise(exerciseId); return ex; }
+                return { ...ex, sets: ex.sets.filter((_, i) => i !== setIndex) };
+            }
+            return ex;
+        }));
+    };
 
-  const toggleSetDone = (exerciseId, setIndex) => {
-    setMenu(menu.map(ex => ex.id === exerciseId ? {
-      ...ex, sets: ex.sets.map((s, i) => i === setIndex ? { ...s, done: !s.done } : s)
-    } : ex));
-  };
+    const handleUpdateSet = (exerciseId, setIndex, field, value) => {
+        setMenu(menu.map(ex => ex.id === exerciseId ? {
+            ...ex, sets: ex.sets.map((s, i) => i === setIndex ? { ...s, [field]: value } : s)
+        } : ex));
+    };
 
-  const handleFinishWorkout = async () => {
-    if (menu.length === 0) return Alert.alert("エラー", "種目がありません");
+    const toggleSetDone = (exerciseId, setIndex) => {
+        setMenu(menu.map(ex => ex.id === exerciseId ? {
+            ...ex, sets: ex.sets.map((s, i) => i === setIndex ? { ...s, done: !s.done } : s)
+        } : ex));
+    };
 
-    Alert.alert("終了", "保存して終了しますか？", [
-      { text: "キャンセル", style: "cancel" },
-      { 
-        text: "保存して終了", 
-        onPress: async () => {
-          setLoading(true);
-          try {
-            const user = auth.currentUser;
-            await addDoc(collection(db, "users", user.uid, "workouts"), {
-              date: serverTimestamp(),
-              routineName: currentRoutineName,
-              exercises: menu,
-              durationSeconds: timerSeconds // ★追加: かかった時間も保存！
-            });
-            Alert.alert("Good Job!", "保存しました", [{ 
-              text: "OK", 
-              onPress: () => { 
-                setMenu([]); // ここで空になるのでタイマーもリセット＆タブも復活する
-                navigation.navigate("HomeTab"); 
-              }
-            }]);
-          } catch (e) { Alert.alert("エラー", "保存失敗"); } finally { setLoading(false); }
-        }
-      }
-    ]);
-  };
+    const handleFinishWorkout = async () => {
+        if (menu.length === 0) return Alert.alert("エラー", "種目がありません");
 
-  return (
-    <SafeAreaView style={styles.container}>
-      <View style={styles.headerRow}>
-        <View>
-            <Text style={styles.headerLabel}>Today's Workout</Text>
-            <TouchableOpacity style={styles.routineSelector} onPress={() => setRoutineModalVisible(true)}>
-              <Text style={styles.routineText}>{currentRoutineName}</Text>
-              <ChevronDown color="#2ecc71" size={20} />
-            </TouchableOpacity>
-        </View>
-        
-        {/* ★変更: 動くようになったタイマー表示 */}
-        <TouchableOpacity style={styles.timerButton}>
-          <Clock color={isTimerActive ? "#2ecc71" : "#000"} size={20} />
-          <Text style={styles.timerText}>{formatTime(timerSeconds)}</Text>
-        </TouchableOpacity>
-      </View>
+        Alert.alert("終了", "保存して終了しますか？", [
+            { text: "キャンセル", style: "cancel" },
+            {
+                text: "保存して終了",
+                onPress: async () => {
+                    setLoading(true);
+                    try {
+                        const user = auth.currentUser;
+                        await addDoc(collection(db, "users", user.uid, "workouts"), {
+                            date: serverTimestamp(),
+                            routineName: currentRoutineName,
+                            exercises: menu,
+                            durationSeconds: timerSeconds // ★追加: かかった時間も保存！
+                        });
+                        Alert.alert("Good Job!", "保存しました", [{
+                            text: "OK",
+                            onPress: () => {
+                                setMenu([]); // ここで空になるのでタイマーもリセット＆タブも復活する
+                                navigation.navigate("HomeTab");
+                            }
+                        }]);
+                    } catch (e) { Alert.alert("エラー", "保存失敗"); } finally { setLoading(false); }
+                }
+            }
+        ]);
+    };
 
-      <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={{flex:1}} keyboardVerticalOffset={100}>
-        <ScrollView contentContainerStyle={styles.scrollContent}>
-          {menu.length === 0 && (
-            <View style={{alignItems:'center', marginTop:50, opacity:0.5}}>
-              <Dumbbell color="#666" size={50} />
-              <Text style={{color:'#666', marginTop:10, textAlign:'center'}}>種目を追加するか、上のメニューから{"\n"}ルーティンを読み込んでください</Text>
-            </View>
-          )}
-
-          {menu.map((item) => (
-            <View key={item.id} style={styles.exerciseCard}>
-              <View style={styles.exerciseHeader}>
-                <Text style={styles.exerciseName}>{item.name}</Text>
-                <TouchableOpacity onPress={() => handleRemoveExercise(item.id)} style={{padding:5}}>
-                  <X color="#ff4444" size={24} />
-                </TouchableOpacity>
-              </View>
-              
-              <View style={styles.setRowHeader}>
-                <Text style={[styles.colLabel, {width:'15%'}]}>SET</Text>
-                <Text style={[styles.colLabel, {width:'25%'}]}>KG</Text>
-                <Text style={[styles.colLabel, {width:'25%'}]}>REPS</Text>
-                <Text style={[styles.colLabel, {width:'15%'}]}>DONE</Text>
-                <Text style={[styles.colLabel, {width:'10%'}]}></Text> 
-              </View>
-              
-              {item.sets.map((set, index) => (
-                <View key={index} style={styles.setRow}>
-                  <View style={[styles.setBadge, {width:'15%'}]}><Text style={styles.setText}>{index + 1}</Text></View>
-                  <View style={[styles.inputBox, {width:'25%'}]}>
-                    <TextInput style={styles.inputFieldText} keyboardType="numeric" placeholder="-" placeholderTextColor="#444" value={set.weight.toString()} onChangeText={(val) => handleUpdateSet(item.id, index, 'weight', val)} returnKeyType="done" />
-                  </View>
-                  <View style={[styles.inputBox, {width:'25%'}]}>
-                    <TextInput style={styles.inputFieldText} keyboardType="numeric" placeholder="-" placeholderTextColor="#444" value={set.reps.toString()} onChangeText={(val) => handleUpdateSet(item.id, index, 'reps', val)} returnKeyType="done" />
-                  </View>
-                  <TouchableOpacity style={[styles.checkBtn, set.done && styles.checkedBtn, {width:36, height:36, marginLeft:5}]} onPress={() => toggleSetDone(item.id, index)}>
-                    <Check color={set.done ? "#000" : "#444"} size={16} />
-                  </TouchableOpacity>
-                  <TouchableOpacity style={{width:30, alignItems:'center', marginLeft:5}} onPress={() => handleRemoveSet(item.id, index)}>
-                    <Trash2 color="#444" size={18} />
-                  </TouchableOpacity>
+    return (
+        <SafeAreaView style={styles.container}>
+            <View style={styles.headerRow}>
+                <View>
+                    <Text style={styles.headerLabel}>Today's Workout</Text>
+                    <TouchableOpacity style={styles.routineSelector} onPress={() => setRoutineModalVisible(true)}>
+                        <Text style={styles.routineText}>{currentRoutineName}</Text>
+                        <ChevronDown color="#2ecc71" size={20} />
+                    </TouchableOpacity>
                 </View>
-              ))}
-              <TouchableOpacity style={styles.addSetBtn} onPress={() => handleAddSet(item.id)}>
-                <Plus color="#2ecc71" size={16} />
-                <Text style={styles.addSetBtnText}>セットを追加</Text>
-              </TouchableOpacity>
+
+                {/* ★変更: 動くようになったタイマー表示 */}
+                <TouchableOpacity style={styles.timerButton}>
+                    <Clock color={isTimerActive ? "#2ecc71" : "#000"} size={20} />
+                    <Text style={styles.timerText}>{formatTime(timerSeconds)}</Text>
+                </TouchableOpacity>
             </View>
-          ))}
 
-          <TouchableOpacity style={styles.addExerciseBtn} onPress={() => setModalVisible(true)}>
-            <Plus color="#000" size={20} />
-            <Text style={styles.addExerciseBtnText}>種目を追加する</Text>
-          </TouchableOpacity>
+            <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={{ flex: 1 }} keyboardVerticalOffset={100}>
+                <ScrollView contentContainerStyle={styles.scrollContent}>
+                    {menu.length === 0 && (
+                        <View style={{ alignItems: 'center', marginTop: 50, opacity: 0.5 }}>
+                            <Dumbbell color="#666" size={50} />
+                            <Text style={{ color: '#666', marginTop: 10, textAlign: 'center' }}>種目を追加するか、上のメニューから{"\n"}ルーティンを読み込んでください</Text>
+                        </View>
+                    )}
 
-          {menu.length > 0 && (
-            <TouchableOpacity style={[styles.finishBtn, loading && {opacity: 0.7}]} onPress={handleFinishWorkout} disabled={loading}>
-              {loading ? <ActivityIndicator color="#000" /> : <Text style={styles.finishBtnText}>ワークアウトを終了して保存</Text>}
-            </TouchableOpacity>
-          )}
-        </ScrollView>
-      </KeyboardAvoidingView>
+                    {menu.map((item) => (
+                        <View key={item.id} style={styles.exerciseCard}>
+                            <View style={styles.exerciseHeader}>
+                                <Text style={styles.exerciseName}>{item.name}</Text>
+                                <TouchableOpacity onPress={() => handleRemoveExercise(item.id)} style={{ padding: 5 }}>
+                                    <X color="#ff4444" size={24} />
+                                </TouchableOpacity>
+                            </View>
 
-      <ExerciseSelectorModal visible={modalVisible} onClose={() => setModalVisible(false)} onSelect={handleAddExercise} />
-      <RoutineModal visible={routineModalVisible} onClose={() => setRoutineModalVisible(false)} currentMenu={menu} onLoadRoutine={handleLoadRoutine} />
-    </SafeAreaView>
-  );
+                            <View style={styles.setRowHeader}>
+                                <Text style={[styles.colLabel, { width: '15%' }]}>SET</Text>
+                                <Text style={[styles.colLabel, { width: '25%' }]}>KG</Text>
+                                <Text style={[styles.colLabel, { width: '25%' }]}>REPS</Text>
+                                <Text style={[styles.colLabel, { width: '15%' }]}>DONE</Text>
+                                <Text style={[styles.colLabel, { width: '10%' }]}></Text>
+                            </View>
+
+                            {item.sets.map((set, index) => (
+                                <View key={index} style={styles.setRow}>
+                                    <View style={[styles.setBadge, { width: '15%' }]}><Text style={styles.setText}>{index + 1}</Text></View>
+                                    <View style={[styles.inputBox, { width: '25%' }]}>
+                                        <TextInput style={styles.inputFieldText} keyboardType="numeric" placeholder="-" placeholderTextColor="#444" value={set.weight.toString()} onChangeText={(val) => handleUpdateSet(item.id, index, 'weight', val)} returnKeyType="done" />
+                                    </View>
+                                    <View style={[styles.inputBox, { width: '25%' }]}>
+                                        <TextInput style={styles.inputFieldText} keyboardType="numeric" placeholder="-" placeholderTextColor="#444" value={set.reps.toString()} onChangeText={(val) => handleUpdateSet(item.id, index, 'reps', val)} returnKeyType="done" />
+                                    </View>
+                                    <TouchableOpacity style={[styles.checkBtn, set.done && styles.checkedBtn, { width: 36, height: 36, marginLeft: 5 }]} onPress={() => toggleSetDone(item.id, index)}>
+                                        <Check color={set.done ? "#000" : "#444"} size={16} />
+                                    </TouchableOpacity>
+                                    <TouchableOpacity style={{ width: 30, alignItems: 'center', marginLeft: 5 }} onPress={() => handleRemoveSet(item.id, index)}>
+                                        <Trash2 color="#444" size={18} />
+                                    </TouchableOpacity>
+                                </View>
+                            ))}
+                            <TouchableOpacity style={styles.addSetBtn} onPress={() => handleAddSet(item.id)}>
+                                <Plus color="#2ecc71" size={16} />
+                                <Text style={styles.addSetBtnText}>セットを追加</Text>
+                            </TouchableOpacity>
+                        </View>
+                    ))}
+
+                    <TouchableOpacity style={styles.addExerciseBtn} onPress={() => setModalVisible(true)}>
+                        <Plus color="#000" size={20} />
+                        <Text style={styles.addExerciseBtnText}>種目を追加する</Text>
+                    </TouchableOpacity>
+
+                    {menu.length > 0 && (
+                        <TouchableOpacity style={[styles.finishBtn, loading && { opacity: 0.7 }]} onPress={handleFinishWorkout} disabled={loading}>
+                            {loading ? <ActivityIndicator color="#000" /> : <Text style={styles.finishBtnText}>ワークアウトを終了して保存</Text>}
+                        </TouchableOpacity>
+                    )}
+                </ScrollView>
+            </KeyboardAvoidingView>
+
+            <ExerciseSelectorModal visible={modalVisible} onClose={() => setModalVisible(false)} onSelect={handleAddExercise} />
+            <RoutineModal visible={routineModalVisible} onClose={() => setRoutineModalVisible(false)} currentMenu={menu} onLoadRoutine={handleLoadRoutine} />
+        </SafeAreaView>
+    );
 }
 
 // コンポーネント: 統計(Stats)画面
 function StatsScreen() {
-  const screenWidth = Dimensions.get("window").width;
+    const screenWidth = Dimensions.get("window").width;
 
-  // グラフのデザイン設定
-  const chartConfig = {
-    backgroundGradientFrom: "#1a1a1a",
-    backgroundGradientTo: "#1a1a1a",
-    color: (opacity = 1) => `rgba(46, 204, 113, ${opacity})`,
-    strokeWidth: 2,
-    barPercentage: 0.5,
-    useShadowColorFromDataset: false,
-    decimalPlaces: 0,
-  };
+    // グラフのデザイン設定
+    const chartConfig = {
+        backgroundGradientFrom: "#1a1a1a",
+        backgroundGradientTo: "#1a1a1a",
+        color: (opacity = 1) => `rgba(46, 204, 113, ${opacity})`,
+        strokeWidth: 2,
+        barPercentage: 0.5,
+        useShadowColorFromDataset: false,
+        decimalPlaces: 0,
+    };
 
-  return (
-    <SafeAreaView style={styles.container}>
-      <View style={styles.headerRow}>
-        <Text style={styles.headerLabel}>Statistics</Text>
-      </View>
-      <ScrollView contentContainerStyle={{ padding: 20 }}>
-        
-        <Text style={{ color: '#fff', fontSize: 18, fontWeight: 'bold', marginBottom: 10 }}>直近のワークアウト回数</Text>
-        <LineChart
-          data={{
-            labels: ["1週前", "2週前", "3週前", "今週"],
-            datasets: [{ data: [3, 2, 4, 5] }]
-          }}
-          width={screenWidth - 40}
-          height={220}
-          chartConfig={chartConfig}
-          bezier
-          style={{ borderRadius: 16, marginBottom: 30 }}
-        />
+    return (
+        <SafeAreaView style={styles.container}>
+            <View style={styles.headerRow}>
+                <Text style={styles.headerLabel}>Statistics</Text>
+            </View>
+            <ScrollView contentContainerStyle={{ padding: 20 }}>
 
-        <Text style={{ color: '#fff', fontSize: 18, fontWeight: 'bold', marginBottom: 10 }}>部位別セット数 (今月)</Text>
-        <BarChart
-          data={{
-            labels: ["胸", "背中", "脚", "肩", "腕"],
-            datasets: [{ data: [20, 15, 12, 10, 8] }]
-          }}
-          width={screenWidth - 40}
-          height={220}
-          chartConfig={chartConfig}
-          style={{ borderRadius: 16 }}
-        />
+                <Text style={{ color: '#fff', fontSize: 18, fontWeight: 'bold', marginBottom: 10 }}>直近のワークアウト回数</Text>
+                <LineChart
+                    data={{
+                        labels: ["1週前", "2週前", "3週前", "今週"],
+                        datasets: [{ data: [3, 2, 4, 5] }]
+                    }}
+                    width={screenWidth - 40}
+                    height={220}
+                    chartConfig={chartConfig}
+                    bezier
+                    style={{ borderRadius: 16, marginBottom: 30 }}
+                />
 
-      </ScrollView>
-    </SafeAreaView>
-  );
+                <Text style={{ color: '#fff', fontSize: 18, fontWeight: 'bold', marginBottom: 10 }}>部位別セット数 (今月)</Text>
+                <BarChart
+                    data={{
+                        labels: ["胸", "背中", "脚", "肩", "腕"],
+                        datasets: [{ data: [20, 15, 12, 10, 8] }]
+                    }}
+                    width={screenWidth - 40}
+                    height={220}
+                    chartConfig={chartConfig}
+                    style={{ borderRadius: 16 }}
+                />
+
+            </ScrollView>
+        </SafeAreaView>
+    );
 }
 
 // メインタブナビゲーション
 const Tab = createBottomTabNavigator();
 function MainTabNavigator() {
-  return (
-    <Tab.Navigator
-      screenOptions={({ route }) => ({
-        headerShown: false,
-        tabBarStyle: { backgroundColor: '#1a1a1a', borderTopColor: '#333' },
-        tabBarActiveTintColor: '#2ecc71',
-        tabBarInactiveTintColor: '#666',
-        tabBarIcon: ({ color, size }) => {
-          if (route.name === 'HomeTab') return <Home color={color} size={size} />;
-          if (route.name === 'TrainingTab') return <Dumbbell color={color} size={size} />;
-          if (route.name === 'FoodTab') return <Utensils color={color} size={size} />;
-          if (route.name === 'StatsTab') return <BarChart2 color={color} size={size} />; 
-        },
-      })}
-    >
-      <Tab.Screen name="HomeTab" component={HomeScreen} options={{ tabBarLabel: 'Home' }} />
-      <Tab.Screen name="TrainingTab" component={TrainingScreen} options={{ tabBarLabel: 'Workout' }} />
-      <Tab.Screen name="FoodTab" component={DummyScreen} options={{ tabBarLabel: 'Food' }} />
-      <Tab.Screen name="StatsTab" component={StatsScreen} options={{ tabBarLabel: 'Stats' }} /> 
-    </Tab.Navigator>
-  );
+    return (
+        <Tab.Navigator
+            screenOptions={({ route }) => ({
+                headerShown: false,
+                tabBarStyle: { backgroundColor: '#1a1a1a', borderTopColor: '#333' },
+                tabBarActiveTintColor: '#2ecc71',
+                tabBarInactiveTintColor: '#666',
+                tabBarIcon: ({ color, size }) => {
+                    if (route.name === 'HomeTab') return <Home color={color} size={size} />;
+                    if (route.name === 'TrainingTab') return <Dumbbell color={color} size={size} />;
+                    if (route.name === 'FoodTab') return <Utensils color={color} size={size} />;
+                    if (route.name === 'StatsTab') return <BarChart2 color={color} size={size} />;
+                },
+            })}
+        >
+            <Tab.Screen name="HomeTab" component={HomeScreen} options={{ tabBarLabel: 'Home' }} />
+            <Tab.Screen name="TrainingTab" component={TrainingScreen} options={{ tabBarLabel: 'Workout' }} />
+            <Tab.Screen name="FoodTab" component={DummyScreen} options={{ tabBarLabel: 'Food' }} />
+            <Tab.Screen name="StatsTab" component={StatsScreen} options={{ tabBarLabel: 'Stats' }} />
+        </Tab.Navigator>
+    );
 }
 
 // ダミー画面
 function DummyScreen() { return <View style={styles.centered}><Text style={{ color: '#fff' }}>準備中</Text></View>; }
 
 // --- ナビゲーション設定 ---
-const Tab = createBottomTabNavigator();
 const Stack = createStackNavigator();
 
 // タブナビゲーション (ログイン後のメイン画面)
@@ -1198,53 +1197,53 @@ function HomeStackNavigator() {
 
 // メインコンポーネント (ログイン状態監視と画面切り替え)
 export default function App() {
-  const [user, setUser] = useState(null);
-  const [initializing, setInitializing] = useState(true);
+    const [user, setUser] = useState(null);
+    const [initializing, setInitializing] = useState(true);
 
-  // ユーザー状態監視
-  useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
-      setUser(currentUser);
-      if (initializing) setInitializing(false);
-    });
-    return unsubscribe;
-  }, []);
+    // ユーザー状態監視
+    useEffect(() => {
+        const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+            setUser(currentUser);
+            if (initializing) setInitializing(false);
+        });
+        return unsubscribe;
+    }, []);
 
-  // VerificationScreenから呼ばれる再読込関数
-  const forceRefreshUser = async () => {
-    if (auth.currentUser) {
-      await auth.currentUser.reload();
-      // 再レンダリングさせるために新しいオブジェクトとしてセットする
-      setUser({ ...auth.currentUser }); 
+    // VerificationScreenから呼ばれる再読込関数
+    const forceRefreshUser = async () => {
+        if (auth.currentUser) {
+            await auth.currentUser.reload();
+            // 再レンダリングさせるために新しいオブジェクトとしてセットする
+            setUser({ ...auth.currentUser });
+        }
+    };
+
+    if (initializing) {
+        return (
+            <View style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
+                <ActivityIndicator size="large" color="#2ecc71" />
+            </View>
+        );
     }
-  };
 
-  if (initializing) {
     return (
-      <View style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
-        <ActivityIndicator size="large" color="#2ecc71" />
-      </View>
+        <NavigationContainer>
+            <Stack.Navigator screenOptions={{ headerShown: false }}>
+                {!user ? (
+                    // 1. 未ログイン → ログイン画面
+                    <Stack.Screen name="Login" component={LoginScreen} />
+                ) : !user.emailVerified ? (
+                    // 2. ログイン中だがメール未確認 → 確認画面
+                    <Stack.Screen name="Verify">
+                        {() => <VerificationScreen onCheckVerified={forceRefreshUser} />}
+                    </Stack.Screen>
+                ) : (
+                    // 3. 確認済み → メインアプリ画面
+                    <Stack.Screen name="Main" component={MainTabNavigator} />
+                )}
+            </Stack.Navigator>
+        </NavigationContainer>
     );
-  }
-
-  return (
-    <NavigationContainer>
-      <Stack.Navigator screenOptions={{ headerShown: false }}>
-        {!user ? (
-          // 1. 未ログイン → ログイン画面
-          <Stack.Screen name="Login" component={LoginScreen} />
-        ) : !user.emailVerified ? (
-          // 2. ログイン中だがメール未確認 → 確認画面
-          <Stack.Screen name="Verify">
-            {() => <VerificationScreen onCheckVerified={forceRefreshUser} />}
-          </Stack.Screen>
-        ) : (
-          // 3. 確認済み → メインアプリ画面
-          <Stack.Screen name="Main" component={MainTabNavigator} />
-        )}
-      </Stack.Navigator>
-    </NavigationContainer>
-  );
 }
 
 // --- スタイル定義 ---
