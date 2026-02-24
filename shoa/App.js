@@ -2,39 +2,103 @@ import React, { useState, useEffect, useCallback } from 'react';
 import {
     StyleSheet, Text, View, ScrollView, TouchableOpacity, SafeAreaView,
     Modal, FlatList, SectionList, ActivityIndicator, TextInput, Alert, KeyboardAvoidingView, Platform,
-    Linking
+    Linking, Dimensions
 } from 'react-native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createStackNavigator } from '@react-navigation/stack';
 import { NavigationContainer, useFocusEffect } from '@react-navigation/native';
 
 // ↓↓↓ ここに Trash2 を追加 ↓↓↓
-import { Home, Dumbbell, Utensils, MoreHorizontal, Check, Clock, ChevronDown, Plus, X, Settings as SettingsIcon, LogOut, Trash2 } from 'lucide-react-native';
+import { Home, Dumbbell, Utensils, MoreHorizontal, Check, Clock, ChevronDown, Plus, X, Settings as SettingsIcon, LogOut, Trash2, Mail, BarChart2 } from 'lucide-react-native';
 
 // Firestoreのクエリ用関数を追加
 import { collection, getDocs, addDoc, serverTimestamp, query, orderBy, limit, deleteDoc, doc } from 'firebase/firestore';
 
 // ↓↓↓ ここに deleteUser を追加 ↓↓↓
-import { onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, deleteUser } from 'firebase/auth';
+import { onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, deleteUser, sendEmailVerification } from 'firebase/auth';
 import { db, auth } from './firebaseConfig';
+
+import { LineChart, BarChart } from 'react-native-chart-kit';
 
 // --- 定数・データ ---
 const DAYS = Array.from({ length: 28 }, (_, i) => i + 1);
 const WEEKDAYS = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
 const TRAINED_DAYS = [1, 5, 8, 12, 15, 20];
 
-// --- コンポーネント: ログイン・新規登録画面 (利用規約対応版) ---
+const VerificationScreen = ({ onCheckVerified }) => {
+    const [loading, setLoading] = useState(false);
+
+    const handleCheck = async () => {
+        setLoading(true);
+        try {
+            await auth.currentUser.reload(); // Firebase上の最新情報を取得
+            if (auth.currentUser.emailVerified) {
+                Alert.alert("確認成功", "本人確認が完了しました！");
+                onCheckVerified(); // Appコンポーネントに通知して画面を切り替える
+            } else {
+                Alert.alert("未完了", "まだ確認が取れていません。\nメール内のリンクをクリックしましたか？");
+            }
+        } catch (e) {
+            Alert.alert("エラー", "情報の更新に失敗しました。");
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleResend = async () => {
+        try {
+            await sendEmailVerification(auth.currentUser);
+            Alert.alert("送信成功", "確認メールを再送しました。");
+        } catch (e) {
+            if (e.code === 'auth/too-many-requests') {
+                Alert.alert("エラー", "送信回数が多すぎます。少し時間を空けてください。");
+            } else {
+                Alert.alert("エラー", "メールの送信に失敗しました。");
+            }
+        }
+    };
+
+    return (
+        <SafeAreaView style={styles.loginContainer}>
+            <View style={[styles.loginBox, { alignItems: 'center', paddingVertical: 40 }]}>
+                <Mail color="#2ecc71" size={60} style={{ marginBottom: 20 }} />
+                <Text style={{ color: '#fff', fontSize: 22, fontWeight: 'bold', marginBottom: 15 }}>メールを確認してください</Text>
+
+                <Text style={{ color: '#ccc', textAlign: 'center', marginBottom: 30, lineHeight: 24 }}>
+                    <Text style={{ color: '#2ecc71', fontWeight: 'bold' }}>{auth.currentUser?.email}</Text>{"\n"}
+                    宛に確認メールを送信しました。{"\n"}
+                    メール内のリンクをクリックしてから、{"\n"}下のボタンを押してください。
+                </Text>
+
+                <TouchableOpacity style={[styles.loginButton, { width: '100%' }]} onPress={handleCheck} disabled={loading}>
+                    {loading ? <ActivityIndicator color="#000" /> : <Text style={styles.loginButtonText}>確認完了ボタン</Text>}
+                </TouchableOpacity>
+
+                <TouchableOpacity style={{ marginTop: 25, padding: 10 }} onPress={handleResend}>
+                    <Text style={{ color: '#2ecc71', textDecorationLine: 'underline' }}>メールが届かない場合は再送</Text>
+                </TouchableOpacity>
+
+                {/* ログアウト（やり直し）ボタン */}
+                <TouchableOpacity style={{ marginTop: 20, padding: 10 }} onPress={() => signOut(auth)}>
+                    <Text style={{ color: '#ff4444' }}>別のアカウントでやり直す</Text>
+                </TouchableOpacity>
+            </View>
+        </SafeAreaView>
+    );
+};
+
+// --- コンポーネント: ログイン・新規登録画面 (メール認証対応版) ---
 function LoginScreen() {
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
-    const [isSignUp, setIsSignUp] = useState(false); // ログインか新規登録かの切り替え
+    const [isSignUp, setIsSignUp] = useState(false);
     const [loading, setLoading] = useState(false);
-    const [agreed, setAgreed] = useState(false); // 利用規約の同意状態
+    const [agreed, setAgreed] = useState(false);
+    const [termsOpened, setTermsOpened] = useState(false);
 
     const handleAuthAction = async () => {
-        // 新規登録かつ同意していない場合はブロック
         if (isSignUp && !agreed) {
-            Alert.alert('確認', '利用規約への同意が必要です。\n規約を確認し、チェックを入れてください。');
+            Alert.alert('確認', '利用規約への同意が必要です。');
             return;
         }
 
@@ -42,17 +106,23 @@ function LoginScreen() {
         try {
             if (isSignUp) {
                 // 新規登録
-                await createUserWithEmailAndPassword(auth, email, password);
-                Alert.alert('登録完了', 'アカウントが作成され、ログインしました。');
+                const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+                const user = userCredential.user;
+
+                // 認証メールを送信
+                await sendEmailVerification(user);
+                // ★ここで強制ログアウトはしない！そのままログイン状態にする
+
             } else {
                 // ログイン
                 await signInWithEmailAndPassword(auth, email, password);
+                // ★未認証かどうかで弾く処理は削除（Appコンポーネントが勝手にVerify画面へ飛ばしてくれるため）
             }
         } catch (error) {
             let errorMessage = 'エラーが発生しました。';
             if (error.code === 'auth/email-already-in-use') errorMessage = 'このメールアドレスは既に使われています。';
             if (error.code === 'auth/invalid-email') errorMessage = 'メールアドレスの形式が正しくありません。';
-            if (error.code === 'auth/user-not-found') errorMessage = 'ユーザーが見つかりません。新規登録してください。';
+            if (error.code === 'auth/user-not-found') errorMessage = 'ユーザーが見つかりません。';
             if (error.code === 'auth/wrong-password') errorMessage = 'パスワードが間違っています。';
             if (error.code === 'auth/weak-password') errorMessage = 'パスワードは6文字以上で設定してください。';
             Alert.alert('エラー', errorMessage);
@@ -61,9 +131,17 @@ function LoginScreen() {
         }
     };
 
-    // 利用規約を開く
     const openTerms = () => {
         Linking.openURL('https://takki1125.github.io/Notefit-AI-docs/');
+        setTermsOpened(true);
+    };
+
+    const handleCheckboxPress = () => {
+        if (!termsOpened) {
+            Alert.alert("確認", "チェックを入れる前に、利用規約のリンクをタップして内容を確認してください。");
+            return;
+        }
+        setAgreed(!agreed);
     };
 
     return (
@@ -89,12 +167,15 @@ function LoginScreen() {
                     secureTextEntry
                 />
 
-                {/* ★ 新規登録時のみ表示する利用規約チェックエリア ★ */}
                 {isSignUp && (
                     <View style={styles.termsContainer}>
                         <TouchableOpacity
-                            style={[styles.checkbox, agreed && styles.checkboxChecked]}
-                            onPress={() => setAgreed(!agreed)}
+                            style={[
+                                styles.checkbox,
+                                agreed && styles.checkboxChecked,
+                                !termsOpened && { opacity: 0.5, borderColor: '#444' }
+                            ]}
+                            onPress={handleCheckboxPress}
                         >
                             {agreed && <Check size={14} color="#000" />}
                         </TouchableOpacity>
@@ -609,176 +690,214 @@ const ExerciseSelectorModal = ({ visible, onClose, onSelect }) => {
 
 // --- コンポーネント: ルーティン管理モーダル (保存 & 読み込み) ---
 const RoutineModal = ({ visible, onClose, currentMenu, onLoadRoutine }) => {
-  const [routines, setRoutines] = useState([]);
-  const [loading, setLoading] = useState(false);
-  const [newRoutineName, setNewRoutineName] = useState("");
-  const [mode, setMode] = useState('list'); // 'list' (一覧) or 'save' (保存画面)
+    const [routines, setRoutines] = useState([]);
+    const [loading, setLoading] = useState(false);
+    const [newRoutineName, setNewRoutineName] = useState("");
+    const [mode, setMode] = useState('list'); // 'list' (一覧) or 'save' (保存画面)
 
-  // ルーティン一覧を取得
-  const fetchRoutines = async () => {
-    const user = auth.currentUser;
-    if (!user) return;
-    setLoading(true);
-    try {
-      const q = query(collection(db, "users", user.uid, "routines"), orderBy("createdAt", "desc"));
-      const snapshot = await getDocs(q);
-      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      setRoutines(data);
-    } catch (e) {
-      console.error(e);
-      Alert.alert("エラー", "ルーティンの取得に失敗しました");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // モーダルが開くたびに一覧を更新
-  useEffect(() => {
-    if (visible) {
-      fetchRoutines();
-      setMode('list');
-      setNewRoutineName("");
-    }
-  }, [visible]);
-
-  // ルーティンを保存
-  const handleSaveRoutine = async () => {
-    if (!newRoutineName.trim()) {
-      Alert.alert("エラー", "ルーティン名を入力してください");
-      return;
-    }
-    if (currentMenu.length === 0) {
-      Alert.alert("エラー", "種目が追加されていません");
-      return;
-    }
-
-    setLoading(true);
-    try {
-      const user = auth.currentUser;
-      // ルーティン用データを作成 (セットの中身は空にするか、重量を残すか選べるが、今回は重量も残す設定)
-      const routineData = {
-        name: newRoutineName,
-        exercises: currentMenu,
-        createdAt: serverTimestamp()
-      };
-      
-      await addDoc(collection(db, "users", user.uid, "routines"), routineData);
-      Alert.alert("保存完了", `「${newRoutineName}」を保存しました`);
-      setMode('list');
-      fetchRoutines(); // リスト更新
-    } catch (e) {
-      console.error(e);
-      Alert.alert("エラー", "保存に失敗しました");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // ルーティン削除
-  const handleDeleteRoutine = async (id) => {
-    Alert.alert("削除", "このルーティンを削除しますか？", [
-      { text: "キャンセル", style: "cancel" },
-      {
-        text: "削除", style: "destructive",
-        onPress: async () => {
-          try {
-            const user = auth.currentUser;
-            await deleteDoc(doc(db, "users", user.uid, "routines", id));
-            fetchRoutines();
-          } catch(e) {
-            Alert.alert("エラー", "削除できませんでした");
-          }
+    // ルーティン一覧を取得
+    const fetchRoutines = async () => {
+        const user = auth.currentUser;
+        if (!user) return;
+        setLoading(true);
+        try {
+            const q = query(collection(db, "users", user.uid, "routines"), orderBy("createdAt", "desc"));
+            const snapshot = await getDocs(q);
+            const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            setRoutines(data);
+        } catch (e) {
+            console.error(e);
+            Alert.alert("エラー", "ルーティンの取得に失敗しました");
+        } finally {
+            setLoading(false);
         }
-      }
-    ]);
-  };
+    };
 
-  return (
-    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet">
-      <SafeAreaView style={styles.modalContainer}>
-        <View style={styles.modalHeader}>
-          <Text style={styles.modalTitle}>
-            {mode === 'list' ? 'ルーティンを選択' : 'ルーティンを保存'}
-          </Text>
-          <TouchableOpacity onPress={onClose}><X color="#fff" size={24} /></TouchableOpacity>
-        </View>
+    // モーダルが開くたびに一覧を更新
+    useEffect(() => {
+        if (visible) {
+            fetchRoutines();
+            setMode('list');
+            setNewRoutineName("");
+        }
+    }, [visible]);
 
-        {mode === 'list' ? (
-          <View style={{flex:1, padding:16}}>
-            {/* 新規保存ボタン */}
-            <TouchableOpacity 
-              style={styles.createRoutineBtn} 
-              onPress={() => setMode('save')}
-            >
-              <Plus color="#000" size={20} />
-              <Text style={styles.createRoutineText}>現在のメニューを保存する</Text>
-            </TouchableOpacity>
+    // ルーティンを保存
+    const handleSaveRoutine = async () => {
+        if (!newRoutineName.trim()) {
+            Alert.alert("エラー", "ルーティン名を入力してください");
+            return;
+        }
+        if (currentMenu.length === 0) {
+            Alert.alert("エラー", "種目が追加されていません");
+            return;
+        }
 
-            <Text style={{color:'#666', marginTop:20, marginBottom:10}}>SAVED ROUTINES</Text>
-            
-            {loading ? <ActivityIndicator /> : (
-              <FlatList
-                data={routines}
-                keyExtractor={item => item.id}
-                ListEmptyComponent={<Text style={{color:'#444', textAlign:'center', marginTop:20}}>保存されたルーティンはありません</Text>}
-                renderItem={({item}) => (
-                  <TouchableOpacity 
-                    style={styles.routineItem} 
-                    onPress={() => { onLoadRoutine(item); onClose(); }}
-                  >
-                    <View>
-                      <Text style={styles.routineNameText}>{item.name}</Text>
-                      <Text style={styles.routineDescText}>{item.exercises.length} 種目</Text>
+        setLoading(true);
+        try {
+            const user = auth.currentUser;
+            // ルーティン用データを作成 (セットの中身は空にするか、重量を残すか選べるが、今回は重量も残す設定)
+            const routineData = {
+                name: newRoutineName,
+                exercises: currentMenu,
+                createdAt: serverTimestamp()
+            };
+
+            await addDoc(collection(db, "users", user.uid, "routines"), routineData);
+            Alert.alert("保存完了", `「${newRoutineName}」を保存しました`);
+            setMode('list');
+            fetchRoutines(); // リスト更新
+        } catch (e) {
+            console.error(e);
+            Alert.alert("エラー", "保存に失敗しました");
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    // ルーティン削除
+    const handleDeleteRoutine = async (id) => {
+        Alert.alert("削除", "このルーティンを削除しますか？", [
+            { text: "キャンセル", style: "cancel" },
+            {
+                text: "削除", style: "destructive",
+                onPress: async () => {
+                    try {
+                        const user = auth.currentUser;
+                        await deleteDoc(doc(db, "users", user.uid, "routines", id));
+                        fetchRoutines();
+                    } catch (e) {
+                        Alert.alert("エラー", "削除できませんでした");
+                    }
+                }
+            }
+        ]);
+    };
+
+    return (
+        <Modal visible={visible} animationType="slide" presentationStyle="pageSheet">
+            <SafeAreaView style={styles.modalContainer}>
+                <View style={styles.modalHeader}>
+                    <Text style={styles.modalTitle}>
+                        {mode === 'list' ? 'ルーティンを選択' : 'ルーティンを保存'}
+                    </Text>
+                    <TouchableOpacity onPress={onClose}><X color="#fff" size={24} /></TouchableOpacity>
+                </View>
+
+                {mode === 'list' ? (
+                    <View style={{ flex: 1, padding: 16 }}>
+                        {/* 新規保存ボタン */}
+                        <TouchableOpacity
+                            style={styles.createRoutineBtn}
+                            onPress={() => setMode('save')}
+                        >
+                            <Plus color="#000" size={20} />
+                            <Text style={styles.createRoutineText}>現在のメニューを保存する</Text>
+                        </TouchableOpacity>
+
+                        <Text style={{ color: '#666', marginTop: 20, marginBottom: 10 }}>SAVED ROUTINES</Text>
+
+                        {loading ? <ActivityIndicator /> : (
+                            <FlatList
+                                data={routines}
+                                keyExtractor={item => item.id}
+                                ListEmptyComponent={<Text style={{ color: '#444', textAlign: 'center', marginTop: 20 }}>保存されたルーティンはありません</Text>}
+                                renderItem={({ item }) => (
+                                    <TouchableOpacity
+                                        style={styles.routineItem}
+                                        onPress={() => { onLoadRoutine(item); onClose(); }}
+                                    >
+                                        <View>
+                                            <Text style={styles.routineNameText}>{item.name}</Text>
+                                            <Text style={styles.routineDescText}>{item.exercises.length} 種目</Text>
+                                        </View>
+                                        <TouchableOpacity onPress={() => handleDeleteRoutine(item.id)} style={{ padding: 10 }}>
+                                            <Trash2 color="#444" size={20} />
+                                        </TouchableOpacity>
+                                    </TouchableOpacity>
+                                )}
+                            />
+                        )}
                     </View>
-                    <TouchableOpacity onPress={() => handleDeleteRoutine(item.id)} style={{padding:10}}>
-                      <Trash2 color="#444" size={20} />
-                    </TouchableOpacity>
-                  </TouchableOpacity>
+                ) : (
+                    <View style={{ flex: 1, padding: 20 }}>
+                        <Text style={{ color: '#ccc', marginBottom: 10 }}>現在のメニュー内容をルーティンとして保存します。</Text>
+                        <Text style={{ color: '#fff', fontWeight: 'bold', marginBottom: 20 }}>
+                            {currentMenu.map(e => e.name).join(', ')}
+                        </Text>
+
+                        <TextInput
+                            style={styles.inputField}
+                            placeholder="ルーティン名 (例: 胸の日 A)"
+                            placeholderTextColor="#666"
+                            value={newRoutineName}
+                            onChangeText={setNewRoutineName}
+                            autoFocus
+                        />
+
+                        <View style={{ flexDirection: 'row', gap: 10, marginTop: 20 }}>
+                            <TouchableOpacity style={[styles.loginButton, { backgroundColor: '#444', flex: 1 }]} onPress={() => setMode('list')}>
+                                <Text style={{ color: '#fff' }}>キャンセル</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity style={[styles.loginButton, { flex: 1 }]} onPress={handleSaveRoutine}>
+                                <Text style={{ fontWeight: 'bold' }}>保存</Text>
+                            </TouchableOpacity>
+                        </View>
+                    </View>
                 )}
-              />
-            )}
-          </View>
-        ) : (
-          <View style={{flex:1, padding:20}}>
-            <Text style={{color:'#ccc', marginBottom:10}}>現在のメニュー内容をルーティンとして保存します。</Text>
-            <Text style={{color:'#fff', fontWeight:'bold', marginBottom:20}}>
-              {currentMenu.map(e => e.name).join(', ')}
-            </Text>
-            
-            <TextInput
-              style={styles.inputField}
-              placeholder="ルーティン名 (例: 胸の日 A)"
-              placeholderTextColor="#666"
-              value={newRoutineName}
-              onChangeText={setNewRoutineName}
-              autoFocus
-            />
-            
-            <View style={{flexDirection:'row', gap:10, marginTop:20}}>
-              <TouchableOpacity style={[styles.loginButton, {backgroundColor:'#444', flex:1}]} onPress={() => setMode('list')}>
-                <Text style={{color:'#fff'}}>キャンセル</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={[styles.loginButton, {flex:1}]} onPress={handleSaveRoutine}>
-                <Text style={{fontWeight:'bold'}}>保存</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        )}
-      </SafeAreaView>
-    </Modal>
-  );
+            </SafeAreaView>
+        </Modal>
+    );
 };
 
-// --- コンポーネント: トレーニング画面 (ルーティン機能完備) ---
+// --- コンポーネント: トレーニング画面 (タイマー & 集中モード搭載版) ---
 function TrainingScreen({ navigation }) {
   const [modalVisible, setModalVisible] = useState(false);
-  const [routineModalVisible, setRoutineModalVisible] = useState(false); // ★追加
+  const [routineModalVisible, setRoutineModalVisible] = useState(false);
   const [loading, setLoading] = useState(false);
   
   const [menu, setMenu] = useState([]);
-  const [currentRoutineName, setCurrentRoutineName] = useState("自由メニュー"); // ★追加
+  const [currentRoutineName, setCurrentRoutineName] = useState("自由メニュー");
 
-  // 種目追加
+  // ★追加: タイマー用の状態
+  const [timerSeconds, setTimerSeconds] = useState(0);
+  const [isTimerActive, setIsTimerActive] = useState(false);
+
+  // ★追加: メニューの増減を監視してタイマーと集中モードを制御
+  useEffect(() => {
+    if (menu.length > 0) {
+      setIsTimerActive(true); // 種目があればタイマー開始
+      // 下のタブメニューを隠す
+      navigation.setOptions({ tabBarStyle: { display: 'none' } });
+    } else {
+      setIsTimerActive(false); // 種目がゼロならタイマー停止
+      setTimerSeconds(0);      // リセット
+      // 下のタブメニューを再表示
+      navigation.setOptions({ tabBarStyle: { backgroundColor: '#1a1a1a', borderTopColor: '#333' } });
+    }
+  }, [menu.length, navigation]);
+
+  // ★追加: タイマーを1秒ずつ進める処理
+  useEffect(() => {
+    let interval = null;
+    if (isTimerActive) {
+      interval = setInterval(() => {
+        setTimerSeconds((sec) => sec + 1);
+      }, 1000);
+    } else {
+      clearInterval(interval);
+    }
+    return () => clearInterval(interval);
+  }, [isTimerActive]);
+
+  // ★追加: 秒数を MM:SS に変換する関数
+  const formatTime = (totalSeconds) => {
+    const h = Math.floor(totalSeconds / 3600);
+    const m = Math.floor((totalSeconds % 3600) / 60).toString().padStart(2, '0');
+    const s = (totalSeconds % 60).toString().padStart(2, '0');
+    return h > 0 ? `${h}:${m}:${s}` : `${m}:${s}`;
+  };
+
   const handleAddExercise = (exerciseName) => {
     const newExercise = {
       id: Date.now(),
@@ -789,7 +908,6 @@ function TrainingScreen({ navigation }) {
     setMenu([...menu, newExercise]);
   };
 
-  // ルーティン読み込み処理 (★New)
   const handleLoadRoutine = (routine) => {
     Alert.alert(
       "ルーティン読み込み",
@@ -799,21 +917,19 @@ function TrainingScreen({ navigation }) {
         { 
           text: "読み込む", 
           onPress: () => {
-            // IDを新しく振り直してセット (これ重要！IDが重複するとバグる)
             const loadedExercises = routine.exercises.map(ex => ({
               ...ex,
-              id: Date.now() + Math.random(), // ユニークなIDを再生成
-              sets: ex.sets.map(s => ({ ...s, done: false })) // 完了状態はリセット
+              id: Date.now() + Math.random(),
+              sets: ex.sets.map(s => ({ ...s, done: false }))
             }));
             setMenu(loadedExercises);
             setCurrentRoutineName(routine.name);
+            setTimerSeconds(0); // ルーティンを読み込んだらタイマーをリセットして再スタート
           }
         }
       ]
     );
   };
-
-  // ... (削除やセット増減などの関数は前と同じなので省略せず書くけど、コピペ用に全部書くね) ...
 
   const handleRemoveExercise = (exerciseId) => {
     Alert.alert("削除", "この種目を削除しますか？", [
@@ -861,10 +977,17 @@ function TrainingScreen({ navigation }) {
             const user = auth.currentUser;
             await addDoc(collection(db, "users", user.uid, "workouts"), {
               date: serverTimestamp(),
-              routineName: currentRoutineName, // ルーティン名も保存
+              routineName: currentRoutineName,
               exercises: menu,
+              durationSeconds: timerSeconds // ★追加: かかった時間も保存！
             });
-            Alert.alert("Good Job!", "保存しました", [{ text: "OK", onPress: () => { setMenu([]); navigation.navigate("HomeTab"); }}]);
+            Alert.alert("Good Job!", "保存しました", [{ 
+              text: "OK", 
+              onPress: () => { 
+                setMenu([]); // ここで空になるのでタイマーもリセット＆タブも復活する
+                navigation.navigate("HomeTab"); 
+              }
+            }]);
           } catch (e) { Alert.alert("エラー", "保存失敗"); } finally { setLoading(false); }
         }
       }
@@ -876,18 +999,16 @@ function TrainingScreen({ navigation }) {
       <View style={styles.headerRow}>
         <View>
             <Text style={styles.headerLabel}>Today's Workout</Text>
-            {/* ★ここをタップ可能に変更 */}
-            <TouchableOpacity 
-              style={styles.routineSelector} 
-              onPress={() => setRoutineModalVisible(true)}
-            >
+            <TouchableOpacity style={styles.routineSelector} onPress={() => setRoutineModalVisible(true)}>
               <Text style={styles.routineText}>{currentRoutineName}</Text>
               <ChevronDown color="#2ecc71" size={20} />
             </TouchableOpacity>
         </View>
+        
+        {/* ★変更: 動くようになったタイマー表示 */}
         <TouchableOpacity style={styles.timerButton}>
-          <Clock color="#000" size={20} />
-          <Text style={styles.timerText}>02:00</Text>
+          <Clock color={isTimerActive ? "#2ecc71" : "#000"} size={20} />
+          <Text style={styles.timerText}>{formatTime(timerSeconds)}</Text>
         </TouchableOpacity>
       </View>
 
@@ -896,7 +1017,7 @@ function TrainingScreen({ navigation }) {
           {menu.length === 0 && (
             <View style={{alignItems:'center', marginTop:50, opacity:0.5}}>
               <Dumbbell color="#666" size={50} />
-              <Text style={{color:'#666', marginTop:10}}>種目を追加するか、上のメニューから{"\n"}ルーティンを読み込んでください</Text>
+              <Text style={{color:'#666', marginTop:10, textAlign:'center'}}>種目を追加するか、上のメニューから{"\n"}ルーティンを読み込んでください</Text>
             </View>
           )}
 
@@ -955,15 +1076,86 @@ function TrainingScreen({ navigation }) {
       </KeyboardAvoidingView>
 
       <ExerciseSelectorModal visible={modalVisible} onClose={() => setModalVisible(false)} onSelect={handleAddExercise} />
-      
-      {/* ★ルーティンモーダルを追加 */}
-      <RoutineModal 
-        visible={routineModalVisible} 
-        onClose={() => setRoutineModalVisible(false)} 
-        currentMenu={menu}
-        onLoadRoutine={handleLoadRoutine}
-      />
+      <RoutineModal visible={routineModalVisible} onClose={() => setRoutineModalVisible(false)} currentMenu={menu} onLoadRoutine={handleLoadRoutine} />
     </SafeAreaView>
+  );
+}
+
+// コンポーネント: 統計(Stats)画面
+function StatsScreen() {
+  const screenWidth = Dimensions.get("window").width;
+
+  // グラフのデザイン設定
+  const chartConfig = {
+    backgroundGradientFrom: "#1a1a1a",
+    backgroundGradientTo: "#1a1a1a",
+    color: (opacity = 1) => `rgba(46, 204, 113, ${opacity})`,
+    strokeWidth: 2,
+    barPercentage: 0.5,
+    useShadowColorFromDataset: false,
+    decimalPlaces: 0,
+  };
+
+  return (
+    <SafeAreaView style={styles.container}>
+      <View style={styles.headerRow}>
+        <Text style={styles.headerLabel}>Statistics</Text>
+      </View>
+      <ScrollView contentContainerStyle={{ padding: 20 }}>
+        
+        <Text style={{ color: '#fff', fontSize: 18, fontWeight: 'bold', marginBottom: 10 }}>直近のワークアウト回数</Text>
+        <LineChart
+          data={{
+            labels: ["1週前", "2週前", "3週前", "今週"],
+            datasets: [{ data: [3, 2, 4, 5] }]
+          }}
+          width={screenWidth - 40}
+          height={220}
+          chartConfig={chartConfig}
+          bezier
+          style={{ borderRadius: 16, marginBottom: 30 }}
+        />
+
+        <Text style={{ color: '#fff', fontSize: 18, fontWeight: 'bold', marginBottom: 10 }}>部位別セット数 (今月)</Text>
+        <BarChart
+          data={{
+            labels: ["胸", "背中", "脚", "肩", "腕"],
+            datasets: [{ data: [20, 15, 12, 10, 8] }]
+          }}
+          width={screenWidth - 40}
+          height={220}
+          chartConfig={chartConfig}
+          style={{ borderRadius: 16 }}
+        />
+
+      </ScrollView>
+    </SafeAreaView>
+  );
+}
+
+// メインタブナビゲーション
+const Tab = createBottomTabNavigator();
+function MainTabNavigator() {
+  return (
+    <Tab.Navigator
+      screenOptions={({ route }) => ({
+        headerShown: false,
+        tabBarStyle: { backgroundColor: '#1a1a1a', borderTopColor: '#333' },
+        tabBarActiveTintColor: '#2ecc71',
+        tabBarInactiveTintColor: '#666',
+        tabBarIcon: ({ color, size }) => {
+          if (route.name === 'HomeTab') return <Home color={color} size={size} />;
+          if (route.name === 'TrainingTab') return <Dumbbell color={color} size={size} />;
+          if (route.name === 'FoodTab') return <Utensils color={color} size={size} />;
+          if (route.name === 'StatsTab') return <BarChart2 color={color} size={size} />; 
+        },
+      })}
+    >
+      <Tab.Screen name="HomeTab" component={HomeScreen} options={{ tabBarLabel: 'Home' }} />
+      <Tab.Screen name="TrainingTab" component={TrainingScreen} options={{ tabBarLabel: 'Workout' }} />
+      <Tab.Screen name="FoodTab" component={DummyScreen} options={{ tabBarLabel: 'Food' }} />
+      <Tab.Screen name="StatsTab" component={StatsScreen} options={{ tabBarLabel: 'Stats' }} /> 
+    </Tab.Navigator>
   );
 }
 
@@ -1006,35 +1198,53 @@ function HomeStackNavigator() {
 
 // メインコンポーネント (ログイン状態監視と画面切り替え)
 export default function App() {
-    const [user, setUser] = useState(null);
-    const [initializing, setInitializing] = useState(true);
+  const [user, setUser] = useState(null);
+  const [initializing, setInitializing] = useState(true);
 
-    // ログイン状態の変化を監視
-    useEffect(() => {
-        const unsubscribe = onAuthStateChanged(auth, (user) => {
-            setUser(user);
-            if (initializing) setInitializing(false);
-        });
-        return unsubscribe; // クリーンアップ
-    }, []);
+  // ユーザー状態監視
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+      setUser(currentUser);
+      if (initializing) setInitializing(false);
+    });
+    return unsubscribe;
+  }, []);
 
-    if (initializing) {
-        return <View style={styles.centered}><ActivityIndicator size="large" color="#2ecc71" /></View>;
+  // VerificationScreenから呼ばれる再読込関数
+  const forceRefreshUser = async () => {
+    if (auth.currentUser) {
+      await auth.currentUser.reload();
+      // 再レンダリングさせるために新しいオブジェクトとしてセットする
+      setUser({ ...auth.currentUser }); 
     }
+  };
 
+  if (initializing) {
     return (
-        <NavigationContainer>
-            <Stack.Navigator screenOptions={{ headerShown: false }}>
-                {user ? (
-                    // ログインしている場合
-                    <Stack.Screen name="Main" component={MainTabNavigator} />
-                ) : (
-                    // ログインしていない場合
-                    <Stack.Screen name="Login" component={LoginScreen} />
-                )}
-            </Stack.Navigator>
-        </NavigationContainer>
+      <View style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
+        <ActivityIndicator size="large" color="#2ecc71" />
+      </View>
     );
+  }
+
+  return (
+    <NavigationContainer>
+      <Stack.Navigator screenOptions={{ headerShown: false }}>
+        {!user ? (
+          // 1. 未ログイン → ログイン画面
+          <Stack.Screen name="Login" component={LoginScreen} />
+        ) : !user.emailVerified ? (
+          // 2. ログイン中だがメール未確認 → 確認画面
+          <Stack.Screen name="Verify">
+            {() => <VerificationScreen onCheckVerified={forceRefreshUser} />}
+          </Stack.Screen>
+        ) : (
+          // 3. 確認済み → メインアプリ画面
+          <Stack.Screen name="Main" component={MainTabNavigator} />
+        )}
+      </Stack.Navigator>
+    </NavigationContainer>
+  );
 }
 
 // --- スタイル定義 ---
@@ -1221,36 +1431,36 @@ const styles = StyleSheet.create({
         marginLeft: 5,
     },
 
-  createRoutineBtn: {
-    backgroundColor: '#fff',
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 15,
-    borderRadius: 10,
-    marginBottom: 20,
-  },
-  createRoutineText: {
-    color: '#000',
-    fontWeight: 'bold',
-    marginLeft: 10,
-  },
-  routineItem: {
-    backgroundColor: '#2a2a2a',
-    padding: 16,
-    borderRadius: 10,
-    marginBottom: 10,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  routineNameText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: 'bold',
-  },
-  routineDescText: {
-    color: '#888',
-    fontSize: 12,
-  },
+    createRoutineBtn: {
+        backgroundColor: '#fff',
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: 15,
+        borderRadius: 10,
+        marginBottom: 20,
+    },
+    createRoutineText: {
+        color: '#000',
+        fontWeight: 'bold',
+        marginLeft: 10,
+    },
+    routineItem: {
+        backgroundColor: '#2a2a2a',
+        padding: 16,
+        borderRadius: 10,
+        marginBottom: 10,
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+    },
+    routineNameText: {
+        color: '#fff',
+        fontSize: 16,
+        fontWeight: 'bold',
+    },
+    routineDescText: {
+        color: '#888',
+        fontSize: 12,
+    },
 });
