@@ -15,7 +15,7 @@ import { Home, Dumbbell, Utensils, MoreHorizontal, Check, Clock, ChevronDown, Pl
 import { collection, getDocs, addDoc, serverTimestamp, query, orderBy, limit, deleteDoc, doc } from 'firebase/firestore';
 
 // ↓↓↓ ここに deleteUser を追加 ↓↓↓
-import { onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, deleteUser, sendEmailVerification } from 'firebase/auth';
+import { onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, deleteUser, sendEmailVerification, updateProfile } from 'firebase/auth';
 import { db, auth } from './firebaseConfig';
 
 import { LineChart, BarChart } from 'react-native-chart-kit';
@@ -32,7 +32,7 @@ const VerificationScreen = ({ onCheckVerified }) => {
     const handleCheck = async () => {
         setLoading(true);
         try {
-            await auth.currentUser.reload(); // Firebase上の最新情報を取得
+            await UUser.reload(); // Firebase上の最新情報を取得
             if (auth.currentUser.emailVerified) {
                 Alert.alert("確認成功", "本人確認が完了しました！");
                 onCheckVerified(); // Appコンポーネントに通知して画面を切り替える
@@ -88,36 +88,51 @@ const VerificationScreen = ({ onCheckVerified }) => {
     );
 };
 
-// --- コンポーネント: ログイン・新規登録画面 (メール認証対応版) ---
+// --- コンポーネント: ログイン・新規登録画面 (ユーザーネーム対応版) ---
 function LoginScreen() {
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
+    const [username, setUsername] = useState(''); // ★追加: ユーザーネーム用の状態
     const [isSignUp, setIsSignUp] = useState(false);
     const [loading, setLoading] = useState(false);
     const [agreed, setAgreed] = useState(false);
     const [termsOpened, setTermsOpened] = useState(false);
 
     const handleAuthAction = async () => {
-        if (isSignUp && !agreed) {
-            Alert.alert('確認', '利用規約への同意が必要です。');
-            return;
+        if (isSignUp) {
+            if (!username.trim()) {
+                Alert.alert('確認', 'ユーザーネームを入力してください。');
+                return;
+            }
+            if (!agreed) {
+                Alert.alert('確認', '利用規約への同意が必要です。');
+                return;
+            }
         }
 
         setLoading(true);
         try {
             if (isSignUp) {
-                // 新規登録
+                // 1. アカウント作成
                 const userCredential = await createUserWithEmailAndPassword(auth, email, password);
                 const user = userCredential.user;
 
-                // 認証メールを送信
+                // 2. ★追加: Firebase Auth にユーザーネーム（displayName）を登録
+                await updateProfile(user, { displayName: username });
+
+                // 3. ★追加: Firestore の users フォルダに名札（ユーザーネームとメアド）を保存
+                await setDoc(doc(db, 'users', user.uid), {
+                    username: username,
+                    email: user.email,
+                    createdAt: serverTimestamp(),
+                });
+
+                // 4. 認証メールを送信
                 await sendEmailVerification(user);
-                // ★ここで強制ログアウトはしない！そのままログイン状態にする
 
             } else {
                 // ログイン
                 await signInWithEmailAndPassword(auth, email, password);
-                // ★未認証かどうかで弾く処理は削除（Appコンポーネントが勝手にVerify画面へ飛ばしてくれるため）
             }
         } catch (error) {
             let errorMessage = 'エラーが発生しました。';
@@ -150,6 +165,18 @@ function LoginScreen() {
             <View style={styles.loginBox}>
                 <Text style={styles.loginTitle}>{isSignUp ? 'アカウント作成' : 'ログイン'}</Text>
 
+                {/* ★追加: 新規登録の時だけユーザーネームの入力欄を表示 */}
+                {isSignUp && (
+                    <TextInput
+                        style={styles.inputField}
+                        placeholder="ユーザーネーム"
+                        placeholderTextColor="#888"
+                        value={username}
+                        onChangeText={setUsername}
+                        autoCapitalize="none"
+                    />
+                )}
+
                 <TextInput
                     style={styles.inputField}
                     placeholder="メールアドレス"
@@ -171,19 +198,14 @@ function LoginScreen() {
                 {isSignUp && (
                     <View style={styles.termsContainer}>
                         <TouchableOpacity
-                            style={[
-                                styles.checkbox,
-                                agreed && styles.checkboxChecked,
-                                !termsOpened && { opacity: 0.5, borderColor: '#444' }
-                            ]}
+                            style={[styles.checkbox, agreed && styles.checkboxChecked, !termsOpened && { opacity: 0.5, borderColor: '#444' }]}
                             onPress={handleCheckboxPress}
                         >
                             {agreed && <Check size={14} color="#000" />}
                         </TouchableOpacity>
                         <View style={{ flex: 1 }}>
                             <Text style={styles.termsText}>
-                                <Text style={styles.linkText} onPress={openTerms}>利用規約</Text>
-                                に同意する
+                                <Text style={styles.linkText} onPress={openTerms}>利用規約</Text>に同意する
                             </Text>
                         </View>
                     </View>
@@ -494,7 +516,7 @@ function HomeScreen({ navigation }) {
             <View style={styles.homeHeader}>
                 <View>
                     <Text style={styles.headerLabel}>Welcome back,</Text>
-                    <Text style={styles.routineText}>{auth.currentUser?.email?.split('@')[0] || 'User'}</Text>
+                    <Text style={styles.headerLabel}>{auth.currentUser?.displayName || 'ユーザー'}さん</Text>
                 </View>
                 <TouchableOpacity onPress={() => navigation.navigate('Settings')} style={styles.iconButton}>
                     <SettingsIcon color="#fff" size={24} />
@@ -1085,118 +1107,223 @@ function TrainingScreen({ navigation }) {
     );
 }
 
+// コンポーネント: 食事管理(Food)画面
+function FoodScreen() {
+    // 朝・昼・夜・間食それぞれのカロリーとタンパク質を管理
+    const [meals, setMeals] = useState({
+        breakfast: { cal: '', pro: '' },
+        lunch: { cal: '', pro: '' },
+        dinner: { cal: '', pro: '' },
+        snack: { cal: '', pro: '' },
+    });
+
+    // 入力された時に状態を更新する関数
+    const handleInputChange = (mealType, field, value) => {
+        setMeals(prev => ({
+            ...prev,
+            [mealType]: {
+                ...prev[mealType],
+                [field]: value
+            }
+        }));
+    };
+
+    // リアルタイムで合計を計算する関数
+    const calculateTotal = (field) => {
+        return Object.values(meals).reduce((total, meal) => {
+            const val = parseInt(meal[field]) || 0;
+            return total + val;
+        }, 0);
+    };
+
+    const totalCal = calculateTotal('cal');
+    const totalPro = calculateTotal('pro');
+
+    // 保存ボタンを押した時の処理（今回はテスト用のアラートのみ）
+    const handleSave = () => {
+        Alert.alert("確認", `カロリー: ${totalCal}kcal\nタンパク質: ${totalPro}g\n\n※Firebaseへの保存機能は次に作ります！`);
+    };
+
+    const mealTypes = [
+        { id: 'breakfast', label: '朝食', icon: '🌅' },
+        { id: 'lunch', label: '昼食', icon: '☀️' },
+        { id: 'dinner', label: '夕食', icon: '🌙' },
+        { id: 'snack', label: '間食', icon: '☕️' },
+    ];
+
+    return (
+        <SafeAreaView style={styles.container}>
+            <View style={styles.headerRow}>
+                <Text style={styles.headerLabel}>Today's Food</Text>
+            </View>
+
+            <ScrollView contentContainerStyle={{ padding: 20 }}>
+                {/* 合計サマリーカード */}
+                <View style={{ backgroundColor: '#1a1a1a', padding: 20, borderRadius: 16, marginBottom: 20, flexDirection: 'row', justifyContent: 'space-around' }}>
+                    <View style={{ alignItems: 'center' }}>
+                        <Text style={{ color: '#666', fontSize: 14, marginBottom: 5 }}>合計カロリー</Text>
+                        <Text style={{ color: '#2ecc71', fontSize: 24, fontWeight: 'bold' }}>{totalCal} <Text style={{ fontSize: 14 }}>kcal</Text></Text>
+                    </View>
+                    <View style={{ width: 1, backgroundColor: '#333' }} />
+                    <View style={{ alignItems: 'center' }}>
+                        <Text style={{ color: '#666', fontSize: 14, marginBottom: 5 }}>タンパク質</Text>
+                        <Text style={{ color: '#4facfe', fontSize: 24, fontWeight: 'bold' }}>{totalPro} <Text style={{ fontSize: 14 }}>g</Text></Text>
+                    </View>
+                </View>
+
+                {/* 食事入力リスト */}
+                {mealTypes.map((meal) => (
+                    <View key={meal.id} style={{ backgroundColor: '#1a1a1a', padding: 15, borderRadius: 12, marginBottom: 15 }}>
+                        <Text style={{ color: '#fff', fontSize: 16, fontWeight: 'bold', marginBottom: 10 }}>{meal.icon} {meal.label}</Text>
+                        <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                            <View style={{ flex: 1, marginRight: 10 }}>
+                                <Text style={{ color: '#888', fontSize: 12, marginBottom: 5 }}>カロリー (kcal)</Text>
+                                <TextInput
+                                    style={[styles.inputField, { marginBottom: 0 }]} // 余白調整
+                                    keyboardType="numeric"
+                                    placeholder="0"
+                                    placeholderTextColor="#444"
+                                    value={meals[meal.id].cal}
+                                    onChangeText={(val) => handleInputChange(meal.id, 'cal', val)}
+                                    returnKeyType="done"
+                                />
+                            </View>
+                            <View style={{ flex: 1, marginLeft: 10 }}>
+                                <Text style={{ color: '#888', fontSize: 12, marginBottom: 5 }}>タンパク質 (g)</Text>
+                                <TextInput
+                                    style={[styles.inputField, { marginBottom: 0 }]}
+                                    keyboardType="numeric"
+                                    placeholder="0"
+                                    placeholderTextColor="#444"
+                                    value={meals[meal.id].pro}
+                                    onChangeText={(val) => handleInputChange(meal.id, 'pro', val)}
+                                    returnKeyType="done"
+                                />
+                            </View>
+                        </View>
+                    </View>
+                ))}
+
+                <TouchableOpacity style={[styles.loginButton, { marginTop: 10, marginBottom: 40 }]} onPress={handleSave}>
+                    <Text style={styles.loginButtonText}>食事を記録する</Text>
+                </TouchableOpacity>
+            </ScrollView>
+        </SafeAreaView>
+    );
+}
+
 // コンポーネント: 統計(Stats)画面 (ローカルキャッシュ連動版)
 function StatsScreen() {
-  const screenWidth = Dimensions.get("window").width;
-  
-  // グラフ用のデータ状態
-  const [weeklyData, setWeeklyData] = useState([0, 0, 0, 0]); // [3週前, 2週前, 1週前, 今週]
-  const [bodyPartData, setBodyPartData] = useState([0, 0, 0, 0, 0]); // [胸, 背中, 脚, 肩, 腕]
+    const screenWidth = Dimensions.get("window").width;
 
-  // 画面を開くたびにローカルデータ（本体保存）から読み込んで計算
-  useFocusEffect(
-    useCallback(() => {
-      const loadCachedData = async () => {
-        try {
-          const cachedStr = await AsyncStorage.getItem('@workout_history');
-          if (!cachedStr) return; // データがなければ何もしない
-          
-          const history = JSON.parse(cachedStr);
-          const now = new Date();
-          const currentMonth = now.getMonth();
+    // グラフ用のデータ状態
+    const [weeklyData, setWeeklyData] = useState([0, 0, 0, 0]); // [3週前, 2週前, 1週前, 今週]
+    const [bodyPartData, setBodyPartData] = useState([0, 0, 0, 0, 0]); // [胸, 背中, 脚, 肩, 腕]
 
-          // 集計用の変数
-          let weeks = [0, 0, 0, 0]; // [今週, 1週前, 2週前, 3週前]
-          let chest = 0, back = 0, legs = 0, shoulders = 0, arms = 0;
+    // 画面を開くたびにローカルデータ（本体保存）から読み込んで計算
+    useFocusEffect(
+        useCallback(() => {
+            const loadCachedData = async () => {
+                try {
+                    const cachedStr = await AsyncStorage.getItem('@workout_history');
+                    if (!cachedStr) return; // データがなければ何もしない
 
-          history.forEach(workout => {
-            // 文字列から日付オブジェクトに戻す
-            const wDate = new Date(workout.dateObj);
-            
-            // --- 1. 直近4週間のワークアウト回数を計算 ---
-            const diffTime = Math.abs(now - wDate);
-            const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-            if (diffDays <= 7) weeks[0]++;
-            else if (diffDays <= 14) weeks[1]++;
-            else if (diffDays <= 21) weeks[2]++;
-            else if (diffDays <= 28) weeks[3]++;
+                    const history = JSON.parse(cachedStr);
+                    const now = new Date();
+                    const currentMonth = now.getMonth();
 
-            // --- 2. 部位別のセット数を計算 (今月のみ) ---
-            if (wDate.getMonth() === currentMonth) {
-              workout.exercises.forEach(ex => {
-                const name = ex.name || "";
-                // 完了(done)したセットの数だけを数える
-                const doneSetsCount = ex.sets.filter(s => s.done).length; 
+                    // 集計用の変数
+                    let weeks = [0, 0, 0, 0]; // [今週, 1週前, 2週前, 3週前]
+                    let chest = 0, back = 0, legs = 0, shoulders = 0, arms = 0;
 
-                // 種目名に特定のキーワードが含まれていたら部位を加算する簡易判定
-                if (name.includes('ベンチ') || name.includes('フライ') || name.includes('チェスト')) chest += doneSetsCount;
-                else if (name.includes('ラット') || name.includes('ロウ') || name.includes('懸垂') || name.includes('デッド')) back += doneSetsCount;
-                else if (name.includes('スクワット') || name.includes('レッグ')) legs += doneSetsCount;
-                else if (name.includes('ショルダー') || name.includes('レイズ') || name.includes('ミリタリー')) shoulders += doneSetsCount;
-                else if (name.includes('アーム') || name.includes('カール') || name.includes('トライセップ')) arms += doneSetsCount;
-              });
-            }
-          });
+                    history.forEach(workout => {
+                        // 文字列から日付オブジェクトに戻す
+                        const wDate = new Date(workout.dateObj);
 
-          // グラフの左から「古い順」にするために反転させる
-          setWeeklyData(weeks.reverse());
-          setBodyPartData([chest, back, legs, shoulders, arms]);
+                        // --- 1. 直近4週間のワークアウト回数を計算 ---
+                        const diffTime = Math.abs(now - wDate);
+                        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                        if (diffDays <= 7) weeks[0]++;
+                        else if (diffDays <= 14) weeks[1]++;
+                        else if (diffDays <= 21) weeks[2]++;
+                        else if (diffDays <= 28) weeks[3]++;
 
-        } catch (error) {
-          console.error("キャッシュ読み込みエラー:", error);
-        }
-      };
-      
-      loadCachedData();
-    }, [])
-  );
+                        // --- 2. 部位別のセット数を計算 (今月のみ) ---
+                        if (wDate.getMonth() === currentMonth) {
+                            workout.exercises.forEach(ex => {
+                                const name = ex.name || "";
+                                // 完了(done)したセットの数だけを数える
+                                const doneSetsCount = ex.sets.filter(s => s.done).length;
 
-  // グラフのデザイン設定
-  const chartConfig = {
-    backgroundGradientFrom: "#1a1a1a",
-    backgroundGradientTo: "#1a1a1a",
-    color: (opacity = 1) => `rgba(46, 204, 113, ${opacity})`,
-    strokeWidth: 2,
-    barPercentage: 0.5,
-    useShadowColorFromDataset: false,
-    decimalPlaces: 0,
-  };
+                                // 種目名に特定のキーワードが含まれていたら部位を加算する簡易判定
+                                if (name.includes('ベンチ') || name.includes('フライ') || name.includes('チェスト')) chest += doneSetsCount;
+                                else if (name.includes('ラット') || name.includes('ロウ') || name.includes('懸垂') || name.includes('デッド')) back += doneSetsCount;
+                                else if (name.includes('スクワット') || name.includes('レッグ')) legs += doneSetsCount;
+                                else if (name.includes('ショルダー') || name.includes('レイズ') || name.includes('ミリタリー')) shoulders += doneSetsCount;
+                                else if (name.includes('アーム') || name.includes('カール') || name.includes('トライセップ')) arms += doneSetsCount;
+                            });
+                        }
+                    });
 
-  return (
-    <SafeAreaView style={styles.container}>
-      <View style={styles.headerRow}>
-        <Text style={styles.headerLabel}>Statistics</Text>
-      </View>
-      <ScrollView contentContainerStyle={{ padding: 20 }}>
-        
-        <Text style={{ color: '#fff', fontSize: 18, fontWeight: 'bold', marginBottom: 10 }}>直近4週間のワークアウト回数</Text>
-        <LineChart
-          data={{
-            labels: ["3週前", "2週前", "1週前", "今週"],
-            datasets: [{ data: weeklyData }]
-          }}
-          width={screenWidth - 40}
-          height={220}
-          chartConfig={chartConfig}
-          bezier
-          style={{ borderRadius: 16, marginBottom: 30 }}
-        />
+                    // グラフの左から「古い順」にするために反転させる
+                    setWeeklyData(weeks.reverse());
+                    setBodyPartData([chest, back, legs, shoulders, arms]);
 
-        <Text style={{ color: '#fff', fontSize: 18, fontWeight: 'bold', marginBottom: 10 }}>部位別セット数 (今月)</Text>
-        <BarChart
-          data={{
-            labels: ["胸", "背中", "脚", "肩", "腕"],
-            datasets: [{ data: bodyPartData }]
-          }}
-          width={screenWidth - 40}
-          height={220}
-          chartConfig={chartConfig}
-          style={{ borderRadius: 16 }}
-        />
+                } catch (error) {
+                    console.error("キャッシュ読み込みエラー:", error);
+                }
+            };
 
-      </ScrollView>
-    </SafeAreaView>
-  );
+            loadCachedData();
+        }, [])
+    );
+
+    // グラフのデザイン設定
+    const chartConfig = {
+        backgroundGradientFrom: "#1a1a1a",
+        backgroundGradientTo: "#1a1a1a",
+        color: (opacity = 1) => `rgba(46, 204, 113, ${opacity})`,
+        strokeWidth: 2,
+        barPercentage: 0.5,
+        useShadowColorFromDataset: false,
+        decimalPlaces: 0,
+    };
+
+    return (
+        <SafeAreaView style={styles.container}>
+            <View style={styles.headerRow}>
+                <Text style={styles.headerLabel}>Statistics</Text>
+            </View>
+            <ScrollView contentContainerStyle={{ padding: 20 }}>
+
+                <Text style={{ color: '#fff', fontSize: 18, fontWeight: 'bold', marginBottom: 10 }}>直近4週間のワークアウト回数</Text>
+                <LineChart
+                    data={{
+                        labels: ["3週前", "2週前", "1週前", "今週"],
+                        datasets: [{ data: weeklyData }]
+                    }}
+                    width={screenWidth - 40}
+                    height={220}
+                    chartConfig={chartConfig}
+                    bezier
+                    style={{ borderRadius: 16, marginBottom: 30 }}
+                />
+
+                <Text style={{ color: '#fff', fontSize: 18, fontWeight: 'bold', marginBottom: 10 }}>部位別セット数 (今月)</Text>
+                <BarChart
+                    data={{
+                        labels: ["胸", "背中", "脚", "肩", "腕"],
+                        datasets: [{ data: bodyPartData }]
+                    }}
+                    width={screenWidth - 40}
+                    height={220}
+                    chartConfig={chartConfig}
+                    style={{ borderRadius: 16 }}
+                />
+
+            </ScrollView>
+        </SafeAreaView>
+    );
 }
 
 // メインタブナビゲーション
@@ -1216,7 +1343,7 @@ function MainTabNavigator() {
         >
             <Tab.Screen name="HomeTab" component={HomeStackNavigator} options={{ tabBarIcon: ({ color }) => <Home color={color} size={28} /> }} />
             <Tab.Screen name="TrainingTab" component={TrainingScreen} options={{ tabBarIcon: ({ color }) => <Dumbbell color={color} size={28} /> }} />
-            <Tab.Screen name="FoodTab" component={DummyScreen} options={{ tabBarIcon: ({ color }) => <Utensils color={color} size={28} /> }} />
+            <Tab.Screen name="FoodTab" component={FoodScreen} options={{ tabBarIcon: ({ color }) => <Utensils color={color} size={28} /> }} />
             {/* ★ここをOtherTabからStatsTabに変更！ */}
             <Tab.Screen name="StatsTab" component={StatsScreen} options={{ tabBarIcon: ({ color }) => <BarChart2 color={color} size={28} /> }} />
         </Tab.Navigator>
