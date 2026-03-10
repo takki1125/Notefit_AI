@@ -1,22 +1,3 @@
-import {
-  addDoc,
-  collection,
-  deleteDoc,
-  doc,
-  getDocs,
-  orderBy,
-  query,
-  serverTimestamp,
-} from "firebase/firestore";
-import {
-  Check,
-  ChevronDown,
-  Clock,
-  Dumbbell,
-  Plus,
-  Trash2,
-  X,
-} from "lucide-react-native";
 import React, { useEffect, useState } from "react";
 import {
   ActivityIndicator,
@@ -31,9 +12,8 @@ import {
   TextInput,
   TouchableOpacity,
   View,
-<<<<<<< HEAD
-} from 'react-native';
-import { ChevronDown, Clock, Check, Dumbbell, Plus, Trash2, X } from 'lucide-react-native';
+} from "react-native";
+import { Check, ChevronDown, Clock, Dumbbell, Plus, Trash2, X } from "lucide-react-native";
 import {
   addDoc,
   setDoc,
@@ -44,10 +24,7 @@ import {
   orderBy,
   query,
   serverTimestamp,
-} from 'firebase/firestore';
-=======
-} from "react-native";
->>>>>>> c7e4b8b3446882ee5c1582dd01865d9d868c35f1
+} from "firebase/firestore";
 
 import { auth, db } from "../../firebaseConfig";
 import { styles } from "../../theme/styles";
@@ -490,11 +467,11 @@ const TrainingTabScreen: React.FC<Props> = ({ navigation }) => {
         menu.length > 0
           ? { display: "none" }
           : {
-              backgroundColor: "#2a2a2a",
-              borderTopWidth: 0,
-              height: 60,
-              paddingBottom: 10,
-            },
+            backgroundColor: "#2a2a2a",
+            borderTopWidth: 0,
+            height: 60,
+            paddingBottom: 10,
+          },
     });
   }, [menu.length, navigation]);
 
@@ -558,7 +535,7 @@ const TrainingTabScreen: React.FC<Props> = ({ navigation }) => {
             setTimerSeconds(0);
           },
         },
-      ],
+      ]
     );
   };
 
@@ -579,8 +556,8 @@ const TrainingTabScreen: React.FC<Props> = ({ navigation }) => {
       prev.map((ex) =>
         ex.id === exerciseId
           ? { ...ex, sets: [...ex.sets, { weight: "", reps: "", done: false }] }
-          : ex,
-      ),
+          : ex
+      )
     );
   };
 
@@ -595,7 +572,7 @@ const TrainingTabScreen: React.FC<Props> = ({ navigation }) => {
           return { ...ex, sets: ex.sets.filter((_, i) => i !== setIndex) };
         }
         return ex;
-      }),
+      })
     );
   };
 
@@ -603,25 +580,19 @@ const TrainingTabScreen: React.FC<Props> = ({ navigation }) => {
     exerciseId: number,
     setIndex: number,
     field: keyof WorkoutSet,
-    value: string,
+    value: string
   ) => {
     setMenu((prev) =>
       prev.map((ex) =>
         ex.id === exerciseId
           ? {
-<<<<<<< HEAD
             ...ex,
-            sets: ex.sets.map((s, i) => (i === setIndex ? { ...s, [field]: value } : s)),
+            sets: ex.sets.map((s, i) =>
+              i === setIndex ? { ...s, [field]: value } : s
+            ),
           }
-=======
-              ...ex,
-              sets: ex.sets.map((s, i) =>
-                i === setIndex ? { ...s, [field]: value } : s,
-              ),
-            }
->>>>>>> c7e4b8b3446882ee5c1582dd01865d9d868c35f1
-          : ex,
-      ),
+          : ex
+      )
     );
   };
 
@@ -630,23 +601,16 @@ const TrainingTabScreen: React.FC<Props> = ({ navigation }) => {
       prev.map((ex) =>
         ex.id === exerciseId
           ? {
-<<<<<<< HEAD
             ...ex,
-            sets: ex.sets.map((s, i) => (i === setIndex ? { ...s, done: !s.done } : s)),
+            sets: ex.sets.map((s, i) =>
+              i === setIndex ? { ...s, done: !s.done } : s
+            ),
           }
-=======
-              ...ex,
-              sets: ex.sets.map((s, i) =>
-                i === setIndex ? { ...s, done: !s.done } : s,
-              ),
-            }
->>>>>>> c7e4b8b3446882ee5c1582dd01865d9d868c35f1
-          : ex,
-      ),
+          : ex
+      )
     );
   };
 
-  // ↓ここから
   const handleFinishWorkout = async () => {
     if (menu.length === 0) {
       Alert.alert("エラー", "種目がありません");
@@ -665,37 +629,35 @@ const TrainingTabScreen: React.FC<Props> = ({ navigation }) => {
               Alert.alert("エラー", "ユーザー情報がありません");
               return;
             }
-<<<<<<< HEAD
 
-            // ★ 追加: わかりやすいドキュメントIDを作成
             const now = new Date();
-            const dateStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
-            const timeStr = `${String(now.getHours()).padStart(2, '0')}-${String(now.getMinutes()).padStart(2, '0')}-${String(now.getSeconds()).padStart(2, '0')}`;
+            const dateStr = `${now.getFullYear()}-${String(
+              now.getMonth() + 1
+            ).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+            const timeStr = `${String(now.getHours()).padStart(
+              2,
+              "0"
+            )}-${String(now.getMinutes()).padStart(2, "0")}-${String(
+              now.getSeconds()
+            ).padStart(2, "0")}`;
 
-            // ルーティン名がない場合は「自由メニュー」、スラッシュなど使えない文字をアンダースコアに変換
-            const safeRoutineName = currentRoutineName ? currentRoutineName.replace(/[\/]/g, '_') : '自由メニュー';
+            const safeRoutineName = currentRoutineName
+              ? currentRoutineName.replace(/[\/]/g, "_")
+              : "自由メニュー";
 
-            // 例: "2026-03-10_14-30-00_胸トレ"
             const customDocId = `${dateStr}_${timeStr}_${safeRoutineName}`;
 
             console.log("★これから保存するファイル名:", customDocId);
 
-            await setDoc(doc(db, 'users', user.uid, 'workouts', customDocId), {
-=======
-            await addDoc(collection(db, "users", user.uid, "workouts"), {
->>>>>>> c7e4b8b3446882ee5c1582dd01865d9d868c35f1
+            await setDoc(doc(db, "users", user.uid, "workouts", customDocId), {
               date: serverTimestamp(),
-              dateObj: now.toISOString(), // グラフ描画用
+              dateObj: now.toISOString(),
               routineName: currentRoutineName,
               exercises: menu,
               durationSeconds: timerSeconds,
             });
-<<<<<<< HEAD
 
-            Alert.alert('Good Job!', '保存しました', [
-=======
             Alert.alert("Good Job!", "保存しました", [
->>>>>>> c7e4b8b3446882ee5c1582dd01865d9d868c35f1
               {
                 text: "OK",
                 onPress: () => {
@@ -705,12 +667,8 @@ const TrainingTabScreen: React.FC<Props> = ({ navigation }) => {
               },
             ]);
           } catch (e) {
-<<<<<<< HEAD
-            Alert.alert('エラー', '保存失敗');
-            console.error(e);
-=======
             Alert.alert("エラー", "保存失敗");
->>>>>>> c7e4b8b3446882ee5c1582dd01865d9d868c35f1
+            console.error(e);
           } finally {
             setLoading(false);
           }
@@ -718,7 +676,6 @@ const TrainingTabScreen: React.FC<Props> = ({ navigation }) => {
       },
     ]);
   };
-  // ↑ここまで
 
   return (
     <SafeAreaView style={styles.container}>
