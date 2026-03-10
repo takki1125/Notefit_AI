@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Alert } from 'react-native';
-import { addDoc, collection, serverTimestamp } from 'firebase/firestore';
+// addDoc を消して、使うものだけにした
+import { doc, setDoc, collection, serverTimestamp } from 'firebase/firestore';
 
 import { auth, db } from '../firebaseConfig';
 
@@ -118,9 +119,9 @@ export function useTrainingSession(navigation: any): UseTrainingSessionResult {
       prev.map(ex =>
         ex.id === exerciseId
           ? {
-              ...ex,
-              sets: [...ex.sets, { weight: '', reps: '', done: false }],
-            }
+            ...ex,
+            sets: [...ex.sets, { weight: '', reps: '', done: false }],
+          }
           : ex,
       ),
     );
@@ -154,16 +155,16 @@ export function useTrainingSession(navigation: any): UseTrainingSessionResult {
       prev.map(ex =>
         ex.id === exerciseId
           ? {
-              ...ex,
-              sets: ex.sets.map((s, i) =>
-                i === setIndex
-                  ? {
-                      ...s,
-                      [field]: value,
-                    }
-                  : s,
-              ),
-            }
+            ...ex,
+            sets: ex.sets.map((s, i) =>
+              i === setIndex
+                ? {
+                  ...s,
+                  [field]: value,
+                }
+                : s,
+            ),
+          }
           : ex,
       ),
     );
@@ -174,16 +175,16 @@ export function useTrainingSession(navigation: any): UseTrainingSessionResult {
       prev.map(ex =>
         ex.id === exerciseId
           ? {
-              ...ex,
-              sets: ex.sets.map((s, i) =>
-                i === setIndex
-                  ? {
-                      ...s,
-                      done: !s.done,
-                    }
-                  : s,
-              ),
-            }
+            ...ex,
+            sets: ex.sets.map((s, i) =>
+              i === setIndex
+                ? {
+                  ...s,
+                  done: !s.done,
+                }
+                : s,
+            ),
+          }
           : ex,
       ),
     );
@@ -205,8 +206,22 @@ export function useTrainingSession(navigation: any): UseTrainingSessionResult {
             const user = auth.currentUser;
             if (!user) return;
 
-            await addDoc(collection(db, 'users', user.uid, 'workouts'), {
+            // ★ わかりやすいドキュメントIDを作成
+            const now = new Date();
+            const dateStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+            const timeStr = `${String(now.getHours()).padStart(2, '0')}-${String(now.getMinutes()).padStart(2, '0')}-${String(now.getSeconds()).padStart(2, '0')}`;
+
+            // ルーティン名がない場合は「自由メニュー」、スラッシュなど使えない文字をアンダースコアに変換
+            const safeRoutineName = currentRoutineName ? currentRoutineName.replace(/[\/]/g, '_') : '自由メニュー';
+
+            // 例: "2026-03-10_14-30-00_胸トレ"
+            const customDocId = `${dateStr}_${timeStr}_${safeRoutineName}`;
+            console.log("★これから保存するファイル名:", customDocId);
+
+            // ★ addDoc をやめて setDoc に変更。doc() で保存先とIDを明確に指定
+            await setDoc(doc(db, 'users', user.uid, 'workouts', customDocId), {
               date: serverTimestamp(),
+              dateObj: now.toISOString(), // グラフ描画用
               routineName: currentRoutineName,
               exercises: menu,
               durationSeconds: timerSeconds,
@@ -247,4 +262,3 @@ export function useTrainingSession(navigation: any): UseTrainingSessionResult {
     handleFinishWorkout,
   };
 }
-
