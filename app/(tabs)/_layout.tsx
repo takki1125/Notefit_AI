@@ -11,8 +11,17 @@ export default function TabsLayout() {
           backgroundColor: "#2a2a2a",
           borderTopWidth: 0,
           height: 60,
+          paddingBottom: 0, // 下の余白を強制リセット
+          paddingTop: 0, // 上の余白（デフォルトで存在する場合がある）を強制リセット
         },
         tabBarItemStyle: {
+          margin: 0, // タッチ領域の余白を強制リセット
+          padding: 0,
+          justifyContent: "center",
+          alignItems: "center",
+        },
+        tabBarIconStyle: {
+          flex: 1, // アイコンのコンテナを親の高さ(60)一杯に広げる
           justifyContent: "center",
           alignItems: "center",
         },
