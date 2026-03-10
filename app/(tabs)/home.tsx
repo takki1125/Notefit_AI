@@ -1,4 +1,5 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { useRouter } from "expo-router";
 import { useFocusEffect } from "@react-navigation/native";
 import {
   collection,
@@ -246,6 +247,7 @@ const CalendarSection: React.FC<CalendarSectionProps> = ({
 };
 
 const HomeTabScreen: React.FC = () => {
+  const router = useRouter();
   const [history, setHistory] = useState<Workout[]>([]);
   const [trainedDays, setTrainedDays] = useState<number[]>([]);
   const [lastWorkout, setLastWorkout] = useState<Workout | null>(null);
@@ -332,11 +334,8 @@ const HomeTabScreen: React.FC = () => {
             {auth.currentUser?.email?.split("@")[0] || "User"}
           </Text>
         </View>
-        {/* 設定画面は後で Expo Router に移行する */}
         <TouchableOpacity
-          onPress={() =>
-            Alert.alert("準備中", "設定画面は Expo Router 版に移行中です。")
-          }
+          onPress={() => router.push("/settings")}
           style={styles.iconButton}
         >
           <SettingsIcon color="#fff" size={24} />
