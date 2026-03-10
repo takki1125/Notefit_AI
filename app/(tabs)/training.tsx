@@ -35,9 +35,11 @@ type WorkoutSet = {
   done: boolean;
 };
 
+// ★修正：category（部位タグ）を追加
 type Exercise = {
   id: number;
   name: string;
+  category: string;
   target: string;
   sets: WorkoutSet[];
 };
@@ -51,7 +53,8 @@ type Routine = {
 type ExerciseSelectorModalProps = {
   visible: boolean;
   onClose: () => void;
-  onSelect: (exerciseName: string) => void;
+  // ★修正：部位名も受け取るように変更
+  onSelect: (exerciseName: string, category: string) => void;
 };
 
 type RoutineModalProps = {
@@ -171,11 +174,13 @@ const ExerciseSelectorModal: React.FC<ExerciseSelectorModalProps> = ({
           />
         ) : (
           <View style={{ flex: 1 }}>
-            <View style={{ height: 50 }}>
+            {/* ★ここ！ height: 50 の View を styles.modalCategoryContainer に変える */}
+            <View style={styles.modalCategoryContainer}>
               <ScrollView
                 horizontal
                 showsHorizontalScrollIndicator={false}
-                style={styles.tabScroll}
+                // contentContainerStyle を使って中のパディングを調整するのがコツ
+                contentContainerStyle={{ paddingHorizontal: 16 }}
               >
                 {categories.map((cat) => (
                   <TouchableOpacity
@@ -213,7 +218,8 @@ const ExerciseSelectorModal: React.FC<ExerciseSelectorModalProps> = ({
                 <TouchableOpacity
                   style={styles.exerciseListItem}
                   onPress={() => {
-                    onSelect(item);
+                    // ★修正：選択された種目名と一緒に、現在選んでいるカテゴリーの label を渡す
+                    onSelect(item, selectedCategory?.label || "他");
                     onClose();
                   }}
                 >
@@ -506,10 +512,12 @@ const TrainingTabScreen: React.FC<Props> = ({ navigation }) => {
     return h > 0 ? `${h}:${m}:${s}` : `${m}:${s}`;
   };
 
-  const handleAddExercise = (exerciseName: string) => {
+  // ★修正：第2引数にカテゴリーを受け取る
+  const handleAddExercise = (exerciseName: string, category: string) => {
     const newExercise: Exercise = {
       id: Date.now(),
       name: exerciseName,
+      category: category, // ★ここに部位タグ（"腕 (Arms)" 等）を保存
       target: "- kg x -",
       sets: [{ weight: "", reps: "", done: false }],
     };
@@ -527,6 +535,7 @@ const TrainingTabScreen: React.FC<Props> = ({ navigation }) => {
           onPress: () => {
             const loadedExercises: Exercise[] = routine.exercises.map((ex) => ({
               ...ex,
+              category: ex.category || "他", // ★古いデータ対策
               id: Date.now() + Math.random(),
               sets: ex.sets.map((s) => ({ ...s, done: false })),
             }));
@@ -647,13 +656,13 @@ const TrainingTabScreen: React.FC<Props> = ({ navigation }) => {
 
             const customDocId = `${dateStr}_${timeStr}_${safeRoutineName}`;
 
-            console.log("★これから保存するファイル名:", customDocId);
+            console.log("★保存データの中身確認:", menu);
 
             await setDoc(doc(db, "users", user.uid, "workouts", customDocId), {
               date: serverTimestamp(),
               dateObj: now.toISOString(),
               routineName: currentRoutineName,
-              exercises: menu,
+              exercises: menu, // ★この menu の中に category が入っているので解決！
               durationSeconds: timerSeconds,
             });
 
@@ -680,21 +689,23 @@ const TrainingTabScreen: React.FC<Props> = ({ navigation }) => {
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.headerRow}>
-        <View>
-          <Text style={styles.headerLabel}>Today&apos;s Workout</Text>
-          <TouchableOpacity
-            style={styles.routineSelector}
-            onPress={() => setRoutineModalVisible(true)}
-          >
-            <Text style={styles.routineText}>{currentRoutineName}</Text>
-            <ChevronDown color="#2ecc71" size={20} />
+        <View style={styles.headerContent}>
+          <View>
+            <Text style={styles.headerLabel}>Today&apos;s Workout</Text>
+            <TouchableOpacity
+              style={styles.routineSelector}
+              onPress={() => setRoutineModalVisible(true)}
+            >
+              <Text style={styles.routineText}>{currentRoutineName}</Text>
+              <ChevronDown color="#2ecc71" size={20} />
+            </TouchableOpacity>
+          </View>
+
+          <TouchableOpacity style={styles.timerButton}>
+            <Clock color={isTimerActive ? "#2ecc71" : "#000"} size={20} />
+            <Text style={styles.timerText}>{formatTime(timerSeconds)}</Text>
           </TouchableOpacity>
         </View>
-
-        <TouchableOpacity style={styles.timerButton}>
-          <Clock color={isTimerActive ? "#2ecc71" : "#000"} size={20} />
-          <Text style={styles.timerText}>{formatTime(timerSeconds)}</Text>
-        </TouchableOpacity>
       </View>
 
       <KeyboardAvoidingView
@@ -722,7 +733,11 @@ const TrainingTabScreen: React.FC<Props> = ({ navigation }) => {
           {menu.map((item) => (
             <View key={item.id} style={styles.exerciseCard}>
               <View style={styles.exerciseHeader}>
-                <Text style={styles.exerciseName}>{item.name}</Text>
+                <View>
+                  <Text style={styles.exerciseName}>{item.name}</Text>
+                  {/* デバッグ用：部位を表示 */}
+                  <Text style={{ color: "#2ecc71", fontSize: 10 }}>{item.category}</Text>
+                </View>
                 <TouchableOpacity
                   onPress={() => handleRemoveExercise(item.id)}
                   style={{ padding: 5 }}
