@@ -1,6 +1,6 @@
-import React from 'react';
-import { Tabs } from 'expo-router';
-import { Home, Dumbbell, Utensils, BarChart2 } from 'lucide-react-native';
+import { Tabs } from "expo-router";
+import { BarChart2, Dumbbell, Home, Utensils } from "lucide-react-native";
+import React from "react";
 
 export default function TabsLayout() {
   return (
@@ -8,13 +8,16 @@ export default function TabsLayout() {
       screenOptions={{
         headerShown: false,
         tabBarStyle: {
-          backgroundColor: '#2a2a2a',
+          backgroundColor: "#2a2a2a",
           borderTopWidth: 0,
           height: 60,
-          paddingBottom: 10,
         },
-        tabBarActiveTintColor: '#2ecc71',
-        tabBarInactiveTintColor: '#666',
+        tabBarItemStyle: {
+          justifyContent: "center",
+          alignItems: "center",
+        },
+        tabBarActiveTintColor: "#2ecc71",
+        tabBarInactiveTintColor: "#666",
         tabBarShowLabel: false,
       }}
     >
@@ -45,5 +48,3 @@ export default function TabsLayout() {
     </Tabs>
   );
 }
-
-
