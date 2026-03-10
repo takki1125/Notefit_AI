@@ -221,7 +221,7 @@ const CalendarSection: React.FC<CalendarSectionProps> = ({
           </Text>
         ))}
       </View>
-      <View style={styles.daysGrid}>
+      <View style={[styles.daysGrid, { justifyContent: 'flex-start' }]}>
         {days.map((day) => {
           const isToday = day === currentDay;
           const isTrained = trainedDays.includes(day);
@@ -229,7 +229,8 @@ const CalendarSection: React.FC<CalendarSectionProps> = ({
           return (
             <TouchableOpacity
               key={day}
-              style={styles.dayCell}
+              // ★ 横幅を1週間の1/7 (約14.28%) に固定して強制的に左寄せにする
+              style={[styles.dayCell, { width: '14.28%', alignItems: 'center', marginBottom: 10 }]}
               onPress={() => onDayPress(day)}
             >
               <View
@@ -282,6 +283,10 @@ const HomeTabScreen: React.FC = () => {
       const historyData: Workout[] = [];
       const days: number[] = [];
 
+      // ★追加：今の年と月を取得しておく
+      const currentYear = new Date().getFullYear();
+      const currentMonth = new Date().getMonth();
+
       snapshot.docs.forEach((d) => {
         const data = d.data() as any;
         const dateObj: Date = data.date ? data.date.toDate() : new Date();
@@ -293,7 +298,11 @@ const HomeTabScreen: React.FC = () => {
           dateStr: dateObj.toLocaleDateString(),
           day: dateObj.getDate(),
         });
-        days.push(dateObj.getDate());
+
+        // ★修正：年と月が今と一致している場合だけ、カレンダーの光るリストに追加する
+        if (dateObj.getFullYear() === currentYear && dateObj.getMonth() === currentMonth) {
+          days.push(dateObj.getDate());
+        }
       });
 
       setHistory(historyData);
