@@ -163,7 +163,9 @@ export default function FoodTabScreen() {
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.headerRow}>
-        <Text style={styles.headerLabel}>Today's Nutrition</Text>
+        <View style={styles.headerContent}>
+          <Text style={styles.headerLabel}>Today's Nutrition</Text>
+        </View>
       </View>
 
       <ScrollView contentContainerStyle={{ padding: 20 }}>
@@ -279,6 +281,6 @@ export default function FoodTabScreen() {
         )}
 
       </ScrollView>
-    </SafeAreaView>
+    </SafeAreaView >
   );
 }
