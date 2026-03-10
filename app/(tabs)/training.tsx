@@ -16,6 +16,7 @@ import {
 import { ChevronDown, Clock, Check, Dumbbell, Plus, Trash2, X } from 'lucide-react-native';
 import {
   addDoc,
+  setDoc,
   collection,
   deleteDoc,
   doc,
@@ -531,9 +532,9 @@ const TrainingTabScreen: React.FC<Props> = ({ navigation }) => {
       prev.map(ex =>
         ex.id === exerciseId
           ? {
-              ...ex,
-              sets: ex.sets.map((s, i) => (i === setIndex ? { ...s, [field]: value } : s)),
-            }
+            ...ex,
+            sets: ex.sets.map((s, i) => (i === setIndex ? { ...s, [field]: value } : s)),
+          }
           : ex,
       ),
     );
@@ -544,14 +545,15 @@ const TrainingTabScreen: React.FC<Props> = ({ navigation }) => {
       prev.map(ex =>
         ex.id === exerciseId
           ? {
-              ...ex,
-              sets: ex.sets.map((s, i) => (i === setIndex ? { ...s, done: !s.done } : s)),
-            }
+            ...ex,
+            sets: ex.sets.map((s, i) => (i === setIndex ? { ...s, done: !s.done } : s)),
+          }
           : ex,
       ),
     );
   };
 
+  // ↓ここから
   const handleFinishWorkout = async () => {
     if (menu.length === 0) {
       Alert.alert('エラー', '種目がありません');
@@ -570,12 +572,28 @@ const TrainingTabScreen: React.FC<Props> = ({ navigation }) => {
               Alert.alert('エラー', 'ユーザー情報がありません');
               return;
             }
-            await addDoc(collection(db, 'users', user.uid, 'workouts'), {
+
+            // ★ 追加: わかりやすいドキュメントIDを作成
+            const now = new Date();
+            const dateStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+            const timeStr = `${String(now.getHours()).padStart(2, '0')}-${String(now.getMinutes()).padStart(2, '0')}-${String(now.getSeconds()).padStart(2, '0')}`;
+
+            // ルーティン名がない場合は「自由メニュー」、スラッシュなど使えない文字をアンダースコアに変換
+            const safeRoutineName = currentRoutineName ? currentRoutineName.replace(/[\/]/g, '_') : '自由メニュー';
+
+            // 例: "2026-03-10_14-30-00_胸トレ"
+            const customDocId = `${dateStr}_${timeStr}_${safeRoutineName}`;
+
+            console.log("★これから保存するファイル名:", customDocId);
+
+            await setDoc(doc(db, 'users', user.uid, 'workouts', customDocId), {
               date: serverTimestamp(),
+              dateObj: now.toISOString(), // グラフ描画用
               routineName: currentRoutineName,
               exercises: menu,
               durationSeconds: timerSeconds,
             });
+
             Alert.alert('Good Job!', '保存しました', [
               {
                 text: 'OK',
@@ -587,6 +605,7 @@ const TrainingTabScreen: React.FC<Props> = ({ navigation }) => {
             ]);
           } catch (e) {
             Alert.alert('エラー', '保存失敗');
+            console.error(e);
           } finally {
             setLoading(false);
           }
@@ -594,6 +613,7 @@ const TrainingTabScreen: React.FC<Props> = ({ navigation }) => {
       },
     ]);
   };
+  // ↑ここまで
 
   return (
     <SafeAreaView style={styles.container}>
