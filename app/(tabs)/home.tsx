@@ -1,6 +1,22 @@
-import React, { useCallback, useState } from 'react';
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { useFocusEffect } from "@react-navigation/native";
 import {
-  ActivityIndicator,
+  collection,
+  deleteDoc,
+  doc,
+  getDocs,
+  orderBy,
+  query,
+} from "firebase/firestore";
+import {
+  Check,
+  Dumbbell,
+  Settings as SettingsIcon,
+  Trash2,
+  X,
+} from "lucide-react-native";
+import React, { useCallback, useState } from "react";
+import {
   Alert,
   Modal,
   SafeAreaView,
@@ -8,14 +24,10 @@ import {
   Text,
   TouchableOpacity,
   View,
-} from 'react-native';
-import { useFocusEffect } from '@react-navigation/native';
-import { Dumbbell, Settings as SettingsIcon, Check, X, Trash2 } from 'lucide-react-native';
-import { collection, deleteDoc, doc, getDocs, orderBy, query } from 'firebase/firestore';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+} from "react-native";
 
-import { auth, db } from '../../firebaseConfig';
-import { styles } from '../../theme/styles';
+import { auth, db } from "../../firebaseConfig";
+import { styles } from "../../theme/styles";
 
 type WorkoutSet = {
   weight: number | string;
@@ -54,13 +66,13 @@ const WorkoutDetailModal: React.FC<WorkoutDetailModalProps> = ({
 
   const confirmDelete = () => {
     Alert.alert(
-      '記録を削除',
-      'このトレーニング記録を削除しますか？\nこの操作は元に戻せません。',
+      "記録を削除",
+      "このトレーニング記録を削除しますか？\nこの操作は元に戻せません。",
       [
-        { text: 'キャンセル', style: 'cancel' },
+        { text: "キャンセル", style: "cancel" },
         {
-          text: '削除する',
-          style: 'destructive',
+          text: "削除する",
+          style: "destructive",
           onPress: () => onDelete(workout.id),
         },
       ],
@@ -72,30 +84,38 @@ const WorkoutDetailModal: React.FC<WorkoutDetailModalProps> = ({
       <View
         style={{
           flex: 1,
-          backgroundColor: 'rgba(0,0,0,0.8)',
-          justifyContent: 'center',
+          backgroundColor: "rgba(0,0,0,0.8)",
+          justifyContent: "center",
           padding: 20,
         }}
       >
-        <View style={{ backgroundColor: '#2a2a2a', borderRadius: 20, maxHeight: '80%' }}>
+        <View
+          style={{
+            backgroundColor: "#2a2a2a",
+            borderRadius: 20,
+            maxHeight: "80%",
+          }}
+        >
           <View
             style={{
-              flexDirection: 'row',
-              justifyContent: 'space-between',
-              alignItems: 'center',
+              flexDirection: "row",
+              justifyContent: "space-between",
+              alignItems: "center",
               padding: 16,
               borderBottomWidth: 1,
-              borderColor: '#444',
+              borderColor: "#444",
             }}
           >
             <View>
-              <Text style={{ color: '#888', fontSize: 12 }}>{workout.dateStr}</Text>
-              <Text style={{ color: '#fff', fontSize: 18, fontWeight: 'bold' }}>
+              <Text style={{ color: "#888", fontSize: 12 }}>
+                {workout.dateStr}
+              </Text>
+              <Text style={{ color: "#fff", fontSize: 18, fontWeight: "bold" }}>
                 {workout.routineName}
               </Text>
             </View>
 
-            <View style={{ flexDirection: 'row', gap: 15 }}>
+            <View style={{ flexDirection: "row", gap: 15 }}>
               <TouchableOpacity onPress={confirmDelete}>
                 <Trash2 color="#ff4444" size={24} />
               </TouchableOpacity>
@@ -109,16 +129,24 @@ const WorkoutDetailModal: React.FC<WorkoutDetailModalProps> = ({
           <ScrollView contentContainerStyle={{ padding: 16 }}>
             {workout.exercises.map((ex, i) => (
               <View key={i} style={{ marginBottom: 20 }}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}>
+                <View
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "center",
+                    marginBottom: 8,
+                  }}
+                >
                   <View
                     style={{
                       width: 4,
                       height: 16,
-                      backgroundColor: '#2ecc71',
+                      backgroundColor: "#2ecc71",
                       marginRight: 8,
                     }}
                   />
-                  <Text style={{ color: '#fff', fontSize: 16, fontWeight: 'bold' }}>
+                  <Text
+                    style={{ color: "#fff", fontSize: 16, fontWeight: "bold" }}
+                  >
                     {ex.name}
                   </Text>
                 </View>
@@ -126,16 +154,18 @@ const WorkoutDetailModal: React.FC<WorkoutDetailModalProps> = ({
                   <View
                     key={k}
                     style={{
-                      flexDirection: 'row',
-                      justifyContent: 'space-between',
+                      flexDirection: "row",
+                      justifyContent: "space-between",
                       paddingVertical: 4,
                       paddingHorizontal: 12,
                       borderBottomWidth: 1,
-                      borderColor: '#333',
+                      borderColor: "#333",
                     }}
                   >
-                    <Text style={{ color: '#888', fontSize: 12 }}>SET {k + 1}</Text>
-                    <Text style={{ color: '#fff' }}>
+                    <Text style={{ color: "#888", fontSize: 12 }}>
+                      SET {k + 1}
+                    </Text>
+                    <Text style={{ color: "#fff" }}>
                       {set.weight}kg × {set.reps}reps
                     </Text>
                     {set.done && <Check size={14} color="#2ecc71" />}
@@ -155,7 +185,10 @@ type CalendarSectionProps = {
   onDayPress: (day: number) => void;
 };
 
-const CalendarSection: React.FC<CalendarSectionProps> = ({ trainedDays, onDayPress }) => {
+const CalendarSection: React.FC<CalendarSectionProps> = ({
+  trainedDays,
+  onDayPress,
+}) => {
   const today = new Date();
   const currentDay = today.getDate();
   const currentYear = today.getFullYear();
@@ -170,14 +203,14 @@ const CalendarSection: React.FC<CalendarSectionProps> = ({ trainedDays, onDayPre
         <Text style={styles.yearText}>{currentYear}</Text>
       </View>
       <View style={styles.weekRow}>
-        {['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'].map((day, index) => (
+        {["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"].map((day, index) => (
           <Text key={index} style={styles.weekDayText}>
             {day}
           </Text>
         ))}
       </View>
       <View style={styles.daysGrid}>
-        {days.map(day => {
+        {days.map((day) => {
           const isToday = day === currentDay;
           const isTrained = trainedDays.includes(day);
 
@@ -225,15 +258,15 @@ const HomeTabScreen: React.FC = () => {
 
     try {
       const q = query(
-        collection(db, 'users', user.uid, 'workouts'),
-        orderBy('date', 'desc'),
+        collection(db, "users", user.uid, "workouts"),
+        orderBy("date", "desc"),
       );
       const snapshot = await getDocs(q);
 
       const historyData: Workout[] = [];
       const days: number[] = [];
 
-      snapshot.docs.forEach(d => {
+      snapshot.docs.forEach((d) => {
         const data = d.data() as any;
         const dateObj: Date = data.date ? data.date.toDate() : new Date();
 
@@ -251,7 +284,10 @@ const HomeTabScreen: React.FC = () => {
       setTrainedDays([...new Set(days)]);
       setLastWorkout(historyData[0] ?? null);
 
-      await AsyncStorage.setItem('@workout_history', JSON.stringify(historyData));
+      await AsyncStorage.setItem(
+        "@workout_history",
+        JSON.stringify(historyData),
+      );
     } catch (e) {
       console.error(e);
     }
@@ -264,7 +300,7 @@ const HomeTabScreen: React.FC = () => {
   );
 
   const handleDayPress = (day: number) => {
-    const targetWorkout = history.find(item => item.day === day);
+    const targetWorkout = history.find((item) => item.day === day);
     if (targetWorkout) {
       setSelectedWorkout(targetWorkout);
       setModalVisible(true);
@@ -276,14 +312,14 @@ const HomeTabScreen: React.FC = () => {
       const user = auth.currentUser;
       if (!user) return;
 
-      await deleteDoc(doc(db, 'users', user.uid, 'workouts', workoutId));
+      await deleteDoc(doc(db, "users", user.uid, "workouts", workoutId));
 
-      Alert.alert('削除完了', '記録を削除しました。');
+      Alert.alert("削除完了", "記録を削除しました。");
       setModalVisible(false);
       fetchHistory();
     } catch (error) {
-      console.error('削除エラー:', error);
-      Alert.alert('エラー', '削除に失敗しました。');
+      console.error("削除エラー:", error);
+      Alert.alert("エラー", "削除に失敗しました。");
     }
   };
 
@@ -293,12 +329,14 @@ const HomeTabScreen: React.FC = () => {
         <View>
           <Text style={styles.headerLabel}>Welcome back,</Text>
           <Text style={styles.routineText}>
-            {auth.currentUser?.email?.split('@')[0] || 'User'}
+            {auth.currentUser?.email?.split("@")[0] || "User"}
           </Text>
         </View>
         {/* 設定画面は後で Expo Router に移行する */}
         <TouchableOpacity
-          onPress={() => Alert.alert('準備中', '設定画面は Expo Router 版に移行中です。')}
+          onPress={() =>
+            Alert.alert("準備中", "設定画面は Expo Router 版に移行中です。")
+          }
           style={styles.iconButton}
         >
           <SettingsIcon color="#fff" size={24} />
@@ -306,36 +344,41 @@ const HomeTabScreen: React.FC = () => {
       </View>
 
       <ScrollView contentContainerStyle={styles.scrollContent}>
-        <CalendarSection trainedDays={trainedDays} onDayPress={handleDayPress} />
+        <CalendarSection
+          trainedDays={trainedDays}
+          onDayPress={handleDayPress}
+        />
 
         <View style={styles.card}>
           <View
             style={{
-              flexDirection: 'row',
-              justifyContent: 'space-between',
-              alignItems: 'center',
+              flexDirection: "row",
+              justifyContent: "space-between",
+              alignItems: "center",
               marginBottom: 15,
             }}
           >
             <View>
-              <Text style={{ color: '#888', fontSize: 12, marginBottom: 4 }}>LATEST WORKOUT</Text>
-              <Text style={{ color: '#fff', fontSize: 20, fontWeight: 'bold' }}>
-                {lastWorkout ? lastWorkout.routineName : 'START WORKOUT'}
+              <Text style={{ color: "#888", fontSize: 12, marginBottom: 4 }}>
+                LATEST WORKOUT
+              </Text>
+              <Text style={{ color: "#fff", fontSize: 20, fontWeight: "bold" }}>
+                {lastWorkout ? lastWorkout.routineName : "START WORKOUT"}
               </Text>
               {lastWorkout && (
-                <Text style={{ color: '#2ecc71', fontSize: 12, marginTop: 4 }}>
+                <Text style={{ color: "#2ecc71", fontSize: 12, marginTop: 4 }}>
                   {lastWorkout.dateStr}
                 </Text>
               )}
             </View>
             <View
               style={{
-                backgroundColor: '#2ecc71',
+                backgroundColor: "#2ecc71",
                 borderRadius: 20,
                 width: 40,
                 height: 40,
-                justifyContent: 'center',
-                alignItems: 'center',
+                justifyContent: "center",
+                alignItems: "center",
               }}
             >
               <Dumbbell color="#000" size={20} />
@@ -344,24 +387,29 @@ const HomeTabScreen: React.FC = () => {
           <View style={{ gap: 8 }}>
             {lastWorkout ? (
               lastWorkout.exercises.slice(0, 3).map((ex, i) => (
-                <View key={i} style={{ flexDirection: 'row', alignItems: 'center' }}>
+                <View
+                  key={i}
+                  style={{ flexDirection: "row", alignItems: "center" }}
+                >
                   <View
                     style={{
                       width: 6,
                       height: 6,
                       borderRadius: 3,
-                      backgroundColor: '#2ecc71',
+                      backgroundColor: "#2ecc71",
                       marginRight: 8,
                     }}
                   />
-                  <Text style={{ color: '#ccc' }}>{ex.name}</Text>
-                  <Text style={{ color: '#666', marginLeft: 'auto' }}>
-                    {ex.sets.filter(s => s.done).length} sets
+                  <Text style={{ color: "#ccc" }}>{ex.name}</Text>
+                  <Text style={{ color: "#666", marginLeft: "auto" }}>
+                    {ex.sets.filter((s) => s.done).length} sets
                   </Text>
                 </View>
               ))
             ) : (
-              <Text style={{ color: '#666' }}>タップしてトレーニングを開始</Text>
+              <Text style={{ color: "#666" }}>
+                タップしてトレーニングを開始
+              </Text>
             )}
           </View>
         </View>
@@ -374,7 +422,7 @@ const HomeTabScreen: React.FC = () => {
               <Text style={styles.calorieValue}>{trainedDays.length}回</Text>
             </View>
             <View style={styles.aiBox}>
-              <Text style={{ color: '#000', padding: 10 }}>継続は力なり！</Text>
+              <Text style={{ color: "#000", padding: 10 }}>継続は力なり</Text>
             </View>
           </View>
         </View>
@@ -391,5 +439,3 @@ const HomeTabScreen: React.FC = () => {
 };
 
 export default HomeTabScreen;
-
-
