@@ -14,6 +14,7 @@ import {
   Settings as SettingsIcon,
   Trash2,
   X,
+  Flame // ★追加：カロリー用の炎アイコン
 } from "lucide-react-native";
 import React, { useCallback, useState } from "react";
 import {
@@ -47,6 +48,16 @@ type Workout = {
   dateObj: Date;
   dateStr: string;
   day: number;
+};
+
+// ★追加：食事データの型
+type Meal = {
+  id: string;
+  name: string;
+  cal: number;
+  pro: number;
+  fat: number;
+  carb: number;
 };
 
 type WorkoutDetailModalProps = {
@@ -252,6 +263,9 @@ const HomeTabScreen: React.FC = () => {
   const [modalVisible, setModalVisible] = useState(false);
   const [selectedWorkout, setSelectedWorkout] = useState<Workout | null>(null);
 
+  // ★追加：今日の食事サマリー用のState
+  const [todayMeals, setTodayMeals] = useState<Meal[]>([]);
+
   const fetchHistory = useCallback(async () => {
     const user = auth.currentUser;
     if (!user) return;
@@ -293,10 +307,25 @@ const HomeTabScreen: React.FC = () => {
     }
   }, []);
 
+  // ★追加：画面を開くたびに、Foodタブで保存した「今日の食事」を読み込む
+  const fetchTodayMeals = useCallback(async () => {
+    try {
+      const stored = await AsyncStorage.getItem('@food_meals_today');
+      if (stored) {
+        setTodayMeals(JSON.parse(stored));
+      } else {
+        setTodayMeals([]);
+      }
+    } catch (e) {
+      console.error('食事データの読み込み失敗:', e);
+    }
+  }, []);
+
   useFocusEffect(
     useCallback(() => {
       fetchHistory();
-    }, [fetchHistory]),
+      fetchTodayMeals(); // ★追加
+    }, [fetchHistory, fetchTodayMeals]),
   );
 
   const handleDayPress = (day: number) => {
@@ -323,6 +352,10 @@ const HomeTabScreen: React.FC = () => {
     }
   };
 
+  // ★追加：食事の合計値計算
+  const todayTotalCal = todayMeals.reduce((sum, item) => sum + item.cal, 0);
+  const todayTotalPro = todayMeals.reduce((sum, item) => sum + item.pro, 0);
+
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.homeHeader}>
@@ -332,7 +365,6 @@ const HomeTabScreen: React.FC = () => {
             {auth.currentUser?.email?.split("@")[0] || "User"}
           </Text>
         </View>
-        {/* 設定画面は後で Expo Router に移行する */}
         <TouchableOpacity
           onPress={() =>
             Alert.alert("準備中", "設定画面は Expo Router 版に移行中です。")
@@ -349,6 +381,7 @@ const HomeTabScreen: React.FC = () => {
           onDayPress={handleDayPress}
         />
 
+        {/* LATEST WORKOUT セクション */}
         <View style={styles.card}>
           <View
             style={{
@@ -414,6 +447,55 @@ const HomeTabScreen: React.FC = () => {
           </View>
         </View>
 
+        {/* ★新設：TODAY'S NUTRITION (今日の食事) セクション */}
+        <View style={styles.card}>
+          <View
+            style={{
+              flexDirection: "row",
+              justifyContent: "space-between",
+              alignItems: "center",
+              marginBottom: 15,
+            }}
+          >
+            <View>
+              <Text style={{ color: "#888", fontSize: 12, marginBottom: 4 }}>
+                TODAY'S NUTRITION
+              </Text>
+              <Text style={{ color: "#fff", fontSize: 20, fontWeight: "bold" }}>
+                {todayTotalCal} <Text style={{ fontSize: 14, fontWeight: 'normal' }}>kcal</Text>
+              </Text>
+            </View>
+            <View
+              style={{
+                backgroundColor: "#ff4757", // 食事っぽい赤色
+                borderRadius: 20,
+                width: 40,
+                height: 40,
+                justifyContent: "center",
+                alignItems: "center",
+              }}
+            >
+              <Flame color="#fff" size={20} />
+            </View>
+          </View>
+          <View style={{ flexDirection: "row", alignItems: "center" }}>
+            <View
+              style={{
+                width: 6,
+                height: 6,
+                borderRadius: 3,
+                backgroundColor: "#4facfe",
+                marginRight: 8,
+              }}
+            />
+            <Text style={{ color: "#ccc" }}>タンパク質 (Protein)</Text>
+            <Text style={{ color: "#fff", marginLeft: "auto", fontWeight: 'bold' }}>
+              {todayTotalPro} g
+            </Text>
+          </View>
+        </View>
+
+        {/* 既存の Stats セクション */}
         <View style={styles.card}>
           <Text style={styles.sectionTitle}>Stats</Text>
           <View style={styles.statsRow}>
@@ -426,6 +508,7 @@ const HomeTabScreen: React.FC = () => {
             </View>
           </View>
         </View>
+
       </ScrollView>
 
       <WorkoutDetailModal
