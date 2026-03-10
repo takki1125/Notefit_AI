@@ -1,0 +1,97 @@
+import React from 'react';
+import { useRouter } from 'expo-router';
+import { Alert, SafeAreaView, ScrollView, Text, TouchableOpacity, View } from 'react-native';
+import { LogOut, Trash2, X, User, ChevronRight, Mail } from 'lucide-react-native';
+import { deleteUser, signOut } from 'firebase/auth';
+import { auth } from '../../firebaseConfig';
+import { styles } from '../../theme/styles';
+
+export default function SettingsScreen() {
+  const router = useRouter();
+
+  const handleSignOut = () => {
+    Alert.alert('ログアウト', 'ログアウトしますか？', [
+      { text: 'キャンセル', style: 'cancel' },
+      { text: 'ログアウト', style: 'destructive', onPress: () => signOut(auth) },
+    ]);
+  };
+
+  const handleDeleteAccount = () => {
+    Alert.alert('アカウント削除', '本当に削除しますか？\nこの操作は取り消せません。', [
+      { text: 'キャンセル', style: 'cancel' },
+      {
+        text: '完全に削除する',
+        style: 'destructive',
+        onPress: async () => {
+          try {
+            const user = auth.currentUser;
+            if (user) await deleteUser(user);
+          } catch (error: any) {
+            if (error.code === 'auth/requires-recent-login') {
+              Alert.alert('エラー', '再ログインしてから実行してください。');
+            }
+          }
+        },
+      },
+    ]);
+  };
+
+  return (
+    <SafeAreaView style={styles.container}>
+      <View style={styles.modalHeader}>
+        <Text style={styles.modalTitle}>設定</Text>
+        <TouchableOpacity onPress={() => router.back()}>
+          <X color="#fff" size={24} />
+        </TouchableOpacity>
+      </View>
+
+      <ScrollView contentContainerStyle={styles.scrollContent}>
+        {/* セクション：プロフィール */}
+        <View style={{ marginTop: 20 }}>
+          <Text style={[styles.sectionHeaderText, { marginBottom: 10 }]}>PROFILE</Text>
+          <TouchableOpacity 
+            style={styles.routineItem} 
+            onPress={() => router.push("/settings/profile")}
+          >
+            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+              <View style={{ backgroundColor: '#333', padding: 8, borderRadius: 10, marginRight: 15 }}>
+                <User color="#2ecc71" size={20} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.routineNameText}>プロフィール編集</Text>
+                <Text style={styles.routineDescText}>名前の変更など</Text>
+              </View>
+              <ChevronRight color="#444" size={20} />
+            </View>
+          </TouchableOpacity>
+        </View>
+
+        {/* セクション：アカウント */}
+        <View style={{ marginTop: 30 }}>
+          <Text style={[styles.sectionHeaderText, { marginBottom: 10 }]}>ACCOUNT</Text>
+          
+          <TouchableOpacity style={styles.routineItem} onPress={handleSignOut}>
+            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+              <View style={{ backgroundColor: '#333', padding: 8, borderRadius: 10, marginRight: 15 }}>
+                <LogOut color="#fff" size={20} />
+              </View>
+              <Text style={styles.routineNameText}>ログアウト</Text>
+            </View>
+          </TouchableOpacity>
+
+          <TouchableOpacity 
+            style={[styles.routineItem, { marginTop: 10 }]} 
+            onPress={handleDeleteAccount}
+          >
+            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+              <View style={{ backgroundColor: '#333', padding: 8, borderRadius: 10, marginRight: 15 }}>
+                <Trash2 color="#ff4444" size={20} />
+              </View>
+              <Text style={[styles.routineNameText, { color: '#ff4444' }]}>アカウントを削除</Text>
+            </View>
+          </TouchableOpacity>
+        </View>
+      </ScrollView>
+    </SafeAreaView>
+  );
+}
