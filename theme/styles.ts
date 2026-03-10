@@ -46,10 +46,60 @@ export const styles = StyleSheet.create({
   aiBox: { backgroundColor: '#e0e0e0', borderRadius: 15, width: '48%', height: 80 },
 
   // Training Screen & Modal
-  headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 16, paddingBottom: 20, borderBottomWidth: 1, borderBottomColor: '#333', marginBottom: 10, paddingTop: 20 },
-  headerLabel: { color: '#888', fontSize: 12 },
-  routineSelector: { flexDirection: 'row', alignItems: 'center', marginTop: 4 },
-  routineText: { color: '#fff', fontSize: 20, fontWeight: 'bold', marginRight: 5 },
+  headerRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 0,
+    paddingBottom: 15,
+    borderBottomWidth: 1,
+    borderBottomColor: '#333',
+    marginBottom: 0,
+    paddingTop: 10
+  },
+  headerContent: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    width: '100%',
+    paddingHorizontal: 16,
+  },
+  categoryContainer: {
+    borderBottomWidth: 1,
+    borderBottomColor: '#333',
+    paddingBottom: 15,
+    marginBottom: 0,
+  },
+
+  // ★ tabScroll はここに1つだけ残す！
+  tabScroll: { 
+    paddingHorizontal: 16, 
+    marginBottom: 10 
+  },
+
+  headerLabel: {
+    color: '#888',
+    fontSize: 14,
+    fontWeight: 'normal',
+    letterSpacing: 1,
+    textTransform: 'uppercase',
+  },
+  homeWelcomeText: {
+    color: '#888',
+    fontSize: 14,
+    marginBottom: 4,
+  },
+  routineSelector: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 4
+  },
+  routineText: {
+    color: '#fff',
+    fontSize: 24,
+    fontWeight: 'bold',
+    marginRight: 8
+  },
   timerButton: { flexDirection: 'row', backgroundColor: '#2ecc71', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 20, alignItems: 'center' },
   timerText: { color: '#000', fontWeight: 'bold', marginLeft: 5 },
 
@@ -91,10 +141,30 @@ export const styles = StyleSheet.create({
   addExerciseBtn: { backgroundColor: '#2ecc71', flexDirection: 'row', justifyContent: 'center', alignItems: 'center', padding: 15, borderRadius: 10, marginTop: 20 },
   addExerciseBtnText: { color: '#000', fontWeight: 'bold', fontSize: 16, marginLeft: 10 },
 
-  modalContainer: { flex: 1, backgroundColor: '#1a1a1a', paddingTop: 20 },
-  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', padding: 16, borderBottomWidth: 1, borderColor: '#333' },
+  modalContainer: {
+    flex: 1,
+    backgroundColor: '#1a1a1a',
+    paddingTop: 32
+  },
+  modalHeader: { 
+    flexDirection: 'row', 
+    justifyContent: 'space-between', 
+    alignItems: 'center',
+    paddingTop: 28,
+    paddingBottom: 16, 
+    paddingHorizontal: 24,
+    borderBottomWidth: 1, 
+    borderColor: '#333' 
+  },
+  modalCategoryContainer: {
+    paddingTop: 15,
+    paddingBottom: 15,
+    borderBottomWidth: 1,
+    borderBottomColor: '#333',
+    backgroundColor: '#1a1a1a',
+  },
   modalTitle: { color: '#fff', fontSize: 18, fontWeight: 'bold' },
-  tabScroll: { paddingHorizontal: 10, marginBottom: 10 },
+  
   tabBtn: { paddingVertical: 8, paddingHorizontal: 16, marginRight: 10, borderRadius: 20, backgroundColor: '#333' },
   activeTabBtn: { backgroundColor: '#2ecc71' },
   tabText: { color: '#888' },
@@ -104,10 +174,8 @@ export const styles = StyleSheet.create({
 
   tabBar: { backgroundColor: '#2a2a2a', borderTopWidth: 0, height: 60, paddingBottom: 10 },
 
-  // 設定画面のスタイル
   settingsItem: { paddingVertical: 10 },
 
-  // 終了ボタン
   finishBtn: {
     backgroundColor: '#fff',
     padding: 18,
@@ -223,4 +291,3 @@ export const styles = StyleSheet.create({
     fontSize: 12,
   },
 });
-
