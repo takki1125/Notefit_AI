@@ -12,6 +12,7 @@ import {
 import { Trash2, Sparkles } from 'lucide-react-native'; // ★追加：AIっぽいキラキラアイコン
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
+import { getFunctions, httpsCallable } from 'firebase/functions';
 
 import { auth, db } from '../../firebaseConfig';
 import { styles } from '../../theme/styles';
@@ -68,26 +69,54 @@ export default function FoodTabScreen() {
   const totalFat = meals.reduce((sum, item) => sum + item.fat, 0);
   const totalCarb = meals.reduce((sum, item) => sum + item.carb, 0);
 
-  // ★追加：相方さんがAI通信処理をここに書くためのダミー関数
-  const handleAIGenerate = () => {
+  const handleAIGenerate = async () => {
     if (!aiInput.trim()) {
       Alert.alert('エラー', 'AIに解析させる料理名を入力してください');
       return;
     }
 
-    // UIのテスト用：ローディング状態にする
     setIsAiLoading(true);
 
-    // TODO: ここに相方がAI APIと通信する処理を書く
-    // 通信が終わったら、下のフォーム (foodName, cal, pro, fat, carb) に取得した値をセットする
-    setTimeout(() => {
-      // 仮のダミーデータ反映テスト
-      setFoodName(aiInput);
-      setCal('500'); // 例：ダミーのカロリー
+    try {
+      // Cloud Functions（Callable）のクライアント取得
+      const functions = getFunctions(undefined, 'asia-northeast1');
+      const analyzeFoodPFC = httpsCallable(functions, 'analyzeFoodPFC');
+
+      // Cloud Functions を呼び出し
+      const res = await analyzeFoodPFC({ text: aiInput.trim() });
+
+      const data = res.data as any;
+
+      if (!data || !data.total) {
+        Alert.alert('解析エラー', 'AIから予期しない形式のデータが返されました。');
+        return;
+      }
+
+      const total = data.total as {
+        name?: string;
+        cal?: number;
+        pro?: number;
+        fat?: number;
+        carb?: number;
+      };
+
+      // 合算1件としてフォームに反映
+      setFoodName(total.name ?? aiInput.trim());
+      setCal(String(total.cal ?? 0));
+      setPro(String(total.pro ?? 0));
+      setFat(String(total.fat ?? 0));
+      setCarb(String(total.carb ?? 0));
+
+      setAiInput('');
+    } catch (error: any) {
+      console.error('handleAIGenerate error', error);
+      Alert.alert(
+        '解析に失敗しました',
+        error?.message ?? '通信エラーまたはサーバーエラーが発生しました。'
+      );
+    } finally {
       setIsAiLoading(false);
-      setAiInput(''); // 入力欄をクリア
-      Alert.alert('UIテスト', '相方へ：ここにAIのレスポンスを反映させてね！');
-    }, 1500);
+    }
   };
 
   const handleAddFood = () => {
