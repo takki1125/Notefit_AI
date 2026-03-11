@@ -7,12 +7,16 @@ import {
   TextInput,
   TouchableOpacity,
   Alert,
-  ActivityIndicator // ★追加：ローディングのぐるぐる
+  ActivityIndicator
 } from 'react-native';
-import { Trash2, Sparkles } from 'lucide-react-native'; // ★追加：AIっぽいキラキラアイコン
+import { Trash2, Sparkles } from 'lucide-react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+<<<<<<< HEAD
 import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { getFunctions, httpsCallable } from 'firebase/functions';
+=======
+import { doc, setDoc, getDoc, serverTimestamp } from 'firebase/firestore';
+>>>>>>> 5465913d89ee4b504cb97918ac2148fb938c0bc1
 
 import { auth, db } from '../../firebaseConfig';
 import { styles } from '../../theme/styles';
@@ -30,14 +34,11 @@ const STORAGE_KEY = '@food_meals_today';
 
 export default function FoodTabScreen() {
   const [meals, setMeals] = useState<Meal[]>([]);
-
   const [foodName, setFoodName] = useState('');
   const [cal, setCal] = useState('');
   const [pro, setPro] = useState('');
   const [fat, setFat] = useState('');
   const [carb, setCarb] = useState('');
-
-  // ★追加：AI解析用のState
   const [aiInput, setAiInput] = useState('');
   const [isAiLoading, setIsAiLoading] = useState(false);
 
@@ -45,23 +46,16 @@ export default function FoodTabScreen() {
     const loadLocalData = async () => {
       try {
         const stored = await AsyncStorage.getItem(STORAGE_KEY);
-        if (stored) {
-          setMeals(JSON.parse(stored));
-        }
-      } catch (e) {
-        console.error('ローカルデータの読み込み失敗:', e);
-      }
+        if (stored) setMeals(JSON.parse(stored));
+      } catch (e) { console.error('ローカルデータの読み込み失敗:', e); }
     };
     loadLocalData();
   }, []);
 
   const saveToLocal = async (newMeals: Meal[]) => {
     setMeals(newMeals);
-    try {
-      await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(newMeals));
-    } catch (e) {
-      console.error('ローカル保存失敗:', e);
-    }
+    try { await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(newMeals)); }
+    catch (e) { console.error('ローカル保存失敗:', e); }
   };
 
   const totalCal = meals.reduce((sum, item) => sum + item.cal, 0);
@@ -69,12 +63,17 @@ export default function FoodTabScreen() {
   const totalFat = meals.reduce((sum, item) => sum + item.fat, 0);
   const totalCarb = meals.reduce((sum, item) => sum + item.carb, 0);
 
+<<<<<<< HEAD
+=======
+  // --- ★進化：AI解析 ＆ マイ辞書検索ロジック ---
+>>>>>>> 5465913d89ee4b504cb97918ac2148fb938c0bc1
   const handleAIGenerate = async () => {
     if (!aiInput.trim()) {
-      Alert.alert('エラー', 'AIに解析させる料理名を入力してください');
+      Alert.alert('エラー', '料理名を入力してくれ');
       return;
     }
 
+<<<<<<< HEAD
     setIsAiLoading(true);
 
     try {
@@ -116,10 +115,59 @@ export default function FoodTabScreen() {
       );
     } finally {
       setIsAiLoading(false);
+=======
+    const user = auth.currentUser;
+    if (!user) return;
+
+    setIsAiLoading(true);
+
+    try {
+      // 1. まずは Firestore の「food_dictionary」から検索
+      const dictRef = doc(db, "users", user.uid, "food_dictionary", aiInput.trim());
+      const dictSnap = await getDoc(dictRef);
+
+      if (dictSnap.exists()) {
+        // 辞書にあった！
+        const data = dictSnap.data();
+        setFoodName(aiInput);
+        setCal(String(data.cal));
+        setPro(String(data.pro));
+        setFat(String(data.fat));
+        setCarb(String(data.carb));
+        setIsAiLoading(false);
+        setAiInput('');
+        return;
+      }
+
+      // 2. 辞書になければ AI 解析を呼ぶ
+      // ※ここに相方の AI API 呼び出しを繋ぐんだぜ！今はダミー。
+      const aiResult = await mockAICall(aiInput); 
+
+      if (aiResult) {
+        setFoodName(aiResult.name);
+        setCal(String(aiResult.cal));
+        setPro(String(aiResult.pro));
+        setFat(String(aiResult.fat));
+        setCarb(String(aiResult.carb));
+      }
+    } catch (e) {
+      console.error(e);
+      Alert.alert('エラー', '解析に失敗したぜ');
+    } finally {
+      setIsAiLoading(false);
+      setAiInput('');
+>>>>>>> 5465913d89ee4b504cb97918ac2148fb938c0bc1
     }
   };
 
-  const handleAddFood = () => {
+  // AI解析のダミー（実際はここでお前のAIエンジンを叩く）
+  const mockAICall = async (name: string) => {
+    await new Promise(resolve => setTimeout(resolve, 1500));
+    return { name, cal: 450, pro: 20, fat: 15, carb: 50 };
+  };
+
+  // --- ★進化：リスト追加時に「辞書」へ保存/更新 ---
+  const handleAddFood = async () => {
     if (!foodName.trim() || !cal) {
       Alert.alert('エラー', '最低限「食べたもの」と「カロリー」は入力して！');
       return;
@@ -134,7 +182,22 @@ export default function FoodTabScreen() {
       carb: parseInt(carb) || 0,
     };
 
+    // リストに追加
     saveToLocal([...meals, newFood]);
+
+    // 同時に「food_dictionary」を更新（覚える！）
+    const user = auth.currentUser;
+    if (user) {
+      const dictRef = doc(db, "users", user.uid, "food_dictionary", foodName.trim());
+      await setDoc(dictRef, {
+        name: foodName,
+        cal: newFood.cal,
+        pro: newFood.pro,
+        fat: newFood.fat,
+        carb: newFood.carb,
+        updatedAt: serverTimestamp()
+      });
+    }
 
     setFoodName(''); setCal(''); setPro(''); setFat(''); setCarb('');
   };
@@ -157,11 +220,7 @@ export default function FoodTabScreen() {
         onPress: async () => {
           try {
             const user = auth.currentUser;
-            if (!user) {
-              Alert.alert('エラー', 'ログイン情報がありません');
-              return;
-            }
-
+            if (!user) return;
             const now = new Date();
             const dateStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
             const docId = `${dateStr}_Food`;
@@ -170,18 +229,13 @@ export default function FoodTabScreen() {
               date: serverTimestamp(),
               dateObj: now.toISOString(),
               meals: meals,
-              totalCal,
-              totalPro,
-              totalFat,
-              totalCarb
+              totalCal, totalPro, totalFat, totalCarb
             });
 
             await AsyncStorage.removeItem(STORAGE_KEY);
             setMeals([]);
-
             Alert.alert('Good Job!', '今日の食事データをクラウドに保存しました！');
           } catch (error) {
-            console.error(error);
             Alert.alert('エラー', '保存に失敗しました');
           }
         }
@@ -191,48 +245,29 @@ export default function FoodTabScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
-      <View style={styles.headerRow}>
-        <Text style={styles.headerLabel}>Today's Nutrition</Text>
-      </View>
-
+      <View style={styles.headerRow}><View style={styles.headerContent}><Text style={styles.headerLabel}>Today's Nutrition</Text></View></View>
       <ScrollView contentContainerStyle={{ padding: 20 }}>
-
+        
+        {/* 合計表示 */}
         <View style={{ backgroundColor: '#1a1a1a', padding: 20, borderRadius: 16, marginBottom: 20 }}>
-          <Text style={{ color: '#fff', fontSize: 18, fontWeight: 'bold', marginBottom: 15, textAlign: 'center' }}>
-            1日の合計摂取量
-          </Text>
-
+          <Text style={{ color: '#fff', fontSize: 18, fontWeight: 'bold', marginBottom: 15, textAlign: 'center' }}>1日の合計摂取量</Text>
           <View style={{ alignItems: 'center', marginBottom: 20 }}>
             <Text style={{ color: '#666', fontSize: 14, marginBottom: 5 }}>カロリー</Text>
             <Text style={{ color: '#2ecc71', fontSize: 32, fontWeight: 'bold' }}>{totalCal} <Text style={{ fontSize: 16 }}>kcal</Text></Text>
           </View>
-
           <View style={{ flexDirection: 'row', justifyContent: 'space-around' }}>
-            <View style={{ alignItems: 'center' }}>
-              <Text style={{ color: '#666', fontSize: 12, marginBottom: 5 }}>タンパク質 (P)</Text>
-              <Text style={{ color: '#4facfe', fontSize: 20, fontWeight: 'bold' }}>{totalPro}g</Text>
-            </View>
-            <View style={{ alignItems: 'center' }}>
-              <Text style={{ color: '#666', fontSize: 12, marginBottom: 5 }}>脂質 (F)</Text>
-              <Text style={{ color: '#f6d365', fontSize: 20, fontWeight: 'bold' }}>{totalFat}g</Text>
-            </View>
-            <View style={{ alignItems: 'center' }}>
-              <Text style={{ color: '#666', fontSize: 12, marginBottom: 5 }}>炭水化物 (C)</Text>
-              <Text style={{ color: '#ff0844', fontSize: 20, fontWeight: 'bold' }}>{totalCarb}g</Text>
-            </View>
+            <View style={{ alignItems: 'center' }}><Text style={{ color: '#666', fontSize: 12 }}>タンパク質</Text><Text style={{ color: '#4facfe', fontSize: 20, fontWeight: 'bold' }}>{totalPro}g</Text></View>
+            <View style={{ alignItems: 'center' }}><Text style={{ color: '#666', fontSize: 12 }}>脂質</Text><Text style={{ color: '#f6d365', fontSize: 20, fontWeight: 'bold' }}>{totalFat}g</Text></View>
+            <View style={{ alignItems: 'center' }}><Text style={{ color: '#666', fontSize: 12 }}>炭水化物</Text><Text style={{ color: '#ff0844', fontSize: 20, fontWeight: 'bold' }}>{totalCarb}g</Text></View>
           </View>
         </View>
 
-        {/* ★新設：AI自動入力エリア */}
+        {/* AI自動入力 兼 辞書検索エリア */}
         <View style={{ backgroundColor: '#2a2a2a', padding: 15, borderRadius: 12, marginBottom: 20, borderWidth: 1, borderColor: '#444' }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 10 }}>
             <Sparkles color="#4facfe" size={20} style={{ marginRight: 8 }} />
-            <Text style={{ color: '#fff', fontSize: 16, fontWeight: 'bold' }}>AIで自動解析</Text>
+            <Text style={{ color: '#fff', fontSize: 16, fontWeight: 'bold' }}>AI ＆ 辞書検索</Text>
           </View>
-          <Text style={{ color: '#888', fontSize: 12, marginBottom: 10 }}>
-            料理名や食べたものを入力すると、AIがPFCとカロリーを推測して下のフォームに入力します。
-          </Text>
-
           <View style={{ flexDirection: 'row', gap: 10 }}>
             <TextInput
               style={[styles.inputField, { flex: 1, marginBottom: 0 }]}
@@ -241,63 +276,42 @@ export default function FoodTabScreen() {
               value={aiInput}
               onChangeText={setAiInput}
             />
-            <TouchableOpacity
-              style={[styles.loginButton, { marginTop: 0, width: 60, padding: 0, justifyContent: 'center' }]}
-              onPress={handleAIGenerate}
-              disabled={isAiLoading}
-            >
-              {isAiLoading ? (
-                <ActivityIndicator color="#000" />
-              ) : (
-                <Text style={{ color: '#000', fontWeight: 'bold' }}>解析</Text>
-              )}
+            <TouchableOpacity style={[styles.loginButton, { marginTop: 0, width: 60, justifyContent: 'center' }]} onPress={handleAIGenerate} disabled={isAiLoading}>
+              {isAiLoading ? <ActivityIndicator color="#000" /> : <Text style={{ color: '#000', fontWeight: 'bold' }}>検索</Text>}
             </TouchableOpacity>
           </View>
         </View>
 
+        {/* 履歴 */}
         {meals.length > 0 && (
           <View style={{ marginBottom: 20 }}>
             <Text style={{ color: '#fff', fontSize: 16, fontWeight: 'bold', marginBottom: 10 }}>食べたもの履歴</Text>
             {meals.map((item) => (
               <View key={item.id} style={{ backgroundColor: '#1a1a1a', padding: 15, borderRadius: 12, marginBottom: 10, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
                 <View style={{ flex: 1 }}>
-                  <Text style={{ color: '#fff', fontSize: 16, fontWeight: 'bold', marginBottom: 5 }}>{item.name}</Text>
-                  <Text style={{ color: '#888', fontSize: 12 }}>
-                    {item.cal}kcal | P: {item.pro}g | F: {item.fat}g | C: {item.carb}g
-                  </Text>
+                  <Text style={{ color: '#fff', fontSize: 16, fontWeight: 'bold' }}>{item.name}</Text>
+                  <Text style={{ color: '#888', fontSize: 12 }}>{item.cal}kcal | P: {item.pro}g | F: {item.fat}g | C: {item.carb}g</Text>
                 </View>
-                <TouchableOpacity onPress={() => handleRemoveFood(item.id)} style={{ padding: 10 }}>
-                  <Trash2 color="#ff4444" size={20} />
-                </TouchableOpacity>
+                <TouchableOpacity onPress={() => handleRemoveFood(item.id)} style={{ padding: 10 }}><Trash2 color="#ff4444" size={20} /></TouchableOpacity>
               </View>
             ))}
           </View>
         )}
 
+        {/* 手動入力フォーム */}
         <View style={{ backgroundColor: '#1a1a1a', padding: 15, borderRadius: 12, marginBottom: 20 }}>
-          {/* ★修正：「＋ 食事を追加する」の「＋」を削除 */}
-          <Text style={{ color: '#2ecc71', fontSize: 16, fontWeight: 'bold', marginBottom: 15 }}>食事を追加する</Text>
-
-          <TextInput
-            style={[styles.inputField, { marginBottom: 10 }]}
-            placeholder="食べたもの (例: 鶏むね肉)"
-            placeholderTextColor="#666"
-            value={foodName}
-            onChangeText={setFoodName}
-          />
-
+          <Text style={{ color: '#2ecc71', fontSize: 16, fontWeight: 'bold', marginBottom: 15 }}>食事を追加・修正</Text>
+          <TextInput style={[styles.inputField, { marginBottom: 10 }]} placeholder="食べたもの" placeholderTextColor="#666" value={foodName} onChangeText={setFoodName} />
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 10 }}>
-            <TextInput style={[styles.inputField, { flex: 1, marginRight: 5, marginBottom: 0 }]} keyboardType="numeric" placeholder="カロリー" placeholderTextColor="#666" value={cal} onChangeText={setCal} />
-            <TextInput style={[styles.inputField, { flex: 1, marginLeft: 5, marginBottom: 0 }]} keyboardType="numeric" placeholder="タンパク質(g)" placeholderTextColor="#666" value={pro} onChangeText={setPro} />
+            <TextInput style={[styles.inputField, { flex: 1, marginRight: 5, marginBottom: 0 }]} keyboardType="numeric" placeholder="カロリー" value={cal} onChangeText={setCal} />
+            <TextInput style={[styles.inputField, { flex: 1, marginLeft: 5, marginBottom: 0 }]} keyboardType="numeric" placeholder="P(g)" value={pro} onChangeText={setPro} />
           </View>
-
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 15 }}>
-            <TextInput style={[styles.inputField, { flex: 1, marginRight: 5, marginBottom: 0 }]} keyboardType="numeric" placeholder="脂質(g)" placeholderTextColor="#666" value={fat} onChangeText={setFat} />
-            <TextInput style={[styles.inputField, { flex: 1, marginLeft: 5, marginBottom: 0 }]} keyboardType="numeric" placeholder="炭水化物(g)" placeholderTextColor="#666" value={carb} onChangeText={setCarb} />
+            <TextInput style={[styles.inputField, { flex: 1, marginRight: 5, marginBottom: 0 }]} keyboardType="numeric" placeholder="F(g)" value={fat} onChangeText={setFat} />
+            <TextInput style={[styles.inputField, { flex: 1, marginLeft: 5, marginBottom: 0 }]} keyboardType="numeric" placeholder="C(g)" value={carb} onChangeText={setCarb} />
           </View>
-
           <TouchableOpacity style={[styles.loginButton, { marginTop: 0 }]} onPress={handleAddFood}>
-            <Text style={styles.loginButtonText}>リストに追加</Text>
+            <Text style={styles.loginButtonText}>リストに追加して辞書に保存</Text>
           </TouchableOpacity>
         </View>
 
@@ -306,7 +320,6 @@ export default function FoodTabScreen() {
             <Text style={styles.finishBtnText}>今日の食事をクラウドに保存する</Text>
           </TouchableOpacity>
         )}
-
       </ScrollView>
     </SafeAreaView>
   );
