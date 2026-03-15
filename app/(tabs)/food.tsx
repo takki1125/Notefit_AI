@@ -26,6 +26,7 @@ type Meal = {
 };
 
 const STORAGE_KEY = '@food_meals_today';
+const DATE_KEY = '@food_last_opened_date';
 
 export default function FoodTabScreen() {
   const [meals, setMeals] = useState<Meal[]>([]);
@@ -37,20 +38,65 @@ export default function FoodTabScreen() {
   const [aiInput, setAiInput] = useState('');
   const [isAiLoading, setIsAiLoading] = useState(false);
 
+  // 1. 起動時：ローカルデータ読み込み ＆ 日付変更チェック
   useEffect(() => {
     const loadLocalData = async () => {
       try {
-        const stored = await AsyncStorage.getItem(STORAGE_KEY);
-        if (stored) setMeals(JSON.parse(stored));
-      } catch (e) { console.error('ローカルデータの読み込み失敗:', e); }
+        const todayStr = new Date().toDateString();
+        const storedDate = await AsyncStorage.getItem(DATE_KEY);
+
+        if (storedDate !== todayStr) {
+          // 日付が変わっていればリセット（新しい1日の始まり）
+          setMeals([]);
+          await AsyncStorage.removeItem(STORAGE_KEY);
+          await AsyncStorage.setItem(DATE_KEY, todayStr);
+        } else {
+          // 今日ならデータを復元
+          const stored = await AsyncStorage.getItem(STORAGE_KEY);
+          if (stored) setMeals(JSON.parse(stored));
+        }
+      } catch (e) {
+        console.error('データの読み込み失敗:', e);
+      }
     };
     loadLocalData();
   }, []);
 
-  const saveToLocal = async (newMeals: Meal[]) => {
-    setMeals(newMeals);
-    try { await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(newMeals)); }
-    catch (e) { console.error('ローカル保存失敗:', e); }
+  // 2. ★超重要：完全オートセーブ関数（ローカル＆クラウド）
+  const saveMealsToAll = async (newMeals: Meal[]) => {
+    setMeals(newMeals); // 画面に即反映
+
+    // ① ローカルに保存
+    try {
+      await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(newMeals));
+    } catch (e) { console.error('ローカル保存失敗:', e); }
+
+    // ② 裏でこっそり Firestore を更新（オートセーブ）
+    const user = auth.currentUser;
+    if (user) {
+      try {
+        const now = new Date();
+        const dateStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+        const docId = `${dateStr}_Food`;
+
+        const tCal = newMeals.reduce((s, i) => s + i.cal, 0);
+        const tPro = newMeals.reduce((s, i) => s + i.pro, 0);
+        const tFat = newMeals.reduce((s, i) => s + i.fat, 0);
+        const tCarb = newMeals.reduce((s, i) => s + i.carb, 0);
+
+        await setDoc(doc(db, 'users', user.uid, 'food_logs', docId), {
+          date: serverTimestamp(),
+          dateObj: now.toISOString(),
+          meals: newMeals,
+          totalCal: tCal,
+          totalPro: tPro,
+          totalFat: tFat,
+          totalCarb: tCarb
+        });
+      } catch (e) {
+        console.error("オートセーブ失敗:", e);
+      }
+    }
   };
 
   const totalCal = meals.reduce((sum, item) => sum + item.cal, 0);
@@ -58,7 +104,7 @@ export default function FoodTabScreen() {
   const totalFat = meals.reduce((sum, item) => sum + item.fat, 0);
   const totalCarb = meals.reduce((sum, item) => sum + item.carb, 0);
 
-  // --- ★進化：AI解析 ＆ マイ辞書検索ロジック ---
+  // --- AI解析 ＆ マイ辞書検索ロジック ---
   const handleAIGenerate = async () => {
     if (!aiInput.trim()) {
       Alert.alert('エラー', '料理名を入力してくれ');
@@ -71,12 +117,10 @@ export default function FoodTabScreen() {
     setIsAiLoading(true);
 
     try {
-      // 1. まずは Firestore の「food_dictionary」から検索
       const dictRef = doc(db, "users", user.uid, "food_dictionary", aiInput.trim());
       const dictSnap = await getDoc(dictRef);
 
       if (dictSnap.exists()) {
-        // 辞書にあった！
         const data = dictSnap.data();
         setFoodName(aiInput);
         setCal(String(data.cal));
@@ -88,9 +132,7 @@ export default function FoodTabScreen() {
         return;
       }
 
-      // 2. 辞書になければ AI 解析を呼ぶ
-      // ※ここに相方の AI API 呼び出しを繋ぐんだぜ！今はダミー。
-      const aiResult = await mockAICall(aiInput); 
+      const aiResult = await mockAICall(aiInput);
 
       if (aiResult) {
         setFoodName(aiResult.name);
@@ -108,13 +150,12 @@ export default function FoodTabScreen() {
     }
   };
 
-  // AI解析のダミー（実際はここでお前のAIエンジンを叩く）
   const mockAICall = async (name: string) => {
     await new Promise(resolve => setTimeout(resolve, 1500));
     return { name, cal: 450, pro: 20, fat: 15, carb: 50 };
   };
 
-  // --- ★進化：リスト追加時に「辞書」へ保存/更新 ---
+  // --- リスト追加時にオートセーブ ＆ 辞書保存 ---
   const handleAddFood = async () => {
     if (!foodName.trim() || !cal) {
       Alert.alert('エラー', '最低限「食べたもの」と「カロリー」は入力して！');
@@ -130,10 +171,9 @@ export default function FoodTabScreen() {
       carb: parseInt(carb) || 0,
     };
 
-    // リストに追加
-    saveToLocal([...meals, newFood]);
+    // ★ 変更：オートセーブ関数を呼ぶ！
+    await saveMealsToAll([...meals, newFood]);
 
-    // 同時に「food_dictionary」を更新（覚える！）
     const user = auth.currentUser;
     if (user) {
       const dictRef = doc(db, "users", user.uid, "food_dictionary", foodName.trim());
@@ -150,52 +190,18 @@ export default function FoodTabScreen() {
     setFoodName(''); setCal(''); setPro(''); setFat(''); setCarb('');
   };
 
+  // --- 削除時もオートセーブ ---
   const handleRemoveFood = (id: string) => {
     const newMeals = meals.filter(item => item.id !== id);
-    saveToLocal(newMeals);
-  };
-
-  const handleSaveToFirebase = () => {
-    if (meals.length === 0) {
-      Alert.alert('エラー', '保存する食事がありません');
-      return;
-    }
-
-    Alert.alert("確認", "この1日のデータをクラウドに保存して終了しますか？", [
-      { text: "キャンセル", style: "cancel" },
-      {
-        text: "保存する",
-        onPress: async () => {
-          try {
-            const user = auth.currentUser;
-            if (!user) return;
-            const now = new Date();
-            const dateStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
-            const docId = `${dateStr}_Food`;
-
-            await setDoc(doc(db, 'users', user.uid, 'food_logs', docId), {
-              date: serverTimestamp(),
-              dateObj: now.toISOString(),
-              meals: meals,
-              totalCal, totalPro, totalFat, totalCarb
-            });
-
-            await AsyncStorage.removeItem(STORAGE_KEY);
-            setMeals([]);
-            Alert.alert('Good Job!', '今日の食事データをクラウドに保存しました！');
-          } catch (error) {
-            Alert.alert('エラー', '保存に失敗しました');
-          }
-        }
-      }
-    ]);
+    // ★ 変更：ゴミ箱を押した時もクラウドから消えるように同期！
+    saveMealsToAll(newMeals);
   };
 
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.headerRow}><View style={styles.headerContent}><Text style={styles.headerLabel}>Today's Nutrition</Text></View></View>
       <ScrollView contentContainerStyle={{ padding: 20 }}>
-        
+
         {/* 合計表示 */}
         <View style={{ backgroundColor: '#1a1a1a', padding: 20, borderRadius: 16, marginBottom: 20 }}>
           <Text style={{ color: '#fff', fontSize: 18, fontWeight: 'bold', marginBottom: 15, textAlign: 'center' }}>1日の合計摂取量</Text>
@@ -247,7 +253,7 @@ export default function FoodTabScreen() {
         )}
 
         {/* 手動入力フォーム */}
-        <View style={{ backgroundColor: '#1a1a1a', padding: 15, borderRadius: 12, marginBottom: 20 }}>
+        <View style={{ backgroundColor: '#1a1a1a', padding: 15, borderRadius: 12, marginBottom: 40 }}>
           <Text style={{ color: '#2ecc71', fontSize: 16, fontWeight: 'bold', marginBottom: 15 }}>食事を追加・修正</Text>
           <TextInput style={[styles.inputField, { marginBottom: 10 }]} placeholder="食べたもの" placeholderTextColor="#666" value={foodName} onChangeText={setFoodName} />
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 10 }}>
@@ -263,11 +269,6 @@ export default function FoodTabScreen() {
           </TouchableOpacity>
         </View>
 
-        {meals.length > 0 && (
-          <TouchableOpacity style={[styles.finishBtn, { marginBottom: 40 }]} onPress={handleSaveToFirebase}>
-            <Text style={styles.finishBtnText}>今日の食事をクラウドに保存する</Text>
-          </TouchableOpacity>
-        )}
       </ScrollView>
     </SafeAreaView>
   );
