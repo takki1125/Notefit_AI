@@ -1,48 +1,31 @@
 import { Tabs } from "expo-router";
 import { BarChart2, Dumbbell, Home, Utensils } from "lucide-react-native";
 import React from "react";
+import { Platform } from "react-native";
 
 export default function TabsLayout() {
   return (
     <Tabs
       screenOptions={{
-<<<<<<< Updated upstream
-<<<<<<< Updated upstream
-        headerShown: false, // 全タブの上のダサい自動タイトルを消す
+        // 全タブの上の自動タイトルを消す
+        headerShown: false,
         tabBarStyle: {
           backgroundColor: "#2a2a2a",
           borderTopWidth: 0,
-          // ★ 重複していた部分をスッキリ統合！
           height: Platform.OS === "ios" ? 85 : 65,
           paddingBottom: Platform.OS === "ios" ? 25 : 10,
           paddingTop: 10,
           elevation: 0,
           shadowOpacity: 0,
-=======
-        // ★ここを追加：これで全タブの上のダサい自動タイトルが消える！
-        headerShown: false,
-        tabBarStyle: {
-          backgroundColor: "#2a2a2a",
-          borderTopWidth: 0,
-          height: 60,
->>>>>>> Stashed changes
-=======
-        // ★ここを追加：これで全タブの上のダサい自動タイトルが消える！
-        headerShown: false,
-        tabBarStyle: {
-          backgroundColor: "#2a2a2a",
-          borderTopWidth: 0,
-          height: 60,
->>>>>>> Stashed changes
         },
         tabBarItemStyle: {
-          margin: 0, // タッチ領域の余白を強制リセット
+          margin: 0,
           padding: 0,
           justifyContent: "center",
           alignItems: "center",
         },
         tabBarIconStyle: {
-          flex: 1, // アイコンのコンテナを親の高さ一杯に広げる
+          flex: 1,
           justifyContent: "center",
           alignItems: "center",
         },
