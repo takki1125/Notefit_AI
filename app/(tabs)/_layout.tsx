@@ -7,6 +7,7 @@ export default function TabsLayout() {
     <Tabs
       screenOptions={{
 <<<<<<< Updated upstream
+<<<<<<< Updated upstream
         headerShown: false, // 全タブの上のダサい自動タイトルを消す
         tabBarStyle: {
           backgroundColor: "#2a2a2a",
@@ -17,6 +18,14 @@ export default function TabsLayout() {
           paddingTop: 10,
           elevation: 0,
           shadowOpacity: 0,
+=======
+        // ★ここを追加：これで全タブの上のダサい自動タイトルが消える！
+        headerShown: false,
+        tabBarStyle: {
+          backgroundColor: "#2a2a2a",
+          borderTopWidth: 0,
+          height: 60,
+>>>>>>> Stashed changes
 =======
         // ★ここを追加：これで全タブの上のダサい自動タイトルが消える！
         headerShown: false,
