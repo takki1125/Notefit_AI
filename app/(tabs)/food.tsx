@@ -12,24 +12,8 @@ import {
   Text,
   TextInput,
   TouchableOpacity,
-<<<<<<< Updated upstream
-<<<<<<< Updated upstream
-  Alert,
-  ActivityIndicator
-} from 'react-native';
-import { Trash2, Sparkles } from 'lucide-react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { doc, setDoc, getDoc, serverTimestamp } from 'firebase/firestore';
-// ★追加：相方さんのAI通信に必要なインポート
-import { getFunctions, httpsCallable } from 'firebase/functions';
-=======
   View,
 } from "react-native";
->>>>>>> Stashed changes
-=======
-  View,
-} from "react-native";
->>>>>>> Stashed changes
 
 import { auth, db } from "../../firebaseConfig";
 import { styles } from "../../theme/styles";
@@ -43,16 +27,7 @@ type Meal = {
   carb: number;
 };
 
-<<<<<<< Updated upstream
-<<<<<<< Updated upstream
-const STORAGE_KEY = '@food_meals_today';
-const DATE_KEY = '@food_last_opened_date';
-=======
 const STORAGE_KEY = "@food_meals_today";
->>>>>>> Stashed changes
-=======
-const STORAGE_KEY = "@food_meals_today";
->>>>>>> Stashed changes
 
 export default function FoodTabScreen() {
   const [meals, setMeals] = useState<Meal[]>([]);
@@ -64,83 +39,24 @@ export default function FoodTabScreen() {
   const [aiInput, setAiInput] = useState("");
   const [isAiLoading, setIsAiLoading] = useState(false);
 
-  // 1. 起動時：ローカルデータ読み込み ＆ 日付変更チェック
   useEffect(() => {
     const loadLocalData = async () => {
       try {
-<<<<<<< Updated upstream
-        const todayStr = new Date().toDateString();
-        const storedDate = await AsyncStorage.getItem(DATE_KEY);
-
-        if (storedDate !== todayStr) {
-          setMeals([]);
-          await AsyncStorage.removeItem(STORAGE_KEY);
-          await AsyncStorage.setItem(DATE_KEY, todayStr);
-        } else {
-          const stored = await AsyncStorage.getItem(STORAGE_KEY);
-          if (stored) setMeals(JSON.parse(stored));
-        }
-      } catch (e) {
-        console.error('データの読み込み失敗:', e);
-=======
         const stored = await AsyncStorage.getItem(STORAGE_KEY);
         if (stored) setMeals(JSON.parse(stored));
       } catch (e) {
         console.error("ローカルデータの読み込み失敗:", e);
-<<<<<<< Updated upstream
->>>>>>> Stashed changes
-=======
->>>>>>> Stashed changes
       }
     };
     loadLocalData();
   }, []);
 
-  // 2. 完全オートセーブ関数（ローカル＆クラウド）
-  const saveMealsToAll = async (newMeals: Meal[]) => {
+  const saveToLocal = async (newMeals: Meal[]) => {
     setMeals(newMeals);
-<<<<<<< Updated upstream
-<<<<<<< Updated upstream
-
-    try {
-      await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(newMeals));
-    } catch (e) { console.error('ローカル保存失敗:', e); }
-
-    const user = auth.currentUser;
-    if (user) {
-      try {
-        const now = new Date();
-        const dateStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
-        const docId = `${dateStr}_Food`;
-
-        const tCal = newMeals.reduce((s, i) => s + i.cal, 0);
-        const tPro = newMeals.reduce((s, i) => s + i.pro, 0);
-        const tFat = newMeals.reduce((s, i) => s + i.fat, 0);
-        const tCarb = newMeals.reduce((s, i) => s + i.carb, 0);
-
-        await setDoc(doc(db, 'users', user.uid, 'food_logs', docId), {
-          date: serverTimestamp(),
-          dateObj: now.toISOString(),
-          meals: newMeals,
-          totalCal: tCal,
-          totalPro: tPro,
-          totalFat: tFat,
-          totalCarb: tCarb
-        });
-      } catch (e) {
-        console.error("オートセーブ失敗:", e);
-      }
-=======
-=======
->>>>>>> Stashed changes
     try {
       await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(newMeals));
     } catch (e) {
       console.error("ローカル保存失敗:", e);
-<<<<<<< Updated upstream
->>>>>>> Stashed changes
-=======
->>>>>>> Stashed changes
     }
   };
 
@@ -149,15 +65,7 @@ export default function FoodTabScreen() {
   const totalFat = meals.reduce((sum, item) => sum + item.fat, 0);
   const totalCarb = meals.reduce((sum, item) => sum + item.carb, 0);
 
-<<<<<<< Updated upstream
-<<<<<<< Updated upstream
-  // --- ★完璧合体版：相方AI ＆ マイ辞書検索ロジック ---
-=======
   // AI で自動解析
->>>>>>> Stashed changes
-=======
-  // AI で自動解析
->>>>>>> Stashed changes
   const handleAIGenerate = async () => {
     if (!aiInput.trim()) {
       Alert.alert("エラー", "料理名や食事内容を入力してくれ");
@@ -165,67 +73,6 @@ export default function FoodTabScreen() {
     }
 
     const user = auth.currentUser;
-<<<<<<< Updated upstream
-<<<<<<< Updated upstream
-    if (!user) return;
-
-    setIsAiLoading(true);
-
-    try {
-      // 1. まずは Firestore の「food_dictionary」から検索
-      const dictRef = doc(db, "users", user.uid, "food_dictionary", aiInput.trim());
-      const dictSnap = await getDoc(dictRef);
-
-      if (dictSnap.exists()) {
-        // 辞書にあったらAIは呼ばずにこっちを使う！
-        const data = dictSnap.data();
-        setFoodName(aiInput);
-        setCal(String(data.cal ?? 0));
-        setPro(String(data.pro ?? 0));
-        setFat(String(data.fat ?? 0));
-        setCarb(String(data.carb ?? 0));
-        setIsAiLoading(false);
-        setAiInput('');
-        return;
-      }
-
-      // 2. 辞書になければ、相方さんの Cloud Functions を呼び出し！
-      const functions = getFunctions(undefined, 'asia-northeast1');
-      const analyzeFoodPFC = httpsCallable(functions, 'analyzeFoodPFC');
-
-      const res = await analyzeFoodPFC({ text: aiInput.trim() });
-      const data = res.data as any;
-
-      if (!data || !data.total) {
-        Alert.alert('解析エラー', 'AIから予期しない形式のデータが返されました。');
-        return;
-      }
-
-      const total = data.total as {
-        name?: string;
-        cal?: number;
-        pro?: number;
-        fat?: number;
-        carb?: number;
-      };
-
-      // 合算1件としてフォームに反映
-      setFoodName(total.name ?? aiInput.trim());
-      setCal(String(total.cal ?? 0));
-      setPro(String(total.pro ?? 0));
-      setFat(String(total.fat ?? 0));
-      setCarb(String(total.carb ?? 0));
-
-      setAiInput('');
-    } catch (error: any) {
-      console.error('handleAIGenerate error', error);
-      Alert.alert(
-        '解析に失敗しました',
-        error?.message ?? '通信エラーまたはサーバーエラーが発生しました。'
-      );
-=======
-=======
->>>>>>> Stashed changes
     if (!user) {
       Alert.alert("エラー", "AI解析を使うにはログインが必要です");
       return;
@@ -272,23 +119,11 @@ export default function FoodTabScreen() {
         error?.code ||
         "AIでの解析に失敗しました。時間をおいて再度お試しください。";
       Alert.alert("エラー", message);
-<<<<<<< Updated upstream
->>>>>>> Stashed changes
-=======
->>>>>>> Stashed changes
     } finally {
       setIsAiLoading(false);
     }
   };
 
-<<<<<<< Updated upstream
-<<<<<<< Updated upstream
-  // --- リスト追加時にオートセーブ ＆ 辞書保存 ---
-=======
-=======
->>>>>>> Stashed changes
-  // --- ★進化：リスト追加時に「辞書」へ保存/更新 ---
->>>>>>> Stashed changes
   const handleAddFood = async () => {
     if (!foodName.trim() || !cal) {
       Alert.alert("エラー", "最低限「食べたもの」と「カロリー」は入力して！");
@@ -304,9 +139,10 @@ export default function FoodTabScreen() {
       carb: parseInt(carb) || 0,
     };
 
-    // オートセーブ関数を呼ぶ！
-    await saveMealsToAll([...meals, newFood]);
+    // リストに追加
+    saveToLocal([...meals, newFood]);
 
+    // 同時に「food_dictionary」を更新
     const user = auth.currentUser;
     if (user) {
       const dictRef = doc(
@@ -333,15 +169,7 @@ export default function FoodTabScreen() {
     setCarb("");
   };
 
-  // --- 削除時もオートセーブ ---
   const handleRemoveFood = (id: string) => {
-<<<<<<< Updated upstream
-<<<<<<< Updated upstream
-    const newMeals = meals.filter(item => item.id !== id);
-    saveMealsToAll(newMeals);
-=======
-=======
->>>>>>> Stashed changes
     const newMeals = meals.filter((item) => item.id !== id);
     saveToLocal(newMeals);
   };
@@ -361,7 +189,9 @@ export default function FoodTabScreen() {
             const user = auth.currentUser;
             if (!user) return;
             const now = new Date();
-            const dateStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+            const dateStr = `${now.getFullYear()}-${String(
+              now.getMonth() + 1,
+            ).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
             const docId = `${dateStr}_Food`;
 
             await setDoc(doc(db, "users", user.uid, "food_logs", docId), {
@@ -386,7 +216,6 @@ export default function FoodTabScreen() {
         },
       },
     ]);
->>>>>>> Stashed changes
   };
 
   return (
@@ -397,13 +226,6 @@ export default function FoodTabScreen() {
         </View>
       </View>
       <ScrollView contentContainerStyle={{ padding: 20 }}>
-<<<<<<< Updated upstream
-<<<<<<< Updated upstream
-
-=======
->>>>>>> Stashed changes
-=======
->>>>>>> Stashed changes
         {/* 合計表示 */}
         <View
           style={{
@@ -561,17 +383,6 @@ export default function FoodTabScreen() {
         )}
 
         {/* 手動入力フォーム */}
-<<<<<<< Updated upstream
-<<<<<<< Updated upstream
-        <View style={{ backgroundColor: '#1a1a1a', padding: 15, borderRadius: 12, marginBottom: 40 }}>
-          <Text style={{ color: '#2ecc71', fontSize: 16, fontWeight: 'bold', marginBottom: 15 }}>食事を追加・修正</Text>
-          <TextInput style={[styles.inputField, { marginBottom: 10 }]} placeholder="食べたもの" placeholderTextColor="#666" value={foodName} onChangeText={setFoodName} />
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 10 }}>
-            <TextInput style={[styles.inputField, { flex: 1, marginRight: 5, marginBottom: 0 }]} keyboardType="numeric" placeholder="カロリー" value={cal} onChangeText={setCal} />
-            <TextInput style={[styles.inputField, { flex: 1, marginLeft: 5, marginBottom: 0 }]} keyboardType="numeric" placeholder="P(g)" value={pro} onChangeText={setPro} />
-=======
-=======
->>>>>>> Stashed changes
         <View
           style={{
             backgroundColor: "#1a1a1a",
@@ -624,10 +435,6 @@ export default function FoodTabScreen() {
               value={pro}
               onChangeText={setPro}
             />
-<<<<<<< Updated upstream
->>>>>>> Stashed changes
-=======
->>>>>>> Stashed changes
           </View>
           <View
             style={{
@@ -667,8 +474,6 @@ export default function FoodTabScreen() {
           </TouchableOpacity>
         </View>
 
-<<<<<<< Updated upstream
-=======
         {meals.length > 0 && (
           <TouchableOpacity
             style={[styles.finishBtn, { marginBottom: 40 }]}
@@ -679,7 +484,6 @@ export default function FoodTabScreen() {
             </Text>
           </TouchableOpacity>
         )}
->>>>>>> Stashed changes
       </ScrollView>
     </SafeAreaView>
   );
