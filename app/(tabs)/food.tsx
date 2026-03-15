@@ -13,6 +13,7 @@ import {
   TextInput,
   TouchableOpacity,
 <<<<<<< Updated upstream
+<<<<<<< Updated upstream
   Alert,
   ActivityIndicator
 } from 'react-native';
@@ -21,6 +22,10 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { doc, setDoc, getDoc, serverTimestamp } from 'firebase/firestore';
 // ★追加：相方さんのAI通信に必要なインポート
 import { getFunctions, httpsCallable } from 'firebase/functions';
+=======
+  View,
+} from "react-native";
+>>>>>>> Stashed changes
 =======
   View,
 } from "react-native";
@@ -39,8 +44,12 @@ type Meal = {
 };
 
 <<<<<<< Updated upstream
+<<<<<<< Updated upstream
 const STORAGE_KEY = '@food_meals_today';
 const DATE_KEY = '@food_last_opened_date';
+=======
+const STORAGE_KEY = "@food_meals_today";
+>>>>>>> Stashed changes
 =======
 const STORAGE_KEY = "@food_meals_today";
 >>>>>>> Stashed changes
@@ -78,6 +87,9 @@ export default function FoodTabScreen() {
         if (stored) setMeals(JSON.parse(stored));
       } catch (e) {
         console.error("ローカルデータの読み込み失敗:", e);
+<<<<<<< Updated upstream
+>>>>>>> Stashed changes
+=======
 >>>>>>> Stashed changes
       }
     };
@@ -87,6 +99,7 @@ export default function FoodTabScreen() {
   // 2. 完全オートセーブ関数（ローカル＆クラウド）
   const saveMealsToAll = async (newMeals: Meal[]) => {
     setMeals(newMeals);
+<<<<<<< Updated upstream
 <<<<<<< Updated upstream
 
     try {
@@ -118,10 +131,15 @@ export default function FoodTabScreen() {
         console.error("オートセーブ失敗:", e);
       }
 =======
+=======
+>>>>>>> Stashed changes
     try {
       await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(newMeals));
     } catch (e) {
       console.error("ローカル保存失敗:", e);
+<<<<<<< Updated upstream
+>>>>>>> Stashed changes
+=======
 >>>>>>> Stashed changes
     }
   };
@@ -132,7 +150,11 @@ export default function FoodTabScreen() {
   const totalCarb = meals.reduce((sum, item) => sum + item.carb, 0);
 
 <<<<<<< Updated upstream
+<<<<<<< Updated upstream
   // --- ★完璧合体版：相方AI ＆ マイ辞書検索ロジック ---
+=======
+  // AI で自動解析
+>>>>>>> Stashed changes
 =======
   // AI で自動解析
 >>>>>>> Stashed changes
@@ -143,6 +165,7 @@ export default function FoodTabScreen() {
     }
 
     const user = auth.currentUser;
+<<<<<<< Updated upstream
 <<<<<<< Updated upstream
     if (!user) return;
 
@@ -201,6 +224,8 @@ export default function FoodTabScreen() {
         error?.message ?? '通信エラーまたはサーバーエラーが発生しました。'
       );
 =======
+=======
+>>>>>>> Stashed changes
     if (!user) {
       Alert.alert("エラー", "AI解析を使うにはログインが必要です");
       return;
@@ -247,6 +272,9 @@ export default function FoodTabScreen() {
         error?.code ||
         "AIでの解析に失敗しました。時間をおいて再度お試しください。";
       Alert.alert("エラー", message);
+<<<<<<< Updated upstream
+>>>>>>> Stashed changes
+=======
 >>>>>>> Stashed changes
     } finally {
       setIsAiLoading(false);
@@ -254,8 +282,11 @@ export default function FoodTabScreen() {
   };
 
 <<<<<<< Updated upstream
+<<<<<<< Updated upstream
   // --- リスト追加時にオートセーブ ＆ 辞書保存 ---
 =======
+=======
+>>>>>>> Stashed changes
   // --- ★進化：リスト追加時に「辞書」へ保存/更新 ---
 >>>>>>> Stashed changes
   const handleAddFood = async () => {
@@ -305,9 +336,12 @@ export default function FoodTabScreen() {
   // --- 削除時もオートセーブ ---
   const handleRemoveFood = (id: string) => {
 <<<<<<< Updated upstream
+<<<<<<< Updated upstream
     const newMeals = meals.filter(item => item.id !== id);
     saveMealsToAll(newMeals);
 =======
+=======
+>>>>>>> Stashed changes
     const newMeals = meals.filter((item) => item.id !== id);
     saveToLocal(newMeals);
   };
@@ -364,7 +398,10 @@ export default function FoodTabScreen() {
       </View>
       <ScrollView contentContainerStyle={{ padding: 20 }}>
 <<<<<<< Updated upstream
+<<<<<<< Updated upstream
 
+=======
+>>>>>>> Stashed changes
 =======
 >>>>>>> Stashed changes
         {/* 合計表示 */}
@@ -525,6 +562,7 @@ export default function FoodTabScreen() {
 
         {/* 手動入力フォーム */}
 <<<<<<< Updated upstream
+<<<<<<< Updated upstream
         <View style={{ backgroundColor: '#1a1a1a', padding: 15, borderRadius: 12, marginBottom: 40 }}>
           <Text style={{ color: '#2ecc71', fontSize: 16, fontWeight: 'bold', marginBottom: 15 }}>食事を追加・修正</Text>
           <TextInput style={[styles.inputField, { marginBottom: 10 }]} placeholder="食べたもの" placeholderTextColor="#666" value={foodName} onChangeText={setFoodName} />
@@ -532,6 +570,8 @@ export default function FoodTabScreen() {
             <TextInput style={[styles.inputField, { flex: 1, marginRight: 5, marginBottom: 0 }]} keyboardType="numeric" placeholder="カロリー" value={cal} onChangeText={setCal} />
             <TextInput style={[styles.inputField, { flex: 1, marginLeft: 5, marginBottom: 0 }]} keyboardType="numeric" placeholder="P(g)" value={pro} onChangeText={setPro} />
 =======
+=======
+>>>>>>> Stashed changes
         <View
           style={{
             backgroundColor: "#1a1a1a",
@@ -584,6 +624,9 @@ export default function FoodTabScreen() {
               value={pro}
               onChangeText={setPro}
             />
+<<<<<<< Updated upstream
+>>>>>>> Stashed changes
+=======
 >>>>>>> Stashed changes
           </View>
           <View
