@@ -11,12 +11,9 @@ import {
 } from 'react-native';
 import { Trash2, Sparkles } from 'lucide-react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-<<<<<<< HEAD
-import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
-import { getFunctions, httpsCallable } from 'firebase/functions';
-=======
 import { doc, setDoc, getDoc, serverTimestamp } from 'firebase/firestore';
->>>>>>> 5465913d89ee4b504cb97918ac2148fb938c0bc1
+// ★追加：相方さんのAI通信に必要なインポート
+import { getFunctions, httpsCallable } from 'firebase/functions';
 
 import { auth, db } from '../../firebaseConfig';
 import { styles } from '../../theme/styles';
@@ -51,12 +48,10 @@ export default function FoodTabScreen() {
         const storedDate = await AsyncStorage.getItem(DATE_KEY);
 
         if (storedDate !== todayStr) {
-          // 日付が変わっていればリセット（新しい1日の始まり）
           setMeals([]);
           await AsyncStorage.removeItem(STORAGE_KEY);
           await AsyncStorage.setItem(DATE_KEY, todayStr);
         } else {
-          // 今日ならデータを復元
           const stored = await AsyncStorage.getItem(STORAGE_KEY);
           if (stored) setMeals(JSON.parse(stored));
         }
@@ -67,16 +62,14 @@ export default function FoodTabScreen() {
     loadLocalData();
   }, []);
 
-  // 2. ★超重要：完全オートセーブ関数（ローカル＆クラウド）
+  // 2. 完全オートセーブ関数（ローカル＆クラウド）
   const saveMealsToAll = async (newMeals: Meal[]) => {
-    setMeals(newMeals); // 画面に即反映
+    setMeals(newMeals);
 
-    // ① ローカルに保存
     try {
       await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(newMeals));
     } catch (e) { console.error('ローカル保存失敗:', e); }
 
-    // ② 裏でこっそり Firestore を更新（オートセーブ）
     const user = auth.currentUser;
     if (user) {
       try {
@@ -109,31 +102,41 @@ export default function FoodTabScreen() {
   const totalFat = meals.reduce((sum, item) => sum + item.fat, 0);
   const totalCarb = meals.reduce((sum, item) => sum + item.carb, 0);
 
-<<<<<<< HEAD
-  // --- AI解析 ＆ マイ辞書検索ロジック ---
-=======
-<<<<<<< HEAD
-=======
-  // --- ★進化：AI解析 ＆ マイ辞書検索ロジック ---
->>>>>>> 5465913d89ee4b504cb97918ac2148fb938c0bc1
->>>>>>> 1af63096fbc909c1afa5f91ed77f0d06cfdcc2bc
+  // --- ★完璧合体版：相方AI ＆ マイ辞書検索ロジック ---
   const handleAIGenerate = async () => {
     if (!aiInput.trim()) {
       Alert.alert('エラー', '料理名を入力してくれ');
       return;
     }
 
-<<<<<<< HEAD
+    const user = auth.currentUser;
+    if (!user) return;
+
     setIsAiLoading(true);
 
     try {
-      // Cloud Functions（Callable）のクライアント取得
+      // 1. まずは Firestore の「food_dictionary」から検索
+      const dictRef = doc(db, "users", user.uid, "food_dictionary", aiInput.trim());
+      const dictSnap = await getDoc(dictRef);
+
+      if (dictSnap.exists()) {
+        // 辞書にあったらAIは呼ばずにこっちを使う！
+        const data = dictSnap.data();
+        setFoodName(aiInput);
+        setCal(String(data.cal ?? 0));
+        setPro(String(data.pro ?? 0));
+        setFat(String(data.fat ?? 0));
+        setCarb(String(data.carb ?? 0));
+        setIsAiLoading(false);
+        setAiInput('');
+        return;
+      }
+
+      // 2. 辞書になければ、相方さんの Cloud Functions を呼び出し！
       const functions = getFunctions(undefined, 'asia-northeast1');
       const analyzeFoodPFC = httpsCallable(functions, 'analyzeFoodPFC');
 
-      // Cloud Functions を呼び出し
       const res = await analyzeFoodPFC({ text: aiInput.trim() });
-
       const data = res.data as any;
 
       if (!data || !data.total) {
@@ -165,50 +168,7 @@ export default function FoodTabScreen() {
       );
     } finally {
       setIsAiLoading(false);
-=======
-    const user = auth.currentUser;
-    if (!user) return;
-
-    setIsAiLoading(true);
-
-    try {
-      const dictRef = doc(db, "users", user.uid, "food_dictionary", aiInput.trim());
-      const dictSnap = await getDoc(dictRef);
-
-      if (dictSnap.exists()) {
-        const data = dictSnap.data();
-        setFoodName(aiInput);
-        setCal(String(data.cal));
-        setPro(String(data.pro));
-        setFat(String(data.fat));
-        setCarb(String(data.carb));
-        setIsAiLoading(false);
-        setAiInput('');
-        return;
-      }
-
-      const aiResult = await mockAICall(aiInput);
-
-      if (aiResult) {
-        setFoodName(aiResult.name);
-        setCal(String(aiResult.cal));
-        setPro(String(aiResult.pro));
-        setFat(String(aiResult.fat));
-        setCarb(String(aiResult.carb));
-      }
-    } catch (e) {
-      console.error(e);
-      Alert.alert('エラー', '解析に失敗したぜ');
-    } finally {
-      setIsAiLoading(false);
-      setAiInput('');
->>>>>>> 5465913d89ee4b504cb97918ac2148fb938c0bc1
     }
-  };
-
-  const mockAICall = async (name: string) => {
-    await new Promise(resolve => setTimeout(resolve, 1500));
-    return { name, cal: 450, pro: 20, fat: 15, carb: 50 };
   };
 
   // --- リスト追加時にオートセーブ ＆ 辞書保存 ---
@@ -227,7 +187,7 @@ export default function FoodTabScreen() {
       carb: parseInt(carb) || 0,
     };
 
-    // ★ 変更：オートセーブ関数を呼ぶ！
+    // オートセーブ関数を呼ぶ！
     await saveMealsToAll([...meals, newFood]);
 
     const user = auth.currentUser;
@@ -249,7 +209,6 @@ export default function FoodTabScreen() {
   // --- 削除時もオートセーブ ---
   const handleRemoveFood = (id: string) => {
     const newMeals = meals.filter(item => item.id !== id);
-    // ★ 変更：ゴミ箱を押した時もクラウドから消えるように同期！
     saveMealsToAll(newMeals);
   };
 
