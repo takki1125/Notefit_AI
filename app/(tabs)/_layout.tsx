@@ -7,22 +7,16 @@ export default function TabsLayout() {
   return (
     <Tabs
       screenOptions={{
-        // ★ここを追加：これで全タブの上のダサい自動タイトルが消える！
-        headerShown: false, 
+        headerShown: false, // 全タブの上のダサい自動タイトルを消す
         tabBarStyle: {
           backgroundColor: "#2a2a2a",
           borderTopWidth: 0,
-<<<<<<< HEAD
-          height: 60,
-          paddingBottom: 0, // 下の余白を強制リセット
-          paddingTop: 0, // 上の余白（デフォルトで存在する場合がある）を強制リセット
-=======
+          // ★ 重複していた部分をスッキリ統合！
           height: Platform.OS === "ios" ? 85 : 65,
           paddingBottom: Platform.OS === "ios" ? 25 : 10,
           paddingTop: 10,
           elevation: 0,
           shadowOpacity: 0,
->>>>>>> 5465913d89ee4b504cb97918ac2148fb938c0bc1
         },
         tabBarItemStyle: {
           margin: 0, // タッチ領域の余白を強制リセット
@@ -31,7 +25,7 @@ export default function TabsLayout() {
           alignItems: "center",
         },
         tabBarIconStyle: {
-          flex: 1, // アイコンのコンテナを親の高さ(60)一杯に広げる
+          flex: 1, // アイコンのコンテナを親の高さ一杯に広げる
           justifyContent: "center",
           alignItems: "center",
         },
