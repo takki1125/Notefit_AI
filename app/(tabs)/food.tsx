@@ -11,7 +11,12 @@ import {
 } from 'react-native';
 import { Trash2, Sparkles } from 'lucide-react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+<<<<<<< HEAD
+import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
+import { getFunctions, httpsCallable } from 'firebase/functions';
+=======
 import { doc, setDoc, getDoc, serverTimestamp } from 'firebase/firestore';
+>>>>>>> 5465913d89ee4b504cb97918ac2148fb938c0bc1
 
 import { auth, db } from '../../firebaseConfig';
 import { styles } from '../../theme/styles';
@@ -104,13 +109,63 @@ export default function FoodTabScreen() {
   const totalFat = meals.reduce((sum, item) => sum + item.fat, 0);
   const totalCarb = meals.reduce((sum, item) => sum + item.carb, 0);
 
+<<<<<<< HEAD
   // --- AI解析 ＆ マイ辞書検索ロジック ---
+=======
+<<<<<<< HEAD
+=======
+  // --- ★進化：AI解析 ＆ マイ辞書検索ロジック ---
+>>>>>>> 5465913d89ee4b504cb97918ac2148fb938c0bc1
+>>>>>>> 1af63096fbc909c1afa5f91ed77f0d06cfdcc2bc
   const handleAIGenerate = async () => {
     if (!aiInput.trim()) {
       Alert.alert('エラー', '料理名を入力してくれ');
       return;
     }
 
+<<<<<<< HEAD
+    setIsAiLoading(true);
+
+    try {
+      // Cloud Functions（Callable）のクライアント取得
+      const functions = getFunctions(undefined, 'asia-northeast1');
+      const analyzeFoodPFC = httpsCallable(functions, 'analyzeFoodPFC');
+
+      // Cloud Functions を呼び出し
+      const res = await analyzeFoodPFC({ text: aiInput.trim() });
+
+      const data = res.data as any;
+
+      if (!data || !data.total) {
+        Alert.alert('解析エラー', 'AIから予期しない形式のデータが返されました。');
+        return;
+      }
+
+      const total = data.total as {
+        name?: string;
+        cal?: number;
+        pro?: number;
+        fat?: number;
+        carb?: number;
+      };
+
+      // 合算1件としてフォームに反映
+      setFoodName(total.name ?? aiInput.trim());
+      setCal(String(total.cal ?? 0));
+      setPro(String(total.pro ?? 0));
+      setFat(String(total.fat ?? 0));
+      setCarb(String(total.carb ?? 0));
+
+      setAiInput('');
+    } catch (error: any) {
+      console.error('handleAIGenerate error', error);
+      Alert.alert(
+        '解析に失敗しました',
+        error?.message ?? '通信エラーまたはサーバーエラーが発生しました。'
+      );
+    } finally {
+      setIsAiLoading(false);
+=======
     const user = auth.currentUser;
     if (!user) return;
 
@@ -147,6 +202,7 @@ export default function FoodTabScreen() {
     } finally {
       setIsAiLoading(false);
       setAiInput('');
+>>>>>>> 5465913d89ee4b504cb97918ac2148fb938c0bc1
     }
   };
 
