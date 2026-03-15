@@ -18,6 +18,18 @@
         "*.local"
       ],
       "runtime": "python312"
+    },
+    {
+      "source": "functions-ai",
+      "codebase": "ai",
+      "ignore": [
+        "node_modules",
+        ".git",
+        "firebase-debug.log",
+        "firebase-debug.*.log",
+        "*.local"
+      ],
+      "runtime": "nodejs20"
     }
   ]
 }
