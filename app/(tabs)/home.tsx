@@ -49,12 +49,12 @@ const formatTime = (totalSeconds: number | undefined) => {
   return h > 0 ? `${h}:${m}:${s}` : `${m}:${s}`;
 };
 
-// --- 詳細モーダル（food_logs の構造に完全対応） ---
+// --- 詳細モーダル（重量・レップス表示対応） ---
 const WorkoutDetailModal: React.FC<{
   visible: boolean;
   onClose: () => void;
   workouts: Workout[];
-  foodLog: DailyFoodLog | null; // ★ 配列じゃなくて1日のログに変更
+  foodLog: DailyFoodLog | null; 
   onDelete: (id: string) => void;
 }> = ({ visible, onClose, workouts, foodLog, onDelete }) => {
   if (workouts.length === 0 && !foodLog) return null;
@@ -86,10 +86,17 @@ const WorkoutDetailModal: React.FC<{
                       </View>
                       <TouchableOpacity onPress={() => onDelete(workout.id)}><Trash2 color="#444" size={20} /></TouchableOpacity>
                     </View>
+                    
+                    {/* ★進化：カレンダー詳細でのセット表示（縦並び） */}
                     {workout.exercises.map((ex, i) => (
-                      <View key={i} style={{ marginTop: 10, borderLeftWidth: 2, borderColor: '#2ecc71', paddingLeft: 12 }}>
-                        <Text style={{ color: '#eee', fontWeight: '600' }}>{ex.name}</Text>
-                        <Text style={{ color: '#888', fontSize: 12 }}>{ex.sets.length} sets completed</Text>
+                      <View key={i} style={{ marginTop: 10, borderLeftWidth: 2, borderColor: '#2ecc71', paddingLeft: 12, marginBottom: 5 }}>
+                        <Text style={{ color: '#eee', fontWeight: 'bold', fontSize: 15, marginBottom: 6 }}>{ex.name}</Text>
+                        {ex.sets.filter(s => s.done).map((set, k) => (
+                          <View key={k} style={{ flexDirection: 'row', justifyContent: 'space-between', paddingRight: 10, marginBottom: 3 }}>
+                            <Text style={{ color: '#888', fontSize: 12 }}>Set {k + 1}</Text>
+                            <Text style={{ color: '#ccc', fontSize: 13 }}>{set.weight}kg × {set.reps}reps</Text>
+                          </View>
+                        ))}
                       </View>
                     ))}
                   </View>
@@ -205,7 +212,7 @@ export default function HomeTabScreen() {
 
   useFocusEffect(useCallback(() => { fetchHistory(); fetchTodayMeals(); }, [fetchHistory, fetchTodayMeals]));
 
-  // カレンダータップ時の処理（日付固定IDで food_logs を狙い撃ち！）
+  // カレンダータップ時の処理
   const handleDayPress = async (day: number) => {
     const dayWorkouts = history.filter(item => item.day === day);
     setSelectedDateWorkouts(dayWorkouts);
@@ -218,7 +225,6 @@ export default function HomeTabScreen() {
         const month = String(today.getMonth() + 1).padStart(2, '0');
         const dayStr = String(day).padStart(2, '0');
 
-        // ターゲットドキュメントID: YYYY-MM-DD_Food
         const docId = `${year}-${month}-${dayStr}_Food`;
         const docRef = doc(db, "users", user.uid, "food_logs", docId);
         const docSnap = await getDoc(docRef);
@@ -284,13 +290,27 @@ export default function HomeTabScreen() {
                     <Text style={{ color: "#666", fontSize: 9, fontWeight: 'bold', marginBottom: 8, textAlign: 'right' }}>SESSION {latestWorkouts.length - index}</Text>
                   )}
                   <View style={{ gap: 10 }}>
-                    {workout.exercises.map((ex, i) => (
-                      <View key={i} style={{ flexDirection: "row", alignItems: "center" }}>
-                        <View style={{ width: 4, height: 4, borderRadius: 2, backgroundColor: "#2ecc71", marginRight: 12 }} />
-                        <Text style={{ color: "#fff", fontSize: 15, fontWeight: '500' }}>{ex.name}</Text>
-                        <Text style={{ color: "#888", marginLeft: "auto", fontSize: 13 }}>{ex.sets.filter(s => s.done).length} sets</Text>
-                      </View>
-                    ))}
+                    
+                    {/* ★進化：ホーム画面でのセット表示（横並び） */}
+                    {workout.exercises.map((ex, i) => {
+                      const doneSets = ex.sets.filter(s => s.done);
+                      return (
+                        <View key={i} style={{ marginBottom: 10 }}>
+                          <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 4 }}>
+                            <View style={{ width: 4, height: 4, borderRadius: 2, backgroundColor: "#2ecc71", marginRight: 10 }} />
+                            <Text style={{ color: "#fff", fontSize: 15, fontWeight: 'bold' }}>{ex.name}</Text>
+                          </View>
+                          {doneSets.length > 0 ? (
+                            <Text style={{ color: '#888', fontSize: 12, paddingLeft: 14 }}>
+                              {doneSets.map(s => `${s.weight}kg×${s.reps}`).join('  |  ')}
+                            </Text>
+                          ) : (
+                            <Text style={{ color: '#555', fontSize: 12, paddingLeft: 14 }}>未完了</Text>
+                          )}
+                        </View>
+                      );
+                    })}
+
                   </View>
                 </View>
               ))
@@ -322,7 +342,7 @@ export default function HomeTabScreen() {
         visible={modalVisible}
         onClose={() => setModalVisible(false)}
         workouts={selectedDateWorkouts}
-        foodLog={selectedDateFoodLog} // ★ ここも 1日分のログに変更
+        foodLog={selectedDateFoodLog} 
         onDelete={handleDeleteWorkout}
       />
     </SafeAreaView>
