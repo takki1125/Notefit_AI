@@ -7,6 +7,8 @@ export default function SettingsLayout() {
       <Stack.Screen name="index" />
       {/* プロフィール編集（ここでは右スライドで動く） */}
       <Stack.Screen name="profile" />
+      {/* 目標設定 */}
+      <Stack.Screen name="goals" />
     </Stack>
   );
 }
