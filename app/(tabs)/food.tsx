@@ -27,8 +27,9 @@ type Meal = {
   carb: number;
 };
 
-const STORAGE_KEY = "@food_meals_today";
-const DATE_KEY = '@food_last_opened_date'; // ★オートセーブ用の日付管理
+// ★変更：キーを固定文字から動的に生成するためのベースにする
+const STORAGE_KEY_BASE = "@food_meals_today_";
+const DATE_KEY_BASE = '@food_last_opened_date_'; 
 
 export default function FoodTabScreen() {
   const [meals, setMeals] = useState<Meal[]>([]);
@@ -40,20 +41,26 @@ export default function FoodTabScreen() {
   const [aiInput, setAiInput] = useState("");
   const [isAiLoading, setIsAiLoading] = useState(false);
 
-  // 1. 起動時：日付変更チェック ＆ ローカルデータ読み込み
+  // 1. 起動時：日付変更チェック ＆ ローカルデータ読み込み（アカウント別）
   useEffect(() => {
     const loadLocalData = async () => {
+      const user = auth.currentUser;
+      if (!user) return; // ログインしてなければ何もしない
+
+      const storageKey = `${STORAGE_KEY_BASE}${user.uid}`;
+      const dateKey = `${DATE_KEY_BASE}${user.uid}`;
+
       try {
         const todayStr = new Date().toDateString();
-        const storedDate = await AsyncStorage.getItem(DATE_KEY);
+        const storedDate = await AsyncStorage.getItem(dateKey);
 
         if (storedDate !== todayStr) {
           // 日付が変わっていればリセット
           setMeals([]);
-          await AsyncStorage.removeItem(STORAGE_KEY);
-          await AsyncStorage.setItem(DATE_KEY, todayStr);
+          await AsyncStorage.removeItem(storageKey);
+          await AsyncStorage.setItem(dateKey, todayStr);
         } else {
-          const stored = await AsyncStorage.getItem(STORAGE_KEY);
+          const stored = await AsyncStorage.getItem(storageKey);
           if (stored) setMeals(JSON.parse(stored));
         }
       } catch (e) {
@@ -67,36 +74,38 @@ export default function FoodTabScreen() {
   const saveMealsToAll = async (newMeals: Meal[]) => {
     setMeals(newMeals);
 
+    const user = auth.currentUser;
+    if (!user) return; // ログイン情報が必須
+
+    const storageKey = `${STORAGE_KEY_BASE}${user.uid}`;
+
     try {
-      await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(newMeals));
+      await AsyncStorage.setItem(storageKey, JSON.stringify(newMeals));
     } catch (e) {
       console.error("ローカル保存失敗:", e);
     }
 
-    const user = auth.currentUser;
-    if (user) {
-      try {
-        const now = new Date();
-        const dateStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
-        const docId = `${dateStr}_Food`;
+    try {
+      const now = new Date();
+      const dateStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+      const docId = `${dateStr}_Food`;
 
-        const tCal = newMeals.reduce((s, i) => s + i.cal, 0);
-        const tPro = newMeals.reduce((s, i) => s + i.pro, 0);
-        const tFat = newMeals.reduce((s, i) => s + i.fat, 0);
-        const tCarb = newMeals.reduce((s, i) => s + i.carb, 0);
+      const tCal = newMeals.reduce((s, i) => s + i.cal, 0);
+      const tPro = newMeals.reduce((s, i) => s + i.pro, 0);
+      const tFat = newMeals.reduce((s, i) => s + i.fat, 0);
+      const tCarb = newMeals.reduce((s, i) => s + i.carb, 0);
 
-        await setDoc(doc(db, 'users', user.uid, 'food_logs', docId), {
-          date: serverTimestamp(),
-          dateObj: now.toISOString(),
-          meals: newMeals,
-          totalCal: tCal,
-          totalPro: tPro,
-          totalFat: tFat,
-          totalCarb: tCarb
-        });
-      } catch (e) {
-        console.error("オートセーブ失敗:", e);
-      }
+      await setDoc(doc(db, 'users', user.uid, 'food_logs', docId), {
+        date: serverTimestamp(),
+        dateObj: now.toISOString(),
+        meals: newMeals,
+        totalCal: tCal,
+        totalPro: tPro,
+        totalFat: tFat,
+        totalCarb: tCarb
+      });
+    } catch (e) {
+      console.error("オートセーブ失敗:", e);
     }
   };
 
@@ -231,7 +240,7 @@ export default function FoodTabScreen() {
           </View>
           <View style={{ flexDirection: "row", justifyContent: "space-around" }}>
             <View style={{ alignItems: "center" }}>
-              <Text style={{ color: "#666", fontSize: 12 }}>タンパク質</Text>
+              <Text style={{ color: "#666", fontSize: 12 }}>タンフラ質</Text>
               <Text style={{ color: "#4facfe", fontSize: 20, fontWeight: "bold" }}>{totalPro}g</Text>
             </View>
             <View style={{ alignItems: "center" }}>

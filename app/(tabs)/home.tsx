@@ -205,8 +205,14 @@ export default function HomeTabScreen() {
     } catch (e) { console.error(e); }
   }, []);
 
+  // ★変更ポイント：ログインユーザーごとの箱から食事データを取得
   const fetchTodayMeals = useCallback(async () => {
-    const stored = await AsyncStorage.getItem('@food_meals_today');
+    const user = auth.currentUser;
+    if (!user) {
+      setTodayMeals([]);
+      return;
+    }
+    const stored = await AsyncStorage.getItem(`@food_meals_today_${user.uid}`);
     setTodayMeals(stored ? JSON.parse(stored) : []);
   }, []);
 
@@ -249,7 +255,6 @@ export default function HomeTabScreen() {
   const todayTotalCal = todayMeals.reduce((sum, item) => sum + item.cal, 0);
   const todayTotalPro = todayMeals.reduce((sum, item) => sum + item.pro, 0);
 
-  // ★ 進化：今日の日付と一致するトレーニングだけを抽出！
   const todayStr = new Date().toLocaleDateString();
   const todaysWorkouts = history.filter(w => w.dateStr === todayStr);
 
