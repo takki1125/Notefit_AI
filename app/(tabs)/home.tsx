@@ -206,14 +206,29 @@ export default function HomeTabScreen() {
   }, []);
 
   // ★変更ポイント：ログインユーザーごとの箱から食事データを取得
+  // ★変更：ホーム画面でも日付チェックをして、前日のデータならクリアする
   const fetchTodayMeals = useCallback(async () => {
     const user = auth.currentUser;
     if (!user) {
       setTodayMeals([]);
       return;
     }
-    const stored = await AsyncStorage.getItem(`@food_meals_today_${user.uid}`);
-    setTodayMeals(stored ? JSON.parse(stored) : []);
+
+    const storageKey = `@food_meals_today_${user.uid}`;
+    const dateKey = `@food_last_opened_date_${user.uid}`;
+
+    const todayStr = new Date().toDateString();
+    const storedDate = await AsyncStorage.getItem(dateKey);
+
+    if (storedDate !== todayStr) {
+      // 日が変わっていればローカルをクリアして、ホーム画面の数字も0にする
+      setTodayMeals([]);
+      await AsyncStorage.removeItem(storageKey);
+      await AsyncStorage.setItem(dateKey, todayStr);
+    } else {
+      const stored = await AsyncStorage.getItem(storageKey);
+      setTodayMeals(stored ? JSON.parse(stored) : []);
+    }
   }, []);
 
   useFocusEffect(useCallback(() => { fetchHistory(); fetchTodayMeals(); }, [fetchHistory, fetchTodayMeals]));
