@@ -1,13 +1,30 @@
 import React from 'react';
 import { useRouter } from 'expo-router';
-import { Alert, SafeAreaView, ScrollView, Text, TouchableOpacity, View } from 'react-native';
-import { LogOut, Trash2, X, User, ChevronRight, Mail } from 'lucide-react-native';
+import { Alert, SafeAreaView, ScrollView, Switch, Text, TouchableOpacity, View } from 'react-native';
+import { LogOut, Trash2, X, User, ChevronRight, Mail, Target } from 'lucide-react-native';
 import { deleteUser, signOut } from 'firebase/auth';
 import { auth } from '../../firebaseConfig';
 import { styles } from '../../theme/styles';
+import { getUserProfile, setDetailedTrackingEnabled } from '../../utils/firestoreProfile';
 
 export default function SettingsScreen() {
   const router = useRouter();
+  const [detailedEnabled, setDetailedEnabled] = React.useState(false);
+  const [loading, setLoading] = React.useState(true);
+
+  React.useEffect(() => {
+    const run = async () => {
+      const user = auth.currentUser;
+      if (!user) return;
+      try {
+        const profile = await getUserProfile(user.uid);
+        setDetailedEnabled(!!profile?.isDetailedTrackingEnabled);
+      } finally {
+        setLoading(false);
+      }
+    };
+    run();
+  }, []);
 
   const handleSignOut = () => {
     Alert.alert('ログアウト', 'ログアウトしますか？', [
@@ -46,9 +63,52 @@ export default function SettingsScreen() {
       </View>
 
       <ScrollView contentContainerStyle={styles.scrollContent}>
+        {/* セクション：記録 */}
+        <View style={{ marginTop: 20 }}>
+          <Text style={[styles.sectionHeaderText, { marginBottom: 10 }]}>TRACKING</Text>
+          <View style={styles.routineItem}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.routineNameText}>詳細な身体データを記録する</Text>
+              <Text style={styles.routineDescText}>体脂肪率などの入力欄を表示</Text>
+            </View>
+            <Switch
+              value={detailedEnabled}
+              onValueChange={async (v) => {
+                setDetailedEnabled(v);
+                const user = auth.currentUser;
+                if (!user) return;
+                try {
+                  await setDetailedTrackingEnabled(user.uid, v);
+                } catch {
+                  setDetailedEnabled(!v);
+                  Alert.alert('エラー', '設定の保存に失敗しました。');
+                }
+              }}
+              disabled={loading}
+              trackColor={{ false: '#333', true: '#2ecc71' }}
+              thumbColor={'#fff'}
+            />
+          </View>
+        </View>
+
         {/* セクション：プロフィール */}
         <View style={{ marginTop: 20 }}>
           <Text style={[styles.sectionHeaderText, { marginBottom: 10 }]}>PROFILE</Text>
+          <TouchableOpacity
+            style={styles.routineItem}
+            onPress={() => router.push("/settings/goals")}
+          >
+            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+              <View style={{ backgroundColor: '#333', padding: 8, borderRadius: 10, marginRight: 15 }}>
+                <Target color="#2ecc71" size={20} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.routineNameText}>目標を再設定</Text>
+                <Text style={styles.routineDescText}>フェーズ・目標体重・目標カロリー</Text>
+              </View>
+              <ChevronRight color="#444" size={20} />
+            </View>
+          </TouchableOpacity>
           <TouchableOpacity 
             style={styles.routineItem} 
             onPress={() => router.push("/settings/profile")}
