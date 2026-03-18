@@ -31,6 +31,7 @@ import {
 import { useRouter } from "expo-router";
 
 import { auth, db } from "../../firebaseConfig";
+import { DailyMetricQuickInput } from "../../components/metrics/DailyMetricQuickInput";
 import { styles } from "../../theme/styles";
 
 // --- 型定義 ---
@@ -264,6 +265,8 @@ export default function HomeTabScreen() {
             <SettingsIcon color="#fff" size={24} />
           </TouchableOpacity>
         </View>
+
+        <DailyMetricQuickInput />
 
         <CalendarSection trainedDays={trainedDays} onDayPress={handleDayPress} />
 
