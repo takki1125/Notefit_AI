@@ -3,7 +3,8 @@ import { getApp } from "firebase/app";
 import { getFunctions, httpsCallable } from "firebase/functions";
 import { doc, serverTimestamp, setDoc, getDoc } from "firebase/firestore";
 import { Sparkles, Trash2 } from "lucide-react-native";
-import React, { useEffect, useState } from "react";
+import React, { useState, useCallback } from "react";
+import { useFocusEffect } from "@react-navigation/native";
 import {
   ActivityIndicator,
   Alert,
@@ -29,7 +30,7 @@ type Meal = {
 
 // ★変更：キーを固定文字から動的に生成するためのベースにする
 const STORAGE_KEY_BASE = "@food_meals_today_";
-const DATE_KEY_BASE = '@food_last_opened_date_'; 
+const DATE_KEY_BASE = '@food_last_opened_date_';
 
 export default function FoodTabScreen() {
   const [meals, setMeals] = useState<Meal[]>([]);
@@ -42,33 +43,36 @@ export default function FoodTabScreen() {
   const [isAiLoading, setIsAiLoading] = useState(false);
 
   // 1. 起動時：日付変更チェック ＆ ローカルデータ読み込み（アカウント別）
-  useEffect(() => {
-    const loadLocalData = async () => {
-      const user = auth.currentUser;
-      if (!user) return; // ログインしてなければ何もしない
+  // 1. 画面を開くたびに：日付変更チェック ＆ ローカルデータ読み込み
+  useFocusEffect(
+    useCallback(() => {
+      const loadLocalData = async () => {
+        const user = auth.currentUser;
+        if (!user) return;
 
-      const storageKey = `${STORAGE_KEY_BASE}${user.uid}`;
-      const dateKey = `${DATE_KEY_BASE}${user.uid}`;
+        const storageKey = `${STORAGE_KEY_BASE}${user.uid}`;
+        const dateKey = `${DATE_KEY_BASE}${user.uid}`;
 
-      try {
-        const todayStr = new Date().toDateString();
-        const storedDate = await AsyncStorage.getItem(dateKey);
+        try {
+          const todayStr = new Date().toDateString();
+          const storedDate = await AsyncStorage.getItem(dateKey);
 
-        if (storedDate !== todayStr) {
-          // 日付が変わっていればリセット
-          setMeals([]);
-          await AsyncStorage.removeItem(storageKey);
-          await AsyncStorage.setItem(dateKey, todayStr);
-        } else {
-          const stored = await AsyncStorage.getItem(storageKey);
-          if (stored) setMeals(JSON.parse(stored));
+          if (storedDate !== todayStr) {
+            // 日付が変わっていれば問答無用でリセット！
+            setMeals([]);
+            await AsyncStorage.removeItem(storageKey);
+            await AsyncStorage.setItem(dateKey, todayStr);
+          } else {
+            const stored = await AsyncStorage.getItem(storageKey);
+            if (stored) setMeals(JSON.parse(stored));
+          }
+        } catch (e) {
+          console.error("ローカルデータの読み込み失敗:", e);
         }
-      } catch (e) {
-        console.error("ローカルデータの読み込み失敗:", e);
-      }
-    };
-    loadLocalData();
-  }, []);
+      };
+      loadLocalData();
+    }, [])
+  );
 
   // 2. ★完全オートセーブ関数（ローカル＆クラウド）
   const saveMealsToAll = async (newMeals: Meal[]) => {
@@ -230,7 +234,7 @@ export default function FoodTabScreen() {
         </View>
       </View>
       <ScrollView contentContainerStyle={{ padding: 20 }}>
-        
+
         {/* 合計表示 */}
         <View style={{ backgroundColor: "#1a1a1a", padding: 20, borderRadius: 16, marginBottom: 20 }}>
           <Text style={{ color: "#fff", fontSize: 18, fontWeight: "bold", marginBottom: 15, textAlign: "center" }}>1日の合計摂取量</Text>
@@ -295,10 +299,10 @@ export default function FoodTabScreen() {
         {/* 手動入力フォーム（カラフルラベル付き！） */}
         <View style={{ backgroundColor: '#1a1a1a', padding: 15, borderRadius: 12, marginBottom: 40 }}>
           <Text style={{ color: '#2ecc71', fontSize: 16, fontWeight: 'bold', marginBottom: 15 }}>食事を追加・修正</Text>
-          
+
           <Text style={{ color: '#888', fontSize: 12, marginBottom: 4, marginLeft: 4 }}>食べたもの</Text>
           <TextInput style={[styles.inputField, { marginBottom: 10 }]} placeholder="例: 鶏むね肉" placeholderTextColor="#666" value={foodName} onChangeText={setFoodName} />
-          
+
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 10 }}>
             <View style={{ flex: 1, marginRight: 5 }}>
               <Text style={{ color: '#ccc', fontSize: 12, marginBottom: 4, marginLeft: 4 }}>カロリー (kcal)</Text>
@@ -309,7 +313,7 @@ export default function FoodTabScreen() {
               <TextInput style={[styles.inputField, { marginBottom: 0 }]} keyboardType="numeric" placeholder="0" placeholderTextColor="#666" value={pro} onChangeText={setPro} />
             </View>
           </View>
-          
+
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 15 }}>
             <View style={{ flex: 1, marginRight: 5 }}>
               <Text style={{ color: '#f6d365', fontSize: 12, marginBottom: 4, marginLeft: 4 }}>脂質 F(g)</Text>
@@ -320,7 +324,7 @@ export default function FoodTabScreen() {
               <TextInput style={[styles.inputField, { marginBottom: 0 }]} keyboardType="numeric" placeholder="0" placeholderTextColor="#666" value={carb} onChangeText={setCarb} />
             </View>
           </View>
-          
+
           <TouchableOpacity style={[styles.loginButton, { marginTop: 0 }]} onPress={handleAddFood}>
             <Text style={styles.loginButtonText}>リストに追加して保存</Text>
           </TouchableOpacity>
