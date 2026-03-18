@@ -54,7 +54,7 @@ const WorkoutDetailModal: React.FC<{
   visible: boolean;
   onClose: () => void;
   workouts: Workout[];
-  foodLog: DailyFoodLog | null; 
+  foodLog: DailyFoodLog | null;
   onDelete: (id: string) => void;
 }> = ({ visible, onClose, workouts, foodLog, onDelete }) => {
   if (workouts.length === 0 && !foodLog) return null;
@@ -86,8 +86,7 @@ const WorkoutDetailModal: React.FC<{
                       </View>
                       <TouchableOpacity onPress={() => onDelete(workout.id)}><Trash2 color="#444" size={20} /></TouchableOpacity>
                     </View>
-                    
-                    {/* ★進化：カレンダー詳細でのセット表示（縦並び） */}
+
                     {workout.exercises.map((ex, i) => (
                       <View key={i} style={{ marginTop: 10, borderLeftWidth: 2, borderColor: '#2ecc71', paddingLeft: 12, marginBottom: 5 }}>
                         <Text style={{ color: '#eee', fontWeight: 'bold', fontSize: 15, marginBottom: 6 }}>{ex.name}</Text>
@@ -104,7 +103,7 @@ const WorkoutDetailModal: React.FC<{
               </View>
             )}
 
-            {/* 食事セクション（food_logs の meals 配列を展開） */}
+            {/* 食事セクション */}
             <View>
               <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 15 }}>
                 <Utensils color="#ff4757" size={20} style={{ marginRight: 10 }} />
@@ -139,7 +138,7 @@ const WorkoutDetailModal: React.FC<{
   );
 };
 
-// --- カレンダーセクション (省略なし) ---
+// --- カレンダーセクション ---
 const CalendarSection: React.FC<{ trainedDays: number[]; onDayPress: (day: number) => void; }> = ({ trainedDays, onDayPress }) => {
   const today = new Date();
   const currentDay = today.getDate();
@@ -212,7 +211,6 @@ export default function HomeTabScreen() {
 
   useFocusEffect(useCallback(() => { fetchHistory(); fetchTodayMeals(); }, [fetchHistory, fetchTodayMeals]));
 
-  // カレンダータップ時の処理
   const handleDayPress = async (day: number) => {
     const dayWorkouts = history.filter(item => item.day === day);
     setSelectedDateWorkouts(dayWorkouts);
@@ -249,8 +247,10 @@ export default function HomeTabScreen() {
 
   const todayTotalCal = todayMeals.reduce((sum, item) => sum + item.cal, 0);
   const todayTotalPro = todayMeals.reduce((sum, item) => sum + item.pro, 0);
-  const latestDateStr = history.length > 0 ? history[0].dateStr : null;
-  const latestWorkouts = history.filter(w => w.dateStr === latestDateStr);
+
+  // ★ 進化：今日の日付と一致するトレーニングだけを抽出！
+  const todayStr = new Date().toLocaleDateString();
+  const todaysWorkouts = history.filter(w => w.dateStr === todayStr);
 
   return (
     <SafeAreaView style={styles.container}>
@@ -272,9 +272,11 @@ export default function HomeTabScreen() {
             <View>
               <Text style={{ color: "#2ecc71", fontSize: 14, fontWeight: "bold", letterSpacing: 1, marginBottom: 4 }}>WORKOUT</Text>
               <View style={{ flexDirection: 'row', alignItems: 'baseline' }}>
-                <Text style={{ color: "#fff", fontSize: 16, fontWeight: "bold" }}>{latestDateStr || "START WORKOUT"}</Text>
-                {latestWorkouts[0]?.durationSeconds && (
-                  <Text style={{ color: '#888', fontSize: 12, marginLeft: 10 }}>({formatTime(latestWorkouts[0].durationSeconds)})</Text>
+                <Text style={{ color: "#fff", fontSize: 16, fontWeight: "bold" }}>
+                  {todaysWorkouts.length > 0 ? "TODAY" : "START WORKOUT"}
+                </Text>
+                {todaysWorkouts[0]?.durationSeconds && (
+                  <Text style={{ color: '#888', fontSize: 12, marginLeft: 10 }}>({formatTime(todaysWorkouts[0].durationSeconds)})</Text>
                 )}
               </View>
             </View>
@@ -283,15 +285,13 @@ export default function HomeTabScreen() {
             </View>
           </View>
           <View style={{ marginTop: 5, borderTopWidth: 1, borderTopColor: '#333', paddingTop: 12 }}>
-            {latestWorkouts.length > 0 ? (
-              latestWorkouts.map((workout, index) => (
-                <View key={workout.id} style={{ marginBottom: index === latestWorkouts.length - 1 ? 4 : 16 }}>
-                  {latestWorkouts.length > 1 && (
-                    <Text style={{ color: "#666", fontSize: 9, fontWeight: 'bold', marginBottom: 8, textAlign: 'right' }}>SESSION {latestWorkouts.length - index}</Text>
+            {todaysWorkouts.length > 0 ? (
+              todaysWorkouts.map((workout, index) => (
+                <View key={workout.id} style={{ marginBottom: index === todaysWorkouts.length - 1 ? 4 : 16 }}>
+                  {todaysWorkouts.length > 1 && (
+                    <Text style={{ color: "#666", fontSize: 9, fontWeight: 'bold', marginBottom: 8, textAlign: 'right' }}>SESSION {todaysWorkouts.length - index}</Text>
                   )}
                   <View style={{ gap: 10 }}>
-                    
-                    {/* ★進化：ホーム画面でのセット表示（横並び） */}
                     {workout.exercises.map((ex, i) => {
                       const doneSets = ex.sets.filter(s => s.done);
                       return (
@@ -310,12 +310,11 @@ export default function HomeTabScreen() {
                         </View>
                       );
                     })}
-
                   </View>
                 </View>
               ))
             ) : (
-              <Text style={{ color: "#666", textAlign: 'center', paddingVertical: 10 }}>タップしてトレーニングを開始</Text>
+              <Text style={{ color: "#666", textAlign: 'center', paddingVertical: 10 }}>タップして今日のトレーニングを開始</Text>
             )}
           </View>
         </TouchableOpacity>
@@ -342,7 +341,7 @@ export default function HomeTabScreen() {
         visible={modalVisible}
         onClose={() => setModalVisible(false)}
         workouts={selectedDateWorkouts}
-        foodLog={selectedDateFoodLog} 
+        foodLog={selectedDateFoodLog}
         onDelete={handleDeleteWorkout}
       />
     </SafeAreaView>
