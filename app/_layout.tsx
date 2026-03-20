@@ -3,10 +3,14 @@ import { ActivityIndicator, View } from 'react-native';
 // ★ Slot を Stack に変更！
 import { Redirect, Stack, useSegments } from 'expo-router'; 
 import { StatusBar } from 'expo-status-bar';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 
 import { useAuthState } from '../hooks/useAuthState';
-import { getUserProfile } from '../utils/firestoreProfile';
+import { getUserProfile, getMealReminderSettings } from '../utils/firestoreProfile';
+import {
+  cancelMealReminderNotifications,
+  syncMealReminderSchedules,
+} from '../utils/mealReminderNotifications';
 
 export default function RootLayout() {
   const { user, initializing } = useAuthState();
@@ -42,12 +46,36 @@ export default function RootLayout() {
     checkProfile();
   }, [user?.uid, user?.emailVerified, initializing]);
 
+  useEffect(() => {
+    if (user) return;
+    void cancelMealReminderNotifications();
+  }, [user]);
+
+  useEffect(() => {
+    if (initializing || !profileChecked || !user?.emailVerified || needsOnboarding) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const s = await getMealReminderSettings(user.uid);
+        if (cancelled) return;
+        await syncMealReminderSchedules(s);
+      } catch {
+        /* Firestore 未取得時は無視 */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.uid, user?.emailVerified, needsOnboarding, initializing, profileChecked]);
+
   if (initializing || (!!user?.emailVerified && !profileChecked)) {
     return (
-      <SafeAreaView style={{ flex: 1, backgroundColor: '#1a1a1a', justifyContent: 'center', alignItems: 'center' }}>
-        <StatusBar style="light" />
-        <ActivityIndicator size="large" color="#2ecc71" />
-      </SafeAreaView>
+      <SafeAreaProvider>
+        <SafeAreaView style={{ flex: 1, backgroundColor: '#1a1a1a', justifyContent: 'center', alignItems: 'center' }}>
+          <StatusBar style="light" />
+          <ActivityIndicator size="large" color="#2ecc71" />
+        </SafeAreaView>
+      </SafeAreaProvider>
     );
   }
 
@@ -71,7 +99,8 @@ export default function RootLayout() {
 
   // initializeのチェックが終わった後の、一番下の return 部分
   return (
-    <View style={{ flex: 1, backgroundColor: '#1a1a1a' }}>
+    <SafeAreaProvider>
+      <View style={{ flex: 1, backgroundColor: '#1a1a1a' }}>
       <StatusBar style="light" />
       <Stack screenOptions={{ headerShown: false }}>
   <Stack.Screen name="(tabs)" />
@@ -85,6 +114,7 @@ export default function RootLayout() {
     }} 
   />
 </Stack>
-    </View>
+      </View>
+    </SafeAreaProvider>
   );
 } // ここでファイルが終わり
