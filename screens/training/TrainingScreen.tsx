@@ -12,13 +12,13 @@ import {
   ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
-  SafeAreaView,
   ScrollView,
   Text,
   TextInput,
   TouchableOpacity,
   View,
 } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 
 import ExerciseSelectorModal from "../../components/training/ExerciseSelectorModal";
 import RoutineModal from "../../components/training/RoutineModal";
