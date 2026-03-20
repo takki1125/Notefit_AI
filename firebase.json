@@ -22,6 +22,9 @@
     {
       "source": "functions-ai",
       "codebase": "ai",
+      "predeploy": [
+        "npm --prefix \"$RESOURCE_DIR\" run build"
+      ],
       "ignore": [
         "node_modules",
         ".git",
