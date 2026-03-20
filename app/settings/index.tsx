@@ -1,7 +1,8 @@
 import React from 'react';
 import { useRouter } from 'expo-router';
-import { Alert, SafeAreaView, ScrollView, Switch, Text, TouchableOpacity, View } from 'react-native';
-import { LogOut, Trash2, X, User, ChevronRight, Mail, Target } from 'lucide-react-native';
+import { Alert, ScrollView, Switch, Text, TouchableOpacity, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { LogOut, Trash2, X, User, ChevronRight, Target, Bell } from 'lucide-react-native';
 import { deleteUser, signOut } from 'firebase/auth';
 import { auth } from '../../firebaseConfig';
 import { styles } from '../../theme/styles';
@@ -66,6 +67,21 @@ export default function SettingsScreen() {
         {/* セクション：記録 */}
         <View style={{ marginTop: 20 }}>
           <Text style={[styles.sectionHeaderText, { marginBottom: 10 }]}>TRACKING</Text>
+          <TouchableOpacity
+            style={[styles.routineItem, { marginBottom: 10 }]}
+            onPress={() => router.push('/settings/meal-reminders')}
+          >
+            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+              <View style={{ backgroundColor: '#333', padding: 8, borderRadius: 10, marginRight: 15 }}>
+                <Bell color="#2ecc71" size={20} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.routineNameText}>食事の記録リマインダー</Text>
+                <Text style={styles.routineDescText}>朝・昼・夕に通知で記録を促す</Text>
+              </View>
+              <ChevronRight color="#444" size={20} />
+            </View>
+          </TouchableOpacity>
           <View style={styles.routineItem}>
             <View style={{ flex: 1 }}>
               <Text style={styles.routineNameText}>詳細な身体データを記録する</Text>
