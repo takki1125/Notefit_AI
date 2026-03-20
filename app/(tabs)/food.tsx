@@ -162,13 +162,10 @@ export default function FoodTabScreen() {
         return;
       }
 
-<<<<<<< HEAD
       // 2. 辞書になければAI解析（相方さんの本物コード）
       const demo = await getUserDemographics(user.uid);
       const ageYears = demo.birthDate ? calcAgeYearsFromBirthDate(demo.birthDate) : undefined;
 
-=======
->>>>>>> 7e981ed558abdbc903853cd4f181d128404f1b64
       const app = getApp();
       const functions = getFunctions(app, "asia-northeast1");
       const callable = httpsCallable(functions, "analyzeFoodPFC");
