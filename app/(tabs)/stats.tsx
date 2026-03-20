@@ -1,6 +1,5 @@
 import React, { useState, useCallback } from 'react';
 import {
-  SafeAreaView,
   ScrollView,
   View,
   Text,
@@ -11,6 +10,7 @@ import {
   FlatList,
   TouchableWithoutFeedback
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import { collection, query, orderBy, limit, getDocs } from 'firebase/firestore';
 import { Flame, Activity, ChevronDown, Check } from 'lucide-react-native';
@@ -18,6 +18,8 @@ import { LineChart, BarChart } from 'react-native-chart-kit';
 
 import { auth, db } from '../../firebaseConfig';
 import { styles } from '../../theme/styles';
+import GoalProgressCard from '../../components/goal/GoalProgressCard';
+import WeightTrendCard from '../../components/metrics/WeightTrendCard';
 
 const screenWidth = Dimensions.get("window").width;
 
@@ -164,7 +166,9 @@ export default function StatsTabScreen() {
           <ActivityIndicator size="large" color="#2ecc71" style={{ marginTop: 50 }} />
         ) : (
           <View style={{ paddingHorizontal: 20 }}>
-            
+            <GoalProgressCard />
+            <WeightTrendCard />
+
             {/* ━━━━━━━━━━━━━━━━━━━━━━
                 1. 部位ごとのグラフ
                 ━━━━━━━━━━━━━━━━━━━━━━ */}
