@@ -3,12 +3,12 @@ import {
   ActivityIndicator,
   FlatList,
   Modal,
-  SafeAreaView,
   Text,
   TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Plus, Trash2, X } from 'lucide-react-native';
 
 import { styles } from '../../theme/styles';
