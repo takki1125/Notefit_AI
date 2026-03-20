@@ -2,13 +2,13 @@ import React from 'react';
 import {
   ActivityIndicator,
   Modal,
-  SafeAreaView,
   ScrollView,
   SectionList,
   Text,
   TouchableOpacity,
   View,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Plus, X } from 'lucide-react-native';
 
 import { styles } from '../../theme/styles';
