@@ -1,8 +1,8 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { getApp } from "firebase/app";
 import { getFunctions, httpsCallable } from "firebase/functions";
-import { doc, serverTimestamp, setDoc, getDoc } from "firebase/firestore";
-import { Sparkles, Trash2 } from "lucide-react-native";
+import { doc, serverTimestamp, setDoc, getDoc, collection, query, getDocs } from "firebase/firestore";
+import { Sparkles, Trash2, X, BookOpen, Search } from "lucide-react-native"; // ★ Searchアイコン追加
 import React, { useState, useCallback } from "react";
 import { useFocusEffect } from "@react-navigation/native";
 import {
@@ -13,6 +13,7 @@ import {
   TextInput,
   TouchableOpacity,
   View,
+  Modal
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
@@ -30,12 +31,12 @@ type Meal = {
   carb: number;
 };
 
-// ★変更：キーを固定文字から動的に生成するためのベースにする
 const STORAGE_KEY_BASE = "@food_meals_today_";
-const DATE_KEY_BASE = '@food_last_opened_date_';
+const DATE_KEY_BASE = '@food_last_opened_date_'; 
 
 export default function FoodTabScreen() {
   const [meals, setMeals] = useState<Meal[]>([]);
+  const [dictMeals, setDictMeals] = useState<Meal[]>([]); 
   const [foodName, setFoodName] = useState("");
   const [cal, setCal] = useState("");
   const [pro, setPro] = useState("");
@@ -43,14 +44,14 @@ export default function FoodTabScreen() {
   const [carb, setCarb] = useState("");
   const [aiInput, setAiInput] = useState("");
   const [isAiLoading, setIsAiLoading] = useState(false);
+  const [isDictModalVisible, setDictModalVisible] = useState(false);
+  const [searchQuery, setSearchQuery] = useState(""); // ★ 検索用のState
 
-  // 1. 起動時：日付変更チェック ＆ ローカルデータ読み込み（アカウント別）
-  // 1. 画面を開くたびに：日付変更チェック ＆ ローカルデータ読み込み
   useFocusEffect(
     useCallback(() => {
-      const loadLocalData = async () => {
+      const loadData = async () => {
         const user = auth.currentUser;
-        if (!user) return;
+        if (!user) return; 
 
         const storageKey = `${STORAGE_KEY_BASE}${user.uid}`;
         const dateKey = `${DATE_KEY_BASE}${user.uid}`;
@@ -60,7 +61,6 @@ export default function FoodTabScreen() {
           const storedDate = await AsyncStorage.getItem(dateKey);
 
           if (storedDate !== todayStr) {
-            // 日付が変わっていれば問答無用でリセット！
             setMeals([]);
             await AsyncStorage.removeItem(storageKey);
             await AsyncStorage.setItem(dateKey, todayStr);
@@ -71,17 +71,29 @@ export default function FoodTabScreen() {
         } catch (e) {
           console.error("ローカルデータの読み込み失敗:", e);
         }
+
+        // ★辞書データの全件読み込み ＆ 名前順（あいうえお順）にソート
+        try {
+          const q = query(collection(db, "users", user.uid, "food_dictionary"));
+          const snap = await getDocs(q);
+          const dictData = snap.docs.map(d => d.data() as Meal);
+          
+          // 日本語の文字コード順に並び替え
+          dictData.sort((a, b) => a.name.localeCompare(b.name, 'ja'));
+          setDictMeals(dictData);
+        } catch (e) {
+          console.error("辞書の読み込み失敗:", e);
+        }
       };
-      loadLocalData();
+      loadData();
     }, [])
   );
 
-  // 2. ★完全オートセーブ関数（ローカル＆クラウド）
   const saveMealsToAll = async (newMeals: Meal[]) => {
     setMeals(newMeals);
 
     const user = auth.currentUser;
-    if (!user) return; // ログイン情報が必須
+    if (!user) return;
 
     const storageKey = `${STORAGE_KEY_BASE}${user.uid}`;
 
@@ -120,7 +132,6 @@ export default function FoodTabScreen() {
   const totalFat = meals.reduce((sum, item) => sum + item.fat, 0);
   const totalCarb = meals.reduce((sum, item) => sum + item.carb, 0);
 
-  // --- AI ＆ 辞書検索 ---
   const handleAIGenerate = async () => {
     if (!aiInput.trim()) {
       Alert.alert("エラー", "料理名や食事内容を入力してくれ");
@@ -136,7 +147,6 @@ export default function FoodTabScreen() {
     setIsAiLoading(true);
 
     try {
-      // 1. 辞書検索
       const dictRef = doc(db, "users", user.uid, "food_dictionary", aiInput.trim());
       const dictSnap = await getDoc(dictRef);
 
@@ -152,10 +162,13 @@ export default function FoodTabScreen() {
         return;
       }
 
+<<<<<<< HEAD
       // 2. 辞書になければAI解析（相方さんの本物コード）
       const demo = await getUserDemographics(user.uid);
       const ageYears = demo.birthDate ? calcAgeYearsFromBirthDate(demo.birthDate) : undefined;
 
+=======
+>>>>>>> 7e981ed558abdbc903853cd4f181d128404f1b64
       const app = getApp();
       const functions = getFunctions(app, "asia-northeast1");
       const callable = httpsCallable(functions, "analyzeFoodPFC");
@@ -197,7 +210,6 @@ export default function FoodTabScreen() {
     }
   };
 
-  // --- リスト追加時にオートセーブ ＆ 辞書登録 ---
   const handleAddFood = async () => {
     if (!foodName.trim() || !cal) {
       Alert.alert("エラー", "最低限「食べたもの」と「カロリー」は入力して！");
@@ -213,7 +225,6 @@ export default function FoodTabScreen() {
       carb: parseInt(carb) || 0,
     };
 
-    // ★ オートセーブ
     await saveMealsToAll([...meals, newFood]);
 
     const user = auth.currentUser;
@@ -227,6 +238,14 @@ export default function FoodTabScreen() {
         carb: newFood.carb,
         updatedAt: serverTimestamp(),
       });
+
+      // 追加したアイテムも含めて名前順に再ソート
+      setDictMeals(prev => {
+        const filtered = prev.filter(item => item.name !== foodName.trim());
+        const newData = [newFood, ...filtered];
+        newData.sort((a, b) => a.name.localeCompare(b.name, 'ja'));
+        return newData;
+      });
     }
 
     setFoodName(""); setCal(""); setPro(""); setFat(""); setCarb("");
@@ -234,9 +253,11 @@ export default function FoodTabScreen() {
 
   const handleRemoveFood = (id: string) => {
     const newMeals = meals.filter((item) => item.id !== id);
-    // ★ 削除時もオートセーブ
     saveMealsToAll(newMeals);
   };
+
+  // ★ 検索キーワードで辞書を絞り込む
+  const filteredDictMeals = dictMeals.filter(item => item.name.includes(searchQuery));
 
   return (
     <SafeAreaView style={styles.container}>
@@ -246,7 +267,7 @@ export default function FoodTabScreen() {
         </View>
       </View>
       <ScrollView contentContainerStyle={{ padding: 20 }}>
-
+        
         {/* 合計表示 */}
         <View style={{ backgroundColor: "#1a1a1a", padding: 20, borderRadius: 16, marginBottom: 20 }}>
           <Text style={{ color: "#fff", fontSize: 18, fontWeight: "bold", marginBottom: 15, textAlign: "center" }}>1日の合計摂取量</Text>
@@ -256,7 +277,7 @@ export default function FoodTabScreen() {
           </View>
           <View style={{ flexDirection: "row", justifyContent: "space-around" }}>
             <View style={{ alignItems: "center" }}>
-              <Text style={{ color: "#666", fontSize: 12 }}>タンフラ質</Text>
+              <Text style={{ color: "#666", fontSize: 12 }}>タンパク質</Text>
               <Text style={{ color: "#4facfe", fontSize: 20, fontWeight: "bold" }}>{totalPro}g</Text>
             </View>
             <View style={{ alignItems: "center" }}>
@@ -308,13 +329,22 @@ export default function FoodTabScreen() {
           </View>
         )}
 
-        {/* 手動入力フォーム（カラフルラベル付き！） */}
+        {/* 手動入力フォーム（履歴から選ぶボタン付き） */}
         <View style={{ backgroundColor: '#1a1a1a', padding: 15, borderRadius: 12, marginBottom: 40 }}>
-          <Text style={{ color: '#2ecc71', fontSize: 16, fontWeight: 'bold', marginBottom: 15 }}>食事を追加・修正</Text>
-
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 15 }}>
+            <Text style={{ color: '#2ecc71', fontSize: 16, fontWeight: 'bold' }}>食事を追加・修正</Text>
+            <TouchableOpacity 
+              style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#333', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 15 }}
+              onPress={() => setDictModalVisible(true)}
+            >
+              <BookOpen color="#4facfe" size={16} style={{ marginRight: 5 }} />
+              <Text style={{ color: '#4facfe', fontSize: 12, fontWeight: 'bold' }}>履歴から選ぶ</Text>
+            </TouchableOpacity>
+          </View>
+          
           <Text style={{ color: '#888', fontSize: 12, marginBottom: 4, marginLeft: 4 }}>食べたもの</Text>
           <TextInput style={[styles.inputField, { marginBottom: 10 }]} placeholder="例: 鶏むね肉" placeholderTextColor="#666" value={foodName} onChangeText={setFoodName} />
-
+          
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 10 }}>
             <View style={{ flex: 1, marginRight: 5 }}>
               <Text style={{ color: '#ccc', fontSize: 12, marginBottom: 4, marginLeft: 4 }}>カロリー (kcal)</Text>
@@ -325,7 +355,7 @@ export default function FoodTabScreen() {
               <TextInput style={[styles.inputField, { marginBottom: 0 }]} keyboardType="numeric" placeholder="0" placeholderTextColor="#666" value={pro} onChangeText={setPro} />
             </View>
           </View>
-
+          
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 15 }}>
             <View style={{ flex: 1, marginRight: 5 }}>
               <Text style={{ color: '#f6d365', fontSize: 12, marginBottom: 4, marginLeft: 4 }}>脂質 F(g)</Text>
@@ -336,13 +366,69 @@ export default function FoodTabScreen() {
               <TextInput style={[styles.inputField, { marginBottom: 0 }]} keyboardType="numeric" placeholder="0" placeholderTextColor="#666" value={carb} onChangeText={setCarb} />
             </View>
           </View>
-
+          
           <TouchableOpacity style={[styles.loginButton, { marginTop: 0 }]} onPress={handleAddFood}>
             <Text style={styles.loginButtonText}>リストに追加して保存</Text>
           </TouchableOpacity>
         </View>
 
       </ScrollView>
+
+      {/* ★進化：履歴から選ぶモーダル（リアルタイム検索バー付き） */}
+      <Modal visible={isDictModalVisible} transparent animationType="slide">
+        <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.8)", justifyContent: "flex-end" }}>
+          <View style={{ backgroundColor: "#2a2a2a", height: "85%", borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20 }}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', borderBottomWidth: 1, borderColor: '#444', paddingBottom: 15, marginBottom: 15 }}>
+              <Text style={{ color: '#fff', fontSize: 18, fontWeight: 'bold' }}>過去に食べたものリスト</Text>
+              <TouchableOpacity onPress={() => { setDictModalVisible(false); setSearchQuery(""); }}>
+                <X color="#fff" size={28} />
+              </TouchableOpacity>
+            </View>
+
+            {/* リアルタイム検索バー */}
+            <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#1a1a1a', borderRadius: 12, paddingHorizontal: 15, marginBottom: 15 }}>
+              <Search color="#666" size={20} style={{ marginRight: 10 }} />
+              <TextInput
+                style={{ flex: 1, color: '#fff', paddingVertical: 12 }}
+                placeholder="料理名で検索..."
+                placeholderTextColor="#666"
+                value={searchQuery}
+                onChangeText={setSearchQuery}
+              />
+            </View>
+            
+            <ScrollView>
+              {filteredDictMeals.length > 0 ? (
+                filteredDictMeals.map((item, idx) => (
+                  <TouchableOpacity
+                    key={idx}
+                    style={{ backgroundColor: '#1a1a1a', padding: 15, borderRadius: 12, marginBottom: 10, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}
+                    onPress={() => {
+                      setFoodName(item.name);
+                      setCal(String(item.cal));
+                      setPro(String(item.pro));
+                      setFat(String(item.fat));
+                      setCarb(String(item.carb));
+                      setDictModalVisible(false); // 選んだら閉じる
+                      setSearchQuery(""); // 検索文字もリセット
+                    }}
+                  >
+                    <View>
+                      <Text style={{ color: '#fff', fontSize: 16, fontWeight: 'bold', marginBottom: 4 }}>{item.name}</Text>
+                      <Text style={{ color: '#888', fontSize: 12 }}>
+                        {item.cal}kcal | P: {item.pro}g | F: {item.fat}g | C: {item.carb}g
+                      </Text>
+                    </View>
+                  </TouchableOpacity>
+                ))
+              ) : (
+                <Text style={{ color: '#666', textAlign: 'center', marginTop: 20 }}>該当する履歴がありません</Text>
+              )}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
     </SafeAreaView>
   );
 }
