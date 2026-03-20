@@ -87,22 +87,22 @@ export async function syncMealReminderSchedules(
   }[] = [
     {
       slot: 'breakfast',
-      title: '朝食の記録',
-      body: '朝食を記録して、今日の栄養バランスをつかみましょう。',
+      title: '朝食',
+      body: '食事記録はしましたか？',
       hour: settings.breakfastHour,
       minute: settings.breakfastMinute,
     },
     {
       slot: 'lunch',
-      title: '昼食の記録',
-      body: '昼食を記録しましょう。',
+      title: '昼食',
+      body: '食事記録はしましたか？',
       hour: settings.lunchHour,
       minute: settings.lunchMinute,
     },
     {
       slot: 'dinner',
-      title: '夕食の記録',
-      body: '夕食を記録して、一日の振り返りに使いましょう。',
+      title: '夕食',
+      body: '食事記録はしましたか？',
       hour: settings.dinnerHour,
       minute: settings.dinnerMinute,
     },
