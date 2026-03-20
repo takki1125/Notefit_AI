@@ -1,7 +1,8 @@
 // firebaseConfig.ts
 import { initializeApp } from "firebase/app";
 import { getFirestore } from "firebase/firestore";
-import { getAuth } from "firebase/auth";
+import { getAuth, getReactNativePersistence, initializeAuth } from "firebase/auth";
+import ReactNativeAsyncStorage from "@react-native-async-storage/async-storage";
 
 // 瀧本さんのプロジェクトの鍵情報
 const firebaseConfig = {
@@ -14,7 +15,17 @@ const firebaseConfig = {
   measurementId: "G-862D2LVL00",
 };
 
-// アプリとデータベースを起動して、使える状態にしておく
 const app = initializeApp(firebaseConfig);
 export const db = getFirestore(app);
-export const auth = getAuth(app);
+
+function getFirebaseAuth() {
+  try {
+    return initializeAuth(app, {
+      persistence: getReactNativePersistence(ReactNativeAsyncStorage),
+    });
+  } catch {
+    return getAuth(app);
+  }
+}
+
+export const auth = getFirebaseAuth();
