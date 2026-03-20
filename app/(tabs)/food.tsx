@@ -8,16 +8,18 @@ import { useFocusEffect } from "@react-navigation/native";
 import {
   ActivityIndicator,
   Alert,
-  SafeAreaView,
   ScrollView,
   Text,
   TextInput,
   TouchableOpacity,
   View,
 } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 
 import { auth, db } from "../../firebaseConfig";
 import { styles } from "../../theme/styles";
+import { calcAgeYearsFromBirthDate } from "../../utils/demographics";
+import { getUserDemographics } from "../../utils/firestoreProfile";
 
 type Meal = {
   id: string;
@@ -151,11 +153,21 @@ export default function FoodTabScreen() {
       }
 
       // 2. 辞書になければAI解析（相方さんの本物コード）
+      const demo = await getUserDemographics(user.uid);
+      const ageYears = demo.birthDate ? calcAgeYearsFromBirthDate(demo.birthDate) : undefined;
+
       const app = getApp();
       const functions = getFunctions(app, "asia-northeast1");
       const callable = httpsCallable(functions, "analyzeFoodPFC");
 
-      const res = await callable({ text: aiInput.trim() });
+      const res = await callable({
+        text: aiInput.trim(),
+        demographics: {
+          ...(typeof demo.heightCm === "number" ? { heightCm: demo.heightCm } : {}),
+          ...(demo.birthDate ? { birthDate: demo.birthDate } : {}),
+          ...(typeof ageYears === "number" ? { ageYears } : {}),
+        },
+      });
       const data = res.data as any;
       const total = data?.total;
 
