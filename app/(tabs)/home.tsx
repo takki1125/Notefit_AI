@@ -19,19 +19,14 @@ import {
   Utensils,
 } from "lucide-react-native";
 import React, { useCallback, useState } from "react";
-import {
-  Alert,
-  Modal,
-  SafeAreaView,
-  ScrollView,
-  Text,
-  TouchableOpacity,
-  View,
-} from "react-native";
+import { Alert, Modal, ScrollView, Text, TouchableOpacity, View } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 
 import { auth, db } from "../../firebaseConfig";
 import { DailyMetricQuickInput } from "../../components/metrics/DailyMetricQuickInput";
+import GoalProgressCard from "../../components/goal/GoalProgressCard";
+import DailyAIAdviceCard from "../../components/ai/DailyAIAdviceCard";
 import { styles } from "../../theme/styles";
 
 // --- 型定義 ---
@@ -287,6 +282,9 @@ export default function HomeTabScreen() {
         </View>
 
         <DailyMetricQuickInput />
+
+        <GoalProgressCard />
+        <DailyAIAdviceCard />
 
         <CalendarSection trainedDays={trainedDays} onDayPress={handleDayPress} />
 
