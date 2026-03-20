@@ -1,4 +1,13 @@
-import { doc, getDoc, setDoc } from 'firebase/firestore';
+import {
+  collection,
+  doc,
+  getDoc,
+  getDocs,
+  limit,
+  orderBy,
+  query,
+  setDoc,
+} from 'firebase/firestore';
 
 import { db } from '../firebaseConfig';
 import type { DailyMetric } from './models';
@@ -37,5 +46,34 @@ export async function upsertDailyMetric(uid: string, metric: DailyMetric): Promi
     },
     { merge: true },
   );
+}
+
+export async function getDailyMetricsLastNDays(uid: string, n: number): Promise<DailyMetric[]> {
+  if (!Number.isFinite(n) || n <= 0) return [];
+
+  const q = query(
+    collection(db, 'users', uid, 'daily_metrics'),
+    orderBy('date', 'desc'),
+    limit(n),
+  );
+
+  const snap = await getDocs(q);
+  const metrics: DailyMetric[] = snap.docs
+    .map((d) => {
+      const data = d.data() as any;
+      const date = typeof data?.date === 'string' ? data.date : d.id;
+      const weight = typeof data?.weight === 'number' ? data.weight : null;
+      if (!weight) return null;
+
+      return {
+        date,
+        weight,
+        bodyFatPercentage: typeof data?.bodyFatPercentage === 'number' ? data.bodyFatPercentage : undefined,
+      } satisfies DailyMetric;
+    })
+    .filter((m): m is DailyMetric => !!m);
+
+  // Firestore query is descending; chart/progress calculations usually assume ascending.
+  return metrics.sort((a, b) => a.date.localeCompare(b.date));
 }
 
