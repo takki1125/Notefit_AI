@@ -1,4 +1,5 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { useFocusEffect } from '@react-navigation/native';
 import {
   ActivityIndicator,
   Alert,
@@ -37,7 +38,7 @@ export function DailyMetricQuickInput() {
         const m = await getDailyMetric(user.uid, todayId);
         if (m?.weight) setWeight(String(m.weight));
         if (typeof m?.bodyFatPercentage === 'number') setBodyFat(String(m.bodyFatPercentage));
-      } catch (e) {
+      } catch {
         // 失敗しても入力はできるようにする
       } finally {
         setLoading(false);
@@ -45,6 +46,21 @@ export function DailyMetricQuickInput() {
     };
     run();
   }, [user, todayId]);
+
+  // 設定モーダルなどで isDetailedTrackingEnabled が変わっても、タブはマウントされたままなので再取得する
+  useFocusEffect(
+    useCallback(() => {
+      if (!user) return;
+      void (async () => {
+        try {
+          const p = await getUserProfile(user.uid);
+          setProfile(p);
+        } catch {
+          /* ignore */
+        }
+      })();
+    }, [user]),
+  );
 
   const detailedEnabled = !!profile?.isDetailedTrackingEnabled;
 
