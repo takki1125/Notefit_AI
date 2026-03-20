@@ -15,6 +15,34 @@ function createOpenAIClient() {
   return new OpenAI({ apiKey });
 }
 
+function parseDemographicsPayload(data: any): {
+  heightCm?: number;
+  birthDate?: string;
+  ageYears?: number;
+} {
+  const d = data?.demographics;
+  if (!d || typeof d !== "object") return {};
+  const rawH = Number(d.heightCm);
+  const heightCm = Number.isFinite(rawH) && rawH >= 50 && rawH <= 250 ? Math.round(rawH * 10) / 10 : undefined;
+  const birthDate =
+    typeof d.birthDate === "string" && /^\d{4}-\d{2}-\d{2}$/.test(d.birthDate) ? d.birthDate : undefined;
+  const rawA = Number(d.ageYears);
+  const ageYears =
+    Number.isFinite(rawA) && rawA >= 3 && rawA <= 120 ? Math.floor(rawA) : undefined;
+  return { heightCm, birthDate, ageYears };
+}
+
+function formatDemographicsForPrompt(parsed: ReturnType<typeof parseDemographicsPayload>): string {
+  if (!parsed.heightCm && !parsed.birthDate && parsed.ageYears == null) {
+    return "（身長・年齢の追加情報なし）";
+  }
+  const parts: string[] = [];
+  if (parsed.heightCm) parts.push(`身長 約${parsed.heightCm}cm`);
+  if (parsed.birthDate) parts.push(`生年月日 ${parsed.birthDate}`);
+  if (parsed.ageYears != null) parts.push(`満年齢 約${parsed.ageYears}歳`);
+  return parts.join(" / ");
+}
+
 // Cloud Functions (Callable) 本体
 export const analyzeFoodPFC = onCall(
   {
@@ -41,6 +69,8 @@ export const analyzeFoodPFC = onCall(
         );
       }
 
+      const demo = parseDemographicsPayload(request.data);
+
       const openai = createOpenAIClient();
 
       // プロンプト作成
@@ -50,6 +80,8 @@ export const analyzeFoodPFC = onCall(
 ユーザーから自然文で食事内容（例: 「昼に唐揚げ弁当とおにぎり1個、味噌汁」）が与えられます。
 その内容から、おおよそのカロリーとPFC（タンパク質・脂質・炭水化物）を推定し、
 必ず次のJSONフォーマットだけを返してください。
+
+任意で身長・年齢（満年齢）が与えられる場合、一般的な食事量の目安として参考にし、現実的な数値になるよう意識する（個別の医学的栄養処方や診断は行わない）。
 
 出力JSONフォーマット:
 {
@@ -79,7 +111,9 @@ export const analyzeFoodPFC = onCall(
 - 説明文やコメントは一切出力せず、指定のJSONオブジェクトのみを返してください。
 `;
 
-      const userPrompt = `食事内容: ${text}`;
+      const userPrompt = `利用可能な身体情報（参考・推定補助用）: ${formatDemographicsForPrompt(demo)}
+
+食事内容: ${text}`;
 
       // OpenAI 呼び出し（gpt-4o-mini + JSON オブジェクト）
       const completion = await openai.chat.completions.create({
