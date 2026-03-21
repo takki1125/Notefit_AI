@@ -1,9 +1,10 @@
 import React, { useCallback, useState } from 'react';
 import { ActivityIndicator, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
+import { useRouter } from 'expo-router';
 import { getApp } from 'firebase/app';
 import { getFunctions, httpsCallable } from 'firebase/functions';
-import { Sparkles } from 'lucide-react-native';
+import { ChevronRight, MessageCircle, Sparkles } from 'lucide-react-native';
 
 import { auth } from '../../firebaseConfig';
 import { styles } from '../../theme/styles';
@@ -15,12 +16,14 @@ import {
 } from '../../utils/adviceContext';
 import { formatDateId, getDailyMetric, getDailyMetricsLastNDays } from '../../utils/firestoreDailyMetrics';
 import { calcAgeYearsFromBirthDate } from '../../utils/demographics';
-import { getUserDemographics, getUserProfile } from '../../utils/firestoreProfile';
+import { fingerprintAiCoachSettings } from '../../utils/aiCoachSettings';
+import { getAiCoachSettings, getUserDemographics, getUserProfile } from '../../utils/firestoreProfile';
 import { getDailyAIAdvice, setDailyAIAdvice } from '../../utils/firestoreDailyAdvice';
 
 type RecentPoint = { dateId: string; weight: number; bodyFatPercentage?: number };
 
 export default function DailyAIAdviceCard() {
+  const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
   const [advice, setAdvice] = useState<DailyAIAdvice | null>(null);
@@ -33,12 +36,13 @@ export default function DailyAIAdviceCard() {
 
     const todayId = formatDateId(new Date());
 
-    const [profile, demographics, todayMetric, nutrition, workoutBundle] = await Promise.all([
+    const [profile, demographics, todayMetric, nutrition, workoutBundle, aiCoach] = await Promise.all([
       getUserProfile(user.uid),
       getUserDemographics(user.uid),
       getDailyMetric(user.uid, todayId),
       fetchAdviceNutrition(user.uid, todayId),
       fetchAdviceWorkouts(user.uid, todayId),
+      getAiCoachSettings(user.uid),
     ]);
 
     if (!profile || !todayMetric) {
@@ -52,6 +56,7 @@ export default function DailyAIAdviceCard() {
       nutrition,
       workoutBundle.workoutDocIds,
       demographics,
+      fingerprintAiCoachSettings(aiCoach),
     );
 
     if (!force) {
@@ -85,6 +90,9 @@ export default function DailyAIAdviceCard() {
         phase: profile.phase,
         targetWeight: profile.targetWeight,
         targetCal: profile.targetCal,
+        coachStyle: aiCoach.coachStyle,
+        tone: aiCoach.tone,
+        customInstructions: aiCoach.customInstructions,
         demographics: {
           ...(typeof demographics.heightCm === 'number' ? { heightCm: demographics.heightCm } : {}),
           ...(demographics.birthDate ? { birthDate: demographics.birthDate } : {}),
@@ -184,6 +192,18 @@ export default function DailyAIAdviceCard() {
         {generating ? <ActivityIndicator color="#2ecc71" /> : null}
       </View>
 
+      <TouchableOpacity
+        style={local.chatCta}
+        onPress={() => router.push('/ai-advice')}
+        activeOpacity={0.75}
+        accessibilityRole="button"
+        accessibilityLabel="チャットでAIに相談する画面へ"
+      >
+        <MessageCircle color="#4facfe" size={18} />
+        <Text style={local.chatCtaText}>チャットで自由に相談</Text>
+        <ChevronRight color="#888" size={20} />
+      </TouchableOpacity>
+
       {loading ? (
         <ActivityIndicator color="#2ecc71" />
       ) : advice ? (
@@ -222,6 +242,19 @@ export default function DailyAIAdviceCard() {
 }
 
 const local = StyleSheet.create({
+  chatCta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: '#1f1f1f',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#3a3a3a',
+    paddingVertical: 11,
+    paddingHorizontal: 12,
+    marginBottom: 12,
+  },
+  chatCtaText: { color: '#4facfe', fontSize: 13, fontWeight: '600', flex: 1 },
   headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 },
   title: { color: '#fff', fontSize: 14, fontWeight: 'bold' },
   adviceTitle: { color: '#2ecc71', fontSize: 15, fontWeight: 'bold', marginBottom: 8 },
