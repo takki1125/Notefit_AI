@@ -1,13 +1,10 @@
-import React from 'react';
-import { View, Text } from 'react-native';
+import { Redirect } from 'expo-router';
 
+/**
+ * ルート `/` は認証ガード（_layout）のあとでここに来る。
+ * ログイン前は _layout が `/login` に飛ばすため、ここに来るのは主にログイン後の初期表示。
+ * (tabs)/home へ寄せてプレースホルダーを出さない。
+ */
 export default function IndexScreen() {
-  return (
-    <View style={{ flex: 1, backgroundColor: '#1a1a1a', justifyContent: 'center', alignItems: 'center' }}>
-      <Text style={{ color: '#fff', fontSize: 20, fontWeight: 'bold' }}>
-        Notefit AI (Expo Router migration in progress)
-      </Text>
-    </View>
-  );
+  return <Redirect href="/home" />;
 }
-
