@@ -12,6 +12,7 @@ import {
   ScrollView,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { StatusBar } from 'expo-status-bar';
 import { ChevronLeft, Check } from 'lucide-react-native';
 import { deleteField, doc, getDoc, setDoc } from 'firebase/firestore';
 import { auth, db } from '../../firebaseConfig';
@@ -116,19 +117,31 @@ export default function ProfileEditScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={[styles.container, { backgroundColor: '#1a1a1a' }]} edges={['top', 'left', 'right']}>
+      <StatusBar style="light" />
       <View style={styles.modalHeader}>
-        <Text style={styles.modalTitle}>プロフィール編集</Text>
-        <TouchableOpacity onPress={() => router.back()}>
-          <ChevronLeft color="#fff" size={24} />
+        <TouchableOpacity
+          onPress={() => router.back()}
+          style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 8, paddingHorizontal: 4 }}
+          hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+          accessibilityRole="button"
+          accessibilityLabel="戻る"
+        >
+          <ChevronLeft color="#fff" size={26} />
+          <Text style={{ color: '#4facfe', fontSize: 17, fontWeight: '600' }}>戻る</Text>
         </TouchableOpacity>
+        <Text style={[styles.modalTitle, { flex: 1, textAlign: 'center' }]}>プロフィール編集</Text>
+        <View style={{ width: 92 }} />
       </View>
 
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        style={{ flex: 1 }}
+        style={{ flex: 1, backgroundColor: '#1a1a1a' }}
       >
-        <ScrollView contentContainerStyle={{ padding: 20, paddingBottom: 40 }} keyboardShouldPersistTaps="handled">
+        <ScrollView
+          contentContainerStyle={{ padding: 20, paddingBottom: 40, backgroundColor: '#1a1a1a', flexGrow: 1 }}
+          keyboardShouldPersistTaps="handled"
+        >
           {loading ? (
             <ActivityIndicator color="#2ecc71" size="large" style={{ marginTop: 50 }} />
           ) : (
