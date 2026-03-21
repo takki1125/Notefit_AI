@@ -10,6 +10,7 @@ export default function SettingsLayout() {
       {/* 目標設定 */}
       <Stack.Screen name="goals" />
       <Stack.Screen name="meal-reminders" />
+      <Stack.Screen name="ai-coach" />
     </Stack>
   );
 }
