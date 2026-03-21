@@ -71,7 +71,6 @@ export function DailyMetricQuickInput() {
     }
     const w = Number(weight);
     if (!Number.isFinite(w) || w <= 0) {
-      Alert.alert('入力確認', '体重(kg)を入力してください。');
       return;
     }
 
@@ -136,7 +135,6 @@ export function DailyMetricQuickInput() {
               keyboardType="numeric"
               value={weight}
               onChangeText={setWeight}
-              onEndEditing={handleSave}
               returnKeyType="done"
             />
           </View>
@@ -151,7 +149,6 @@ export function DailyMetricQuickInput() {
                 keyboardType="numeric"
                 value={bodyFat}
                 onChangeText={setBodyFat}
-                onEndEditing={handleSave}
                 returnKeyType="done"
               />
             </View>
