@@ -1,7 +1,9 @@
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 
 import { db } from '../firebaseConfig';
-import type { MealReminderSettings, Phase, UserDemographics, UserProfile } from './models';
+import type { AiCoachSettings, MealReminderSettings, Phase, UserDemographics, UserProfile } from './models';
+import { DEFAULT_AI_COACH_SETTINGS } from './models';
+import { normalizeAiCoachSettings } from './aiCoachSettings';
 
 type UserDocShape = Partial<{
   username: string;
@@ -18,6 +20,9 @@ type UserDocShape = Partial<{
   mealReminderLunchMinute: number;
   mealReminderDinnerHour: number;
   mealReminderDinnerMinute: number;
+  aiCoachStyle?: string;
+  aiTonePreset?: string;
+  aiCustomInstructions?: string;
 }>;
 
 export const DEFAULT_MEAL_REMINDER_SETTINGS: MealReminderSettings = {
@@ -136,6 +141,31 @@ export async function setMealReminderSettings(
       mealReminderLunchMinute: settings.lunchMinute,
       mealReminderDinnerHour: settings.dinnerHour,
       mealReminderDinnerMinute: settings.dinnerMinute,
+      updatedAt: new Date(),
+    },
+    { merge: true },
+  );
+}
+
+export async function getAiCoachSettings(uid: string): Promise<AiCoachSettings> {
+  const snap = await getDoc(doc(db, 'users', uid));
+  if (!snap.exists()) return { ...DEFAULT_AI_COACH_SETTINGS };
+  const data = snap.data() as UserDocShape;
+  return normalizeAiCoachSettings({
+    coachStyle: data.aiCoachStyle,
+    tone: data.aiTonePreset,
+    customInstructions: data.aiCustomInstructions,
+  });
+}
+
+export async function setAiCoachSettings(uid: string, settings: AiCoachSettings): Promise<void> {
+  const normalized = normalizeAiCoachSettings(settings);
+  await setDoc(
+    doc(db, 'users', uid),
+    {
+      aiCoachStyle: normalized.coachStyle,
+      aiTonePreset: normalized.tone,
+      aiCustomInstructions: normalized.customInstructions,
       updatedAt: new Date(),
     },
     { merge: true },
