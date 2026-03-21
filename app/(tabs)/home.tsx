@@ -10,30 +10,52 @@ import {
   query,
 } from "firebase/firestore";
 import {
-  Check,
   Dumbbell,
+  GripVertical,
+  Minus,
+  Plus,
   Settings as SettingsIcon,
   Trash2,
   X,
   Flame,
   Utensils,
 } from "lucide-react-native";
-import React, { useCallback, useState } from "react";
-import { Alert, Modal, ScrollView, Text, TouchableOpacity, View } from "react-native";
+import React, { useCallback, useMemo, useState } from "react";
+import {
+  ActivityIndicator,
+  Alert,
+  FlatList,
+  Modal,
+  Platform,
+  Pressable,
+  ScrollView,
+  Text,
+  TouchableOpacity,
+  View,
+} from "react-native";
+import DraggableFlatList, { RenderItemParams, ScaleDecorator } from "react-native-draggable-flatlist";
+import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaView } from "react-native-safe-area-context";
+import * as Haptics from "expo-haptics";
 import { useRouter } from "expo-router";
 
+import {
+  HOME_WIDGET_LABELS,
+  type HomeWidgetId,
+  hiddenWidgetIds,
+} from "../../constants/homeWidgets";
 import { auth, db } from "../../firebaseConfig";
-import { DailyMetricQuickInput } from "../../components/metrics/DailyMetricQuickInput";
-import GoalProgressCard from "../../components/goal/GoalProgressCard";
 import DailyAIAdviceCard from "../../components/ai/DailyAIAdviceCard";
+import GoalProgressCard from "../../components/goal/GoalProgressCard";
+import { DailyMetricQuickInput } from "../../components/metrics/DailyMetricQuickInput";
+import { useHomeWidgetOrder } from "../../hooks/useHomeWidgetOrder";
 import { styles } from "../../theme/styles";
 
 // --- 型定義 ---
 type WorkoutSet = { weight: number | string; reps: number | string; done: boolean; };
 type WorkoutExercise = { name: string; sets: WorkoutSet[]; };
 type Workout = { id: string; routineName: string; exercises: WorkoutExercise[]; dateObj: Date; dateStr: string; day: number; durationSeconds?: number; };
-type Meal = { name: string; cal: number; pro: number; fat: number; carb: number; }; // ここは配列内の要素
+type Meal = { name: string; cal: number; pro: number; fat: number; carb: number; };
 type DailyFoodLog = { meals: Meal[]; totalCal: number; totalPro: number; totalFat: number; totalCarb: number; };
 
 // --- 道具：時間を 00:00 形式にする ---
@@ -66,14 +88,13 @@ const WorkoutDetailModal: React.FC<{
           </View>
 
           <ScrollView contentContainerStyle={{ padding: 20, paddingBottom: 50 }}>
-            {/* トレーニングセクション */}
             {workouts.length > 0 && (
               <View style={{ marginBottom: 35 }}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 15 }}>
                   <Dumbbell color="#2ecc71" size={20} style={{ marginRight: 10 }} />
                   <Text style={{ color: '#2ecc71', fontWeight: 'bold', letterSpacing: 1 }}>TRAINING LOG</Text>
                 </View>
-                {workouts.map((workout, idx) => (
+                {workouts.map((workout) => (
                   <View key={workout.id} style={{ backgroundColor: '#262626', borderRadius: 15, padding: 15, marginBottom: 15 }}>
                     <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 12 }}>
                       <View>
@@ -99,7 +120,6 @@ const WorkoutDetailModal: React.FC<{
               </View>
             )}
 
-            {/* 食事セクション */}
             <View>
               <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 15 }}>
                 <Utensils color="#ff4757" size={20} style={{ marginRight: 10 }} />
@@ -135,7 +155,12 @@ const WorkoutDetailModal: React.FC<{
 };
 
 // --- カレンダーセクション ---
-const CalendarSection: React.FC<{ trainedDays: number[]; onDayPress: (day: number) => void; }> = ({ trainedDays, onDayPress }) => {
+const CalendarSection: React.FC<{
+  trainedDays: number[];
+  onDayPress: (day: number) => void;
+  editMode?: boolean;
+  onLongPressEdit?: () => void;
+}> = ({ trainedDays, onDayPress, editMode, onLongPressEdit }) => {
   const today = new Date();
   const currentDay = today.getDate();
   const currentYear = today.getFullYear();
@@ -143,12 +168,22 @@ const CalendarSection: React.FC<{ trainedDays: number[]; onDayPress: (day: numbe
   const daysInMonth = new Date(currentYear, currentMonth, 0).getDate();
   const days = Array.from({ length: daysInMonth }, (_, i) => i + 1);
 
+  const header = (
+    <View style={styles.calendarHeader}>
+      <Text style={styles.monthText}>{currentMonth}</Text>
+      <Text style={styles.yearText}>{currentYear}</Text>
+    </View>
+  );
+
   return (
     <View style={styles.card}>
-      <View style={styles.calendarHeader}>
-        <Text style={styles.monthText}>{currentMonth}</Text>
-        <Text style={styles.yearText}>{currentYear}</Text>
-      </View>
+      {!editMode && onLongPressEdit ? (
+        <Pressable onLongPress={onLongPressEdit} delayLongPress={450}>
+          {header}
+        </Pressable>
+      ) : (
+        header
+      )}
       <View style={styles.weekRow}>
         {["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"].map((day, index) => (
           <Text key={index} style={styles.weekDayText}>{day}</Text>
@@ -158,11 +193,24 @@ const CalendarSection: React.FC<{ trainedDays: number[]; onDayPress: (day: numbe
         {days.map((day) => {
           const isToday = day === currentDay;
           const isTrained = trainedDays.includes(day);
-          return (
-            <TouchableOpacity key={day} style={{ width: '14.28%', alignItems: 'center', marginBottom: 10 }} onPress={() => onDayPress(day)}>
-              <View style={[styles.dayCircle, isToday && styles.activeDayCircle, isTrained && !isToday && styles.trainedDayCircle]}>
-                <Text style={[styles.dayText, isToday && styles.activeDayText, isTrained && !isToday && styles.trainedDayText]}>{day}</Text>
-              </View>
+          const cell = (
+            <View style={[styles.dayCircle, isToday && styles.activeDayCircle, isTrained && !isToday && styles.trainedDayCircle]}>
+              <Text style={[styles.dayText, isToday && styles.activeDayText, isTrained && !isToday && styles.trainedDayText]}>{day}</Text>
+            </View>
+          );
+          return editMode ? (
+            <View key={day} style={{ width: "14.28%", alignItems: "center", marginBottom: 10 }} pointerEvents="none">
+              {cell}
+            </View>
+          ) : (
+            <TouchableOpacity
+              key={day}
+              style={{ width: "14.28%", alignItems: "center", marginBottom: 10 }}
+              onPress={() => onDayPress(day)}
+              onLongPress={onLongPressEdit}
+              delayLongPress={450}
+            >
+              {cell}
             </TouchableOpacity>
           );
         })}
@@ -174,6 +222,12 @@ const CalendarSection: React.FC<{ trainedDays: number[]; onDayPress: (day: numbe
 // --- メイン画面 ---
 export default function HomeTabScreen() {
   const router = useRouter();
+  const uid = auth.currentUser?.uid;
+  const { order, persistOrder, addWidget, hydrated } = useHomeWidgetOrder(uid);
+
+  const [isEditMode, setIsEditMode] = useState(false);
+  const [addWidgetModalVisible, setAddWidgetModalVisible] = useState(false);
+
   const [history, setHistory] = useState<Workout[]>([]);
   const [trainedDays, setTrainedDays] = useState<number[]>([]);
   const [modalVisible, setModalVisible] = useState(false);
@@ -200,8 +254,6 @@ export default function HomeTabScreen() {
     } catch (e) { console.error(e); }
   }, []);
 
-  // ★変更ポイント：ログインユーザーごとの箱から食事データを取得
-  // ★変更：ホーム画面でも日付チェックをして、前日のデータならクリアする
   const fetchTodayMeals = useCallback(async () => {
     const user = auth.currentUser;
     if (!user) {
@@ -216,7 +268,6 @@ export default function HomeTabScreen() {
     const storedDate = await AsyncStorage.getItem(dateKey);
 
     if (storedDate !== todayStr) {
-      // 日が変わっていればローカルをクリアして、ホーム画面の数字も0にする
       setTodayMeals([]);
       await AsyncStorage.removeItem(storageKey);
       await AsyncStorage.setItem(dateKey, todayStr);
@@ -227,6 +278,15 @@ export default function HomeTabScreen() {
   }, []);
 
   useFocusEffect(useCallback(() => { fetchHistory(); fetchTodayMeals(); }, [fetchHistory, fetchTodayMeals]));
+
+  useFocusEffect(
+    useCallback(() => {
+      return () => {
+        setIsEditMode(false);
+        setAddWidgetModalVisible(false);
+      };
+    }, []),
+  );
 
   const handleDayPress = async (day: number) => {
     const dayWorkouts = history.filter(item => item.day === day);
@@ -268,103 +328,392 @@ export default function HomeTabScreen() {
   const todayStr = new Date().toLocaleDateString();
   const todaysWorkouts = history.filter(w => w.dateStr === todayStr);
 
-  return (
-    <SafeAreaView style={styles.container}>
-      <ScrollView contentContainerStyle={styles.scrollContent}>
-        <View style={styles.homeHeader}>
-          <View>
-            <Text style={styles.homeWelcomeText}>Welcome back,</Text>
-            <Text style={styles.routineText}>{displayName}</Text>
-          </View>
-          <TouchableOpacity onPress={() => router.push("/settings")} style={styles.iconButton}>
-            <SettingsIcon color="#fff" size={24} />
-          </TouchableOpacity>
-        </View>
+  const hiddenIds = useMemo(() => hiddenWidgetIds(order), [order]);
 
-        <DailyMetricQuickInput />
+  const removeWidget = useCallback(
+    (id: HomeWidgetId) => {
+      if (order.length <= 1) {
+        Alert.alert("これ以上削除できません", "ホームには最低1つウィジェットが必要です。");
+        return;
+      }
+      void persistOrder(order.filter((w) => w !== id));
+    },
+    [order, persistOrder],
+  );
 
-        <GoalProgressCard />
-        <DailyAIAdviceCard />
+  const enterEditMode = useCallback(() => {
+    if (Platform.OS !== "web") {
+      void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    }
+    setIsEditMode(true);
+  }, []);
 
-        <CalendarSection trainedDays={trainedDays} onDayPress={handleDayPress} />
-
-        <TouchableOpacity style={styles.card} activeOpacity={0.8} onPress={() => router.push("/training")}>
-          <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 15 }}>
-            <View>
-              <Text style={{ color: "#2ecc71", fontSize: 14, fontWeight: "bold", letterSpacing: 1, marginBottom: 4 }}>WORKOUT</Text>
-              <View style={{ flexDirection: 'row', alignItems: 'baseline' }}>
-                <Text style={{ color: "#fff", fontSize: 16, fontWeight: "bold" }}>
-                  {todaysWorkouts.length > 0 ? "TODAY" : "START WORKOUT"}
-                </Text>
-                {todaysWorkouts[0]?.durationSeconds && (
-                  <Text style={{ color: '#888', fontSize: 12, marginLeft: 10 }}>({formatTime(todaysWorkouts[0].durationSeconds)})</Text>
-                )}
+  const renderWidget = (id: HomeWidgetId, editMode: boolean, onLongPressEdit?: () => void) => {
+    const blockPointer = editMode ? "none" as const : "auto";
+    const wrapIfEditEntry = (node: React.ReactNode) => {
+      if (editMode || !onLongPressEdit) return node;
+      return (
+        <Pressable onLongPress={onLongPressEdit} delayLongPress={450}>
+          {node}
+        </Pressable>
+      );
+    };
+    switch (id) {
+      case "metrics":
+        return wrapIfEditEntry(
+          <View pointerEvents={blockPointer}>
+            <DailyMetricQuickInput />
+          </View>,
+        );
+      case "goal":
+        return wrapIfEditEntry(
+          <View pointerEvents={blockPointer}>
+            <GoalProgressCard />
+          </View>,
+        );
+      case "ai":
+        return wrapIfEditEntry(
+          <View pointerEvents={blockPointer}>
+            <DailyAIAdviceCard />
+          </View>,
+        );
+      case "calendar":
+        return (
+          <CalendarSection
+            trainedDays={trainedDays}
+            onDayPress={handleDayPress}
+            editMode={editMode}
+            onLongPressEdit={!editMode ? onLongPressEdit : undefined}
+          />
+        );
+      case "workout":
+        return (
+          <TouchableOpacity
+            style={styles.card}
+            activeOpacity={0.8}
+            disabled={editMode}
+            onPress={() => router.push("/training")}
+            onLongPress={!editMode && onLongPressEdit ? onLongPressEdit : undefined}
+            delayLongPress={450}
+          >
+            <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 15 }}>
+              <View>
+                <Text style={{ color: "#2ecc71", fontSize: 14, fontWeight: "bold", letterSpacing: 1, marginBottom: 4 }}>WORKOUT</Text>
+                <View style={{ flexDirection: 'row', alignItems: 'baseline' }}>
+                  <Text style={{ color: "#fff", fontSize: 16, fontWeight: "bold" }}>
+                    {todaysWorkouts.length > 0 ? "TODAY" : "START WORKOUT"}
+                  </Text>
+                  {todaysWorkouts[0]?.durationSeconds && (
+                    <Text style={{ color: '#888', fontSize: 12, marginLeft: 10 }}>({formatTime(todaysWorkouts[0].durationSeconds)})</Text>
+                  )}
+                </View>
+              </View>
+              <View style={{ backgroundColor: "#2ecc71", borderRadius: 20, width: 40, height: 40, justifyContent: "center", alignItems: "center" }}>
+                <Dumbbell color="#000" size={20} />
               </View>
             </View>
-            <View style={{ backgroundColor: "#2ecc71", borderRadius: 20, width: 40, height: 40, justifyContent: "center", alignItems: "center" }}>
-              <Dumbbell color="#000" size={20} />
-            </View>
-          </View>
-          <View style={{ marginTop: 5, borderTopWidth: 1, borderTopColor: '#333', paddingTop: 12 }}>
-            {todaysWorkouts.length > 0 ? (
-              todaysWorkouts.map((workout, index) => (
-                <View key={workout.id} style={{ marginBottom: index === todaysWorkouts.length - 1 ? 4 : 16 }}>
-                  {todaysWorkouts.length > 1 && (
-                    <Text style={{ color: "#666", fontSize: 9, fontWeight: 'bold', marginBottom: 8, textAlign: 'right' }}>SESSION {todaysWorkouts.length - index}</Text>
-                  )}
-                  <View style={{ gap: 10 }}>
-                    {workout.exercises.map((ex, i) => {
-                      const doneSets = ex.sets.filter(s => s.done);
-                      return (
-                        <View key={i} style={{ marginBottom: 10 }}>
-                          <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 4 }}>
-                            <View style={{ width: 4, height: 4, borderRadius: 2, backgroundColor: "#2ecc71", marginRight: 10 }} />
-                            <Text style={{ color: "#fff", fontSize: 15, fontWeight: 'bold' }}>{ex.name}</Text>
+            <View style={{ marginTop: 5, borderTopWidth: 1, borderTopColor: '#333', paddingTop: 12 }}>
+              {todaysWorkouts.length > 0 ? (
+                todaysWorkouts.map((workout, index) => (
+                  <View key={workout.id} style={{ marginBottom: index === todaysWorkouts.length - 1 ? 4 : 16 }}>
+                    {todaysWorkouts.length > 1 && (
+                      <Text style={{ color: "#666", fontSize: 9, fontWeight: 'bold', marginBottom: 8, textAlign: 'right' }}>SESSION {todaysWorkouts.length - index}</Text>
+                    )}
+                    <View style={{ gap: 10 }}>
+                      {workout.exercises.map((ex, i) => {
+                        const doneSets = ex.sets.filter(s => s.done);
+                        return (
+                          <View key={i} style={{ marginBottom: 10 }}>
+                            <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 4 }}>
+                              <View style={{ width: 4, height: 4, borderRadius: 2, backgroundColor: "#2ecc71", marginRight: 10 }} />
+                              <Text style={{ color: "#fff", fontSize: 15, fontWeight: 'bold' }}>{ex.name}</Text>
+                            </View>
+                            {doneSets.length > 0 ? (
+                              <Text style={{ color: '#888', fontSize: 12, paddingLeft: 14 }}>
+                                {doneSets.map(s => `${s.weight}kg×${s.reps}`).join('  |  ')}
+                              </Text>
+                            ) : (
+                              <Text style={{ color: '#555', fontSize: 12, paddingLeft: 14 }}>未完了</Text>
+                            )}
                           </View>
-                          {doneSets.length > 0 ? (
-                            <Text style={{ color: '#888', fontSize: 12, paddingLeft: 14 }}>
-                              {doneSets.map(s => `${s.weight}kg×${s.reps}`).join('  |  ')}
-                            </Text>
-                          ) : (
-                            <Text style={{ color: '#555', fontSize: 12, paddingLeft: 14 }}>未完了</Text>
-                          )}
-                        </View>
-                      );
-                    })}
+                        );
+                      })}
+                    </View>
                   </View>
-                </View>
-              ))
-            ) : (
-              <Text style={{ color: "#666", textAlign: 'center', paddingVertical: 10 }}>タップして今日のトレーニングを開始</Text>
-            )}
-          </View>
-        </TouchableOpacity>
-
-        <TouchableOpacity style={styles.card} activeOpacity={0.8} onPress={() => router.push("/food")}>
-          <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 15 }}>
-            <View>
-              <Text style={{ color: "#ff4757", fontSize: 14, fontWeight: "bold", letterSpacing: 1, marginBottom: 4 }}>NUTRITION</Text>
-              <Text style={{ color: "#fff", fontSize: 20, fontWeight: "bold" }}>{todayTotalCal} <Text style={{ fontSize: 14, fontWeight: 'normal' }}>kcal</Text></Text>
+                ))
+              ) : (
+                <Text style={{ color: "#666", textAlign: 'center', paddingVertical: 10 }}>タップして今日のトレーニングを開始</Text>
+              )}
             </View>
-            <View style={{ backgroundColor: "#ff4757", borderRadius: 20, width: 40, height: 40, justifyContent: "center", alignItems: "center" }}>
-              <Flame color="#fff" size={20} />
+          </TouchableOpacity>
+        );
+      case "nutrition":
+        return (
+          <TouchableOpacity
+            style={styles.card}
+            activeOpacity={0.8}
+            disabled={editMode}
+            onPress={() => router.push("/food")}
+            onLongPress={!editMode && onLongPressEdit ? onLongPressEdit : undefined}
+            delayLongPress={450}
+          >
+            <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 15 }}>
+              <View>
+                <Text style={{ color: "#ff4757", fontSize: 14, fontWeight: "bold", letterSpacing: 1, marginBottom: 4 }}>NUTRITION</Text>
+                <Text style={{ color: "#fff", fontSize: 20, fontWeight: "bold" }}>{todayTotalCal} <Text style={{ fontSize: 14, fontWeight: 'normal' }}>kcal</Text></Text>
+              </View>
+              <View style={{ backgroundColor: "#ff4757", borderRadius: 20, width: 40, height: 40, justifyContent: "center", alignItems: "center" }}>
+                <Flame color="#fff" size={20} />
+              </View>
+            </View>
+            <View style={{ flexDirection: "row", alignItems: "center" }}>
+              <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: "#4facfe", marginRight: 8 }} />
+              <Text style={{ color: "#ccc" }}>タンパク質 (Protein)</Text>
+              <Text style={{ color: "#fff", marginLeft: "auto", fontWeight: 'bold' }}>{todayTotalPro} g</Text>
+            </View>
+          </TouchableOpacity>
+        );
+      default:
+        return null;
+    }
+  };
+
+  function renderWidgetRow(item: HomeWidgetId, drag?: () => void, isActive?: boolean) {
+    const showChrome = isEditMode;
+    const body = (
+      <View style={{ flex: 1, minWidth: 0, position: "relative" }}>
+        {showChrome && (
+          <TouchableOpacity
+            onPress={() => removeWidget(item)}
+            style={{
+              position: "absolute",
+              top: -6,
+              left: -6,
+              zIndex: 20,
+              width: 26,
+              height: 26,
+              borderRadius: 13,
+              backgroundColor: "#ff3b30",
+              justifyContent: "center",
+              alignItems: "center",
+              borderWidth: 2,
+              borderColor: "#1a1a1a",
+            }}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            accessibilityLabel="ウィジェットを削除"
+          >
+            <Minus color="#fff" size={16} strokeWidth={3} />
+          </TouchableOpacity>
+        )}
+        {renderWidget(item, !!showChrome, showChrome ? undefined : enterEditMode)}
+      </View>
+    );
+
+    if (!showChrome) {
+      return <View style={{ marginBottom: 0 }}>{body}</View>;
+    }
+
+    return (
+      <ScaleDecorator>
+        <View
+          style={{
+            flexDirection: "row",
+            alignItems: "flex-start",
+            opacity: isActive ? 0.92 : 1,
+            paddingTop: 4,
+          }}
+        >
+          <TouchableOpacity
+            onLongPress={drag ?? (() => {})}
+            delayLongPress={200}
+            style={{ paddingTop: 8, paddingRight: 6, paddingLeft: 0 }}
+            hitSlop={{ top: 8, bottom: 8, left: 4, right: 8 }}
+            accessibilityLabel="並び替え"
+          >
+            <GripVertical color="#888" size={24} />
+          </TouchableOpacity>
+          {body}
+        </View>
+      </ScaleDecorator>
+    );
+  }
+
+  const renderDraggableRow = ({ item, drag, isActive }: RenderItemParams<HomeWidgetId>) =>
+    renderWidgetRow(item, drag, isActive);
+
+  const renderStaticRow = ({ item }: { item: HomeWidgetId }) => renderWidgetRow(item);
+
+  const listHeader = useMemo(
+    () => (
+      <>
+        <View style={styles.homeHeader}>
+          {isEditMode ? (
+            <>
+              <TouchableOpacity
+                onPress={() => {
+                  setIsEditMode(false);
+                  setAddWidgetModalVisible(false);
+                }}
+                style={{ paddingVertical: 8, paddingRight: 12 }}
+                hitSlop={{ top: 12, bottom: 12, left: 8, right: 8 }}
+              >
+                <Text style={{ color: "#2ecc71", fontSize: 17, fontWeight: "600" }}>完了</Text>
+              </TouchableOpacity>
+              <View style={{ flex: 1 }}>
+                <Text style={{ color: "#888", fontSize: 12, marginBottom: 2 }}>ホームを編集</Text>
+                <Text style={[styles.routineText, { fontSize: 18 }]}>並べ替え・削除</Text>
+              </View>
+              {hiddenIds.length > 0 && (
+                <TouchableOpacity
+                  onPress={() => setAddWidgetModalVisible(true)}
+                  style={styles.iconButton}
+                  accessibilityLabel="ウィジェットを追加"
+                >
+                  <Plus color="#2ecc71" size={26} strokeWidth={2.5} />
+                </TouchableOpacity>
+              )}
+              <TouchableOpacity onPress={() => router.push("/settings")} style={styles.iconButton}>
+                <SettingsIcon color="#fff" size={24} />
+              </TouchableOpacity>
+            </>
+          ) : (
+            <>
+              <View>
+                <Text style={styles.homeWelcomeText}>Welcome back,</Text>
+                <Text style={styles.routineText}>{displayName}</Text>
+              </View>
+              <TouchableOpacity onPress={() => router.push("/settings")} style={styles.iconButton}>
+                <SettingsIcon color="#fff" size={24} />
+              </TouchableOpacity>
+            </>
+          )}
+        </View>
+        {!isEditMode && (
+          <Text style={{ color: "#666", fontSize: 12, paddingHorizontal: 20, marginBottom: 14 }}>
+            任意のウィジェットを長押しで編集モード
+          </Text>
+        )}
+      </>
+    ),
+    [isEditMode, displayName, router, hiddenIds.length],
+  );
+
+  /** 非表示のウィジェットがあるときだけ。編集モード外でも一覧から戻せるようにする */
+  const listFooter = useMemo(() => {
+    if (hiddenIds.length === 0) return null;
+    return (
+      <TouchableOpacity
+        onPress={() => setAddWidgetModalVisible(true)}
+        style={{
+          marginBottom: 24,
+          paddingVertical: 14,
+          paddingHorizontal: 16,
+          borderRadius: 14,
+          borderWidth: 1,
+          borderColor: "#444",
+          borderStyle: "dashed",
+          alignItems: "center",
+        }}
+      >
+        <Text style={{ color: "#2ecc71", fontWeight: "600", fontSize: 15 }}>+ ウィジェットを追加</Text>
+        <Text style={{ color: "#666", fontSize: 12, marginTop: 4 }}>非表示にした項目をホームに戻せます</Text>
+      </TouchableOpacity>
+    );
+  }, [hiddenIds.length]);
+
+  if (uid && !hydrated) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
+          <ActivityIndicator size="large" color="#2ecc71" />
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  const listCommon = {
+    data: order,
+    keyExtractor: (item: HomeWidgetId) => item,
+    ListHeaderComponent: listHeader,
+    ListFooterComponent: listFooter,
+    contentContainerStyle: styles.scrollContent,
+    keyboardShouldPersistTaps: "handled" as const,
+    style: { flex: 1 },
+  };
+
+  return (
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <SafeAreaView style={styles.container}>
+        {isEditMode ? (
+          <DraggableFlatList
+            {...listCommon}
+            onDragEnd={({ data }) => void persistOrder(data)}
+            renderItem={renderDraggableRow}
+            containerStyle={{ flex: 1 }}
+          />
+        ) : (
+          <FlatList
+            {...listCommon}
+            renderItem={renderStaticRow}
+          />
+        )}
+
+        <Modal
+          visible={addWidgetModalVisible}
+          transparent
+          animationType="slide"
+          onRequestClose={() => setAddWidgetModalVisible(false)}
+        >
+          <View style={{ flex: 1, justifyContent: "flex-end" }}>
+            <Pressable style={{ flex: 1 }} onPress={() => setAddWidgetModalVisible(false)} />
+            <View
+              style={{
+                backgroundColor: "#262626",
+                borderTopLeftRadius: 22,
+                borderTopRightRadius: 22,
+                paddingHorizontal: 20,
+                paddingTop: 18,
+                paddingBottom: 28,
+              }}
+            >
+              <Text style={{ color: "#fff", fontSize: 18, fontWeight: "700", marginBottom: 4 }}>ウィジェットを追加</Text>
+              <Text style={{ color: "#888", fontSize: 13, marginBottom: 12 }}>ホームに表示する項目を選んでください</Text>
+              {hiddenIds.length === 0 ? (
+                <Text style={{ color: "#888", fontSize: 14, paddingVertical: 8 }}>
+                  追加できるウィジェットはありません
+                </Text>
+              ) : (
+                hiddenIds.map((id) => (
+                  <TouchableOpacity
+                    key={id}
+                    onPress={() => {
+                      addWidget(id);
+                      setAddWidgetModalVisible(false);
+                    }}
+                    style={{ paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: "#333" }}
+                  >
+                    <Text style={{ color: "#fff", fontSize: 16 }}>{HOME_WIDGET_LABELS[id]}</Text>
+                  </TouchableOpacity>
+                ))
+              )}
+              <TouchableOpacity
+                onPress={() => setAddWidgetModalVisible(false)}
+                style={{ marginTop: 14, alignItems: "center", paddingVertical: 10 }}
+              >
+                <Text style={{ color: "#888", fontSize: 15 }}>キャンセル</Text>
+              </TouchableOpacity>
             </View>
           </View>
-          <View style={{ flexDirection: "row", alignItems: "center" }}>
-            <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: "#4facfe", marginRight: 8 }} />
-            <Text style={{ color: "#ccc" }}>タンパク質 (Protein)</Text>
-            <Text style={{ color: "#fff", marginLeft: "auto", fontWeight: 'bold' }}>{todayTotalPro} g</Text>
-          </View>
-        </TouchableOpacity>
-      </ScrollView>
+        </Modal>
 
-      <WorkoutDetailModal
-        visible={modalVisible}
-        onClose={() => setModalVisible(false)}
-        workouts={selectedDateWorkouts}
-        foodLog={selectedDateFoodLog}
-        onDelete={handleDeleteWorkout}
-      />
-    </SafeAreaView>
+        <WorkoutDetailModal
+          visible={modalVisible}
+          onClose={() => setModalVisible(false)}
+          workouts={selectedDateWorkouts}
+          foodLog={selectedDateFoodLog}
+          onDelete={handleDeleteWorkout}
+        />
+      </SafeAreaView>
+    </GestureHandlerRootView>
   );
 }
