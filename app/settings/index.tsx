@@ -2,7 +2,7 @@ import React from 'react';
 import { useRouter } from 'expo-router';
 import { Alert, ScrollView, Switch, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { LogOut, Trash2, X, User, ChevronRight, Target, Bell } from 'lucide-react-native';
+import { LogOut, Trash2, X, User, ChevronRight, Target, Bell, Sparkles } from 'lucide-react-native';
 import { deleteUser, signOut } from 'firebase/auth';
 import { auth } from '../../firebaseConfig';
 import { styles } from '../../theme/styles';
@@ -64,6 +64,26 @@ export default function SettingsScreen() {
       </View>
 
       <ScrollView contentContainerStyle={styles.scrollContent}>
+        {/* セクション：AI */}
+        <View style={{ marginTop: 20 }}>
+          <Text style={[styles.sectionHeaderText, { marginBottom: 10 }]}>AI</Text>
+          <TouchableOpacity
+            style={[styles.routineItem, { marginBottom: 10 }]}
+            onPress={() => router.push('/settings/ai-coach')}
+          >
+            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+              <View style={{ backgroundColor: '#333', padding: 8, borderRadius: 10, marginRight: 15 }}>
+                <Sparkles color="#4facfe" size={20} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.routineNameText}>AIコーチのスタイル</Text>
+                <Text style={styles.routineDescText}>トーン・口調・追加の希望</Text>
+              </View>
+              <ChevronRight color="#444" size={20} />
+            </View>
+          </TouchableOpacity>
+        </View>
+
         {/* セクション：記録 */}
         <View style={{ marginTop: 20 }}>
           <Text style={[styles.sectionHeaderText, { marginBottom: 10 }]}>TRACKING</Text>
