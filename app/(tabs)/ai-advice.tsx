@@ -710,7 +710,7 @@ export default function AiAdviceTabScreen() {
                 maxLength={80}
                 autoCorrect={false}
               />
-              <Text style={local.renameHint}>ホーム画面と同じダークテーマで表示されます。</Text>
+              <Text style={local.renameHint}>履歴一覧に表示される名前です。</Text>
             </ScrollView>
 
             <View style={local.renameFooter}>
