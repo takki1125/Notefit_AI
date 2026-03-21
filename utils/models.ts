@@ -43,3 +43,22 @@ export interface DailyAIAdvice {
   contextFingerprint?: string;
 }
 
+/** ホーム「今日のアドバイス」用のコーチの振る舞い（users/{uid} に保存） */
+export type AiCoachStylePreset = 'gentle' | 'balanced' | 'spartan' | 'facts';
+
+/** 口調（users/{uid} に保存） */
+export type AiTonePreset = 'polite' | 'neutral' | 'friendly' | 'casual';
+
+export interface AiCoachSettings {
+  coachStyle: AiCoachStylePreset;
+  tone: AiTonePreset;
+  /** 追加の希望（任意・短文） */
+  customInstructions: string;
+}
+
+export const DEFAULT_AI_COACH_SETTINGS: AiCoachSettings = {
+  coachStyle: 'balanced',
+  tone: 'neutral',
+  customInstructions: '',
+};
+
