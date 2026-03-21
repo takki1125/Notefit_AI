@@ -19,9 +19,10 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { StatusBar } from "expo-status-bar";
 import { getApp } from "firebase/app";
 import { getFunctions, httpsCallable } from "firebase/functions";
-import { Menu, Pin, Plus, Send, Sparkles } from "lucide-react-native";
+import { ChevronLeft, Menu, Pin, Plus, Send, Sparkles } from "lucide-react-native";
 
 import { auth } from "../../firebaseConfig";
 import { styles as themeStyles } from "../../theme/styles";
@@ -325,11 +326,17 @@ export default function AiAdviceTabScreen() {
     setRenameVisible(true);
   }, []);
 
+  const cancelRename = useCallback(() => {
+    setRenameVisible(false);
+    setRenameSessionId(null);
+    setRenameDraft("");
+  }, []);
+
   const commitRename = useCallback(() => {
     const id = renameSessionId;
     const t = renameDraft.trim();
     if (!id) {
-      setRenameVisible(false);
+      cancelRename();
       return;
     }
     setSessions((prev) =>
@@ -344,10 +351,8 @@ export default function AiAdviceTabScreen() {
           : s,
       ),
     );
-    setRenameVisible(false);
-    setRenameSessionId(null);
-    setRenameDraft("");
-  }, [renameDraft, renameSessionId]);
+    cancelRename();
+  }, [renameDraft, renameSessionId, cancelRename]);
 
   const showSessionActions = useCallback(
     (s: ChatSession) => {
@@ -660,39 +665,61 @@ export default function AiAdviceTabScreen() {
         </View>
       </Modal>
 
-      <Modal visible={renameVisible} transparent animationType="fade">
-        <KeyboardAvoidingView
-          style={local.renameOverlay}
-          behavior={Platform.OS === "ios" ? "padding" : undefined}
-        >
-          <Pressable style={StyleSheet.absoluteFill} onPress={() => setRenameVisible(false)} />
-          <View style={local.renameBox}>
-            <Text style={local.renameLabel}>会話の名前</Text>
-            <TextInput
-              style={local.renameInput}
-              value={renameDraft}
-              onChangeText={setRenameDraft}
-              placeholder="名前を入力"
-              placeholderTextColor="#666"
-              autoFocus
-              maxLength={80}
-            />
-            <View style={local.renameActions}>
+      <Modal
+        visible={renameVisible}
+        animationType="slide"
+        presentationStyle="fullScreen"
+        onRequestClose={cancelRename}
+      >
+        <SafeAreaView style={local.renameScreen} edges={["top", "bottom"]}>
+          <StatusBar style="light" />
+          <KeyboardAvoidingView
+            style={local.renameKb}
+            behavior={Platform.OS === "ios" ? "padding" : undefined}
+          >
+            <View style={local.renameTopBar}>
               <TouchableOpacity
-                style={local.renameBtnGhost}
-                onPress={() => {
-                  setRenameVisible(false);
-                  setRenameSessionId(null);
-                }}
+                style={local.renameBackBtn}
+                onPress={cancelRename}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                accessibilityRole="button"
+                accessibilityLabel="戻る"
               >
-                <Text style={local.renameBtnGhostText}>キャンセル</Text>
+                <ChevronLeft color="#fff" size={26} />
+                <Text style={local.renameBackLabel}>戻る</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={local.renameBtnPrimary} onPress={commitRename}>
-                <Text style={local.renameBtnPrimaryText}>保存</Text>
+              <Text style={local.renameTopTitle} numberOfLines={1}>
+                会話名を編集
+              </Text>
+              <View style={local.renameTopRightSpacer} />
+            </View>
+
+            <ScrollView
+              style={local.renameScroll}
+              contentContainerStyle={local.renameScrollContent}
+              keyboardShouldPersistTaps="handled"
+            >
+              <Text style={local.renameLabel}>表示名</Text>
+              <TextInput
+                style={local.renameInput}
+                value={renameDraft}
+                onChangeText={setRenameDraft}
+                placeholder="この会話の名前"
+                placeholderTextColor="#666"
+                autoFocus
+                maxLength={80}
+                autoCorrect={false}
+              />
+              <Text style={local.renameHint}>ホーム画面と同じダークテーマで表示されます。</Text>
+            </ScrollView>
+
+            <View style={local.renameFooter}>
+              <TouchableOpacity style={local.renameSaveWide} onPress={commitRename} activeOpacity={0.85}>
+                <Text style={local.renameSaveWideText}>保存する</Text>
               </TouchableOpacity>
             </View>
-          </View>
-        </KeyboardAvoidingView>
+          </KeyboardAvoidingView>
+        </SafeAreaView>
       </Modal>
     </SafeAreaView>
   );
@@ -834,36 +861,55 @@ const local = StyleSheet.create({
     borderRadius: 12,
   },
   drawerNewChatText: { color: "#000", fontSize: 16, fontWeight: "bold" },
-  renameOverlay: {
-    flex: 1,
-    backgroundColor: "rgba(0,0,0,0.5)",
-    justifyContent: "center",
-    padding: 24,
+  renameScreen: { flex: 1, backgroundColor: "#1a1a1a" },
+  renameKb: { flex: 1 },
+  renameTopBar: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 4,
+    paddingVertical: 6,
+    borderBottomWidth: 1,
+    borderBottomColor: "#333",
+    backgroundColor: "#1a1a1a",
   },
-  renameBox: {
-    backgroundColor: "#2a2a2a",
-    borderRadius: 16,
-    padding: 20,
-    zIndex: 2,
+  renameBackBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 8,
+    paddingHorizontal: 6,
+    minWidth: 92,
+    gap: 2,
   },
-  renameLabel: { color: "#aaa", fontSize: 13, marginBottom: 10 },
+  renameBackLabel: { color: "#4facfe", fontSize: 17, fontWeight: "600" },
+  renameTopTitle: { flex: 1, textAlign: "center", color: "#fff", fontSize: 17, fontWeight: "bold" },
+  renameTopRightSpacer: { width: 92 },
+  renameScroll: { flex: 1 },
+  renameScrollContent: { padding: 20, paddingBottom: 32 },
+  renameLabel: { color: "#888", fontSize: 13, marginBottom: 10, fontWeight: "600" },
   renameInput: {
-    backgroundColor: "#111",
-    borderRadius: 10,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
+    backgroundColor: "#2a2a2a",
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: "#444",
+    paddingHorizontal: 16,
+    paddingVertical: 14,
     color: "#fff",
     fontSize: 16,
-    marginBottom: 16,
   },
-  renameActions: { flexDirection: "row", justifyContent: "flex-end", gap: 12 },
-  renameBtnGhost: { paddingVertical: 10, paddingHorizontal: 16 },
-  renameBtnGhostText: { color: "#888", fontSize: 16 },
-  renameBtnPrimary: {
+  renameHint: { color: "#666", fontSize: 12, marginTop: 14, lineHeight: 18 },
+  renameFooter: {
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    paddingBottom: 16,
+    borderTopWidth: 1,
+    borderTopColor: "#333",
+    backgroundColor: "#1a1a1a",
+  },
+  renameSaveWide: {
     backgroundColor: "#2ecc71",
-    paddingVertical: 10,
-    paddingHorizontal: 20,
-    borderRadius: 10,
+    borderRadius: 14,
+    paddingVertical: 16,
+    alignItems: "center",
   },
-  renameBtnPrimaryText: { color: "#000", fontSize: 16, fontWeight: "bold" },
+  renameSaveWideText: { color: "#000", fontSize: 17, fontWeight: "bold" },
 });
