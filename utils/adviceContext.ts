@@ -116,6 +116,8 @@ export function buildAdviceContextFingerprint(
   nutrition: AdviceNutritionPayload,
   workoutDocIds: string[],
   demographics?: { heightCm?: number; birthDate?: string },
+  /** AIコーチ設定（口調・スタイル・自由記述）が変わったら再生成する */
+  aiSettingsFingerprint?: string,
 ): string {
   const demo =
     demographics &&
@@ -123,7 +125,7 @@ export function buildAdviceContextFingerprint(
       ? `h:${demographics.heightCm ?? 'x'}|b:${demographics.birthDate ?? 'x'}`
       : 'demo:x';
   return [
-    'v3',
+    'v5',
     dateId,
     demo,
     `cal:${nutrition.totalCal}`,
@@ -132,5 +134,6 @@ export function buildAdviceContextFingerprint(
     `c:${nutrition.totalCarb}`,
     `mn:${nutrition.mealNames.length}`,
     `w:${workoutDocIds.join(',')}`,
+    aiSettingsFingerprint ? `ai:${aiSettingsFingerprint}` : 'ai:default',
   ].join('|');
 }
