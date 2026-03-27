@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useCallback} from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -13,6 +13,8 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { useFocusEffect } from "@react-navigation/native"; // ★ これを追加
+import AsyncStorage from "@react-native-async-storage/async-storage"; // ★ これを追加
 import { Check, ChevronDown, Clock, Dumbbell, Plus, Trash2, X } from "lucide-react-native";
 import {
   addDoc,
@@ -35,7 +37,6 @@ type WorkoutSet = {
   done: boolean;
 };
 
-// ★修正：category（部位タグ）を追加
 type Exercise = {
   id: number;
   name: string;
@@ -53,7 +54,6 @@ type Routine = {
 type ExerciseSelectorModalProps = {
   visible: boolean;
   onClose: () => void;
-  // ★修正：部位名も受け取るように変更
   onSelect: (exerciseName: string, category: string) => void;
 };
 
@@ -83,74 +83,128 @@ const ExerciseSelectorModal: React.FC<ExerciseSelectorModalProps> = ({
     sections: { title: string; data: string[] }[];
   } | null>(null);
 
-  useEffect(() => {
-    if (!visible) return;
+  // ★追加：新しい種目名を入力・保存するためのState
+  const [newExerciseName, setNewExerciseName] = useState("");
+  const [isSaving, setIsSaving] = useState(false);
 
-    const fetchData = async () => {
-      setLoading(true);
-      try {
-        const querySnapshot = await getDocs(collection(db, "master_data"));
-        const data: {
-          id: string;
-          label: string;
-          sections: { title: string; data: string[] }[];
-        }[] = [];
+  const fetchData = async () => {
+    const user = auth.currentUser;
+    if (!user) return;
 
-        querySnapshot.forEach((d) => {
-          const docData = d.data() as any;
-          let sections: { title: string; data: string[] }[] = [];
+    setLoading(true);
+    try {
+      const [masterSnap, customSnap] = await Promise.all([
+        getDocs(collection(db, "master_data")),
+        getDocs(collection(db, "users", user.uid, "custom_exercises"))
+      ]);
 
-          if (docData.categories && typeof docData.categories === "object") {
-            Object.keys(docData.categories).forEach((key) => {
-              const subCat = docData.categories[key];
-              if (
-                subCat &&
-                Array.isArray(subCat.exercises) &&
-                subCat.exercises.length > 0
-              ) {
-                sections.push({
-                  title: key,
-                  data: subCat.exercises,
-                });
-              }
-            });
-          }
+      const data: {
+        id: string;
+        label: string;
+        sections: { title: string; data: string[] }[];
+      }[] = [];
 
-          if (
-            Array.isArray(docData.exercises) &&
-            docData.exercises.length > 0
-          ) {
-            sections.push({
-              title: "その他",
-              data: docData.exercises,
-            });
-          }
+      // ① マスターデータ処理
+      masterSnap.forEach((d) => {
+        const docData = d.data() as any;
+        let sections: { title: string; data: string[] }[] = [];
 
-          data.push({
-            id: d.id,
-            label: docData.label || d.id,
-            sections,
+        if (docData.categories && typeof docData.categories === "object") {
+          Object.keys(docData.categories).forEach((key) => {
+            const subCat = docData.categories[key];
+            if (subCat && Array.isArray(subCat.exercises) && subCat.exercises.length > 0) {
+              sections.push({ title: key, data: subCat.exercises });
+            }
           });
-        });
-
-        setCategories(data);
-
-        const firstValid = data.find((c) => c.sections.length > 0);
-        if (firstValid) {
-          setSelectedCategory(firstValid);
-        } else if (data.length > 0) {
-          setSelectedCategory(data[0]);
         }
-      } catch (e) {
-        console.error("Error fetching data: ", e);
-        Alert.alert("エラー", "データの読み込みに失敗しました。");
-      } finally {
-        setLoading(false);
-      }
-    };
 
-    fetchData();
+        if (Array.isArray(docData.exercises) && docData.exercises.length > 0) {
+          sections.push({ title: "その他", data: docData.exercises });
+        }
+
+        data.push({
+          id: d.id,
+          label: docData.label || d.id,
+          sections,
+        });
+      });
+
+      // ② 個人データを「オリジナル」セクションに挿入
+      const customDocs = customSnap.docs.map(doc => doc.data());
+      
+      data.forEach(targetCat => {
+        const matchingCustoms = customDocs.filter(c => c.categoryLabel === targetCat.label);
+        if (matchingCustoms.length > 0) {
+          targetCat.sections.unshift({
+            title: "オリジナル",
+            data: matchingCustoms.map(c => c.name)
+          });
+        }
+      });
+
+      setCategories(data);
+
+      setCategories((currentData) => {
+        if (selectedCategory) {
+          const updatedCat = currentData.find(c => c.id === selectedCategory.id);
+          if (updatedCat) setSelectedCategory(updatedCat);
+        } else {
+          const firstValid = currentData.find((c) => c.sections.length > 0);
+          if (firstValid) {
+            setSelectedCategory(firstValid);
+          } else if (currentData.length > 0) {
+            setSelectedCategory(currentData[0]);
+          }
+        }
+        return currentData;
+      });
+
+    } catch (e) {
+      console.error("Error fetching data: ", e);
+      Alert.alert("エラー", "データの読み込みに失敗しました。");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (visible) {
+      fetchData();
+      setNewExerciseName(""); // モーダルを開くたびに入力欄をリセット
+    }
   }, [visible]);
+
+  // ★追加：UIのボタンから呼ばれる保存処理
+  const handleSaveCustomExercise = async () => {
+    if (!newExerciseName.trim()) {
+      Alert.alert("エラー", "種目名を入力してくれ");
+      return;
+    }
+    if (!selectedCategory) return;
+
+    setIsSaving(true);
+    const user = auth.currentUser;
+    if (!user) {
+      setIsSaving(false);
+      return;
+    }
+
+    try {
+      await addDoc(collection(db, "users", user.uid, "custom_exercises"), {
+        name: newExerciseName.trim(),
+        categoryLabel: selectedCategory.label,
+        createdAt: serverTimestamp(),
+      });
+      
+      setNewExerciseName(""); // 入力欄をクリア
+      await fetchData(); // 最新のリストを再取得して画面に反映
+    } catch (e) {
+      console.error("カスタム種目保存エラー:", e);
+      Alert.alert("エラー", "種目の保存に失敗しました。");
+    } finally {
+      setIsSaving(false);
+    }
+  };
 
   return (
     <Modal
@@ -174,12 +228,10 @@ const ExerciseSelectorModal: React.FC<ExerciseSelectorModalProps> = ({
           />
         ) : (
           <View style={{ flex: 1 }}>
-            {/* ★ここ！ height: 50 の View を styles.modalCategoryContainer に変える */}
             <View style={styles.modalCategoryContainer}>
               <ScrollView
                 horizontal
                 showsHorizontalScrollIndicator={false}
-                // contentContainerStyle を使って中のパディングを調整するのがコツ
                 contentContainerStyle={{ paddingHorizontal: 16 }}
               >
                 {categories.map((cat) => (
@@ -211,25 +263,43 @@ const ExerciseSelectorModal: React.FC<ExerciseSelectorModalProps> = ({
               stickySectionHeadersEnabled={false}
               renderSectionHeader={({ section: { title } }) => (
                 <View style={styles.sectionHeader}>
-                  <Text style={styles.sectionHeaderText}>{title}</Text>
+                  <Text style={[styles.sectionHeaderText, title === "オリジナル" && { color: "#f1c40f" }]}>{title}</Text>
                 </View>
               )}
-              renderItem={({ item }) => (
+              renderItem={({ item, section }) => (
                 <TouchableOpacity
                   style={styles.exerciseListItem}
                   onPress={() => {
-                    // ★修正：選択された種目名と一緒に、現在選んでいるカテゴリーの label を渡す
                     onSelect(item, selectedCategory?.label || "他");
                     onClose();
                   }}
                 >
-                  <Text style={styles.exerciseListText}>{item}</Text>
+                  <Text style={[styles.exerciseListText, section.title === "オリジナル" && { color: "#f1c40f", fontWeight: "bold" }]}>{item}</Text>
                   <Plus color="#2ecc71" size={20} />
                 </TouchableOpacity>
               )}
-              ListEmptyComponent={
-                <View style={{ padding: 20, alignItems: "center" }}>
-                  <Text style={{ color: "#666" }}>種目がありません</Text>
+              // ★進化：リストの一番下に入力フォームを常時表示！
+              ListFooterComponent={
+                <View style={{ marginTop: 20, marginBottom: 40, padding: 15, backgroundColor: "#1a1a1a", borderRadius: 12, marginHorizontal: 16 }}>
+                  <Text style={{ color: "#2ecc71", fontWeight: "bold", marginBottom: 10 }}>＋ オリジナル種目を追加</Text>
+                  <TextInput
+                    style={[styles.inputField, { marginBottom: 10, backgroundColor: "#2a2a2a", borderWidth: 0 }]}
+                    placeholder={`「${selectedCategory?.label || "この部位"}」の新しい種目名`}
+                    placeholderTextColor="#666"
+                    value={newExerciseName}
+                    onChangeText={setNewExerciseName}
+                  />
+                  <TouchableOpacity
+                    style={[styles.loginButton, { marginTop: 0, paddingVertical: 12 }, isSaving && { opacity: 0.7 }]}
+                    onPress={handleSaveCustomExercise}
+                    disabled={isSaving}
+                  >
+                    {isSaving ? (
+                      <ActivityIndicator color="#000" />
+                    ) : (
+                      <Text style={{ color: "#000", fontWeight: "bold", textAlign: "center" }}>リストに追加</Text>
+                    )}
+                  </TouchableOpacity>
                 </View>
               }
             />
@@ -467,6 +537,17 @@ const TrainingTabScreen: React.FC<Props> = ({ navigation }) => {
   const [timerSeconds, setTimerSeconds] = useState(0);
   const [isTimerActive, setIsTimerActive] = useState(false);
 
+  const [autoCheck, setAutoCheck] = useState(false);
+  useFocusEffect(
+    useCallback(() => {
+      const loadSetting = async () => {
+        const val = await AsyncStorage.getItem('@auto_check_set');
+        setAutoCheck(val === 'true'); // 設定がtrueなら初期値もtrueになる
+      };
+      loadSetting();
+    }, [])
+  );
+
   useEffect(() => {
     navigation?.setOptions?.({
       tabBarStyle:
@@ -482,7 +563,9 @@ const TrainingTabScreen: React.FC<Props> = ({ navigation }) => {
   }, [menu.length, navigation]);
 
   useEffect(() => {
-    let interval: NodeJS.Timeout | null = null;
+    // ★ここを any に変更して、型のパニックを黙らせる！
+    let interval: any = null;
+
     if (menu.length > 0) {
       setIsTimerActive(true);
     } else {
@@ -512,14 +595,13 @@ const TrainingTabScreen: React.FC<Props> = ({ navigation }) => {
     return h > 0 ? `${h}:${m}:${s}` : `${m}:${s}`;
   };
 
-  // ★修正：第2引数にカテゴリーを受け取る
   const handleAddExercise = (exerciseName: string, category: string) => {
     const newExercise: Exercise = {
       id: Date.now(),
       name: exerciseName,
-      category: category, // ★ここに部位タグ（"腕 (Arms)" 等）を保存
+      category: category,
       target: "- kg x -",
-      sets: [{ weight: "", reps: "", done: false }],
+      sets: [{ weight: "", reps: "", done: autoCheck }],
     };
     setMenu((prev) => [...prev, newExercise]);
   };
@@ -535,9 +617,9 @@ const TrainingTabScreen: React.FC<Props> = ({ navigation }) => {
           onPress: () => {
             const loadedExercises: Exercise[] = routine.exercises.map((ex) => ({
               ...ex,
-              category: ex.category || "他", // ★古いデータ対策
+              category: ex.category || "他",
               id: Date.now() + Math.random(),
-              sets: ex.sets.map((s) => ({ ...s, done: false })),
+              sets: ex.sets.map((s) => ({ ...s, done: autoCheck })),
             }));
             setMenu(loadedExercises);
             setCurrentRoutineName(routine.name);
@@ -564,7 +646,7 @@ const TrainingTabScreen: React.FC<Props> = ({ navigation }) => {
     setMenu((prev) =>
       prev.map((ex) =>
         ex.id === exerciseId
-          ? { ...ex, sets: [...ex.sets, { weight: "", reps: "", done: false }] }
+          ? { ...ex, sets: [...ex.sets, { weight: "", reps: "", done: autoCheck }] }
           : ex
       )
     );
@@ -662,7 +744,7 @@ const TrainingTabScreen: React.FC<Props> = ({ navigation }) => {
               date: serverTimestamp(),
               dateObj: now.toISOString(),
               routineName: currentRoutineName,
-              exercises: menu, // ★この menu の中に category が入っているので解決！
+              exercises: menu,
               durationSeconds: timerSeconds,
             });
 
@@ -730,88 +812,94 @@ const TrainingTabScreen: React.FC<Props> = ({ navigation }) => {
             </View>
           )}
 
-          {menu.map((item) => (
-            <View key={item.id} style={styles.exerciseCard}>
-              <View style={styles.exerciseHeader}>
-                <View>
-                  <Text style={styles.exerciseName}>{item.name}</Text>
-                  {/* デバッグ用：部位を表示 */}
-                  <Text style={{ color: "#2ecc71", fontSize: 10 }}>{item.category}</Text>
+          {menu.map((item) => {
+            // ★追加：カテゴリーが「有酸素」かどうかを判定！
+            const isCardio = item.category?.includes("有酸素");
+
+            return (
+              <View key={item.id} style={styles.exerciseCard}>
+                <View style={styles.exerciseHeader}>
+                  <View>
+                    <Text style={styles.exerciseName}>{item.name}</Text>
+                    {/* デバッグ用：部位を表示 */}
+                    <Text style={{ color: "#2ecc71", fontSize: 10 }}>{item.category}</Text>
+                  </View>
+                  <TouchableOpacity
+                    onPress={() => handleRemoveExercise(item.id)}
+                    style={{ padding: 5 }}
+                  >
+                    <X color="#ff4444" size={24} />
+                  </TouchableOpacity>
                 </View>
+
+                {/* ★変更：有酸素の時はヘッダーを「MIN(分)」と「KM(距離)」に切り替える */}
+                <View style={styles.setRowHeader}>
+                  <Text style={[styles.colLabel, { width: "15%" }]}>SET</Text>
+                  <Text style={[styles.colLabel, { width: "25%" }]}>{isCardio ? "MIN" : "KG"}</Text>
+                  <Text style={[styles.colLabel, { width: "25%" }]}>{isCardio ? "KM" : "REPS"}</Text>
+                  <Text style={[styles.colLabel, { width: "15%" }]}>DONE</Text>
+                  <Text style={[styles.colLabel, { width: "10%" }]} />
+                </View>
+
+                {item.sets.map((set, index) => (
+                  <View key={index} style={styles.setRow}>
+                    <View style={[styles.setBadge, { width: "15%" }]}>
+                      <Text style={styles.setText}>{index + 1}</Text>
+                    </View>
+                    <View style={[styles.inputBox, { width: "25%" }]}>
+                      <TextInput
+                        style={styles.inputFieldText}
+                        keyboardType="numeric"
+                        placeholder={isCardio ? "分" : "-"} // ★プレースホルダーも切り替え
+                        placeholderTextColor="#444"
+                        value={set.weight.toString()}
+                        onChangeText={(val) =>
+                          handleUpdateSet(item.id, index, "weight", val)
+                        }
+                        returnKeyType="done"
+                      />
+                    </View>
+                    <View style={[styles.inputBox, { width: "25%" }]}>
+                      <TextInput
+                        style={styles.inputFieldText}
+                        keyboardType="numeric"
+                        placeholder={isCardio ? "km" : "-"} // ★プレースホルダーも切り替え
+                        placeholderTextColor="#444"
+                        value={set.reps.toString()}
+                        onChangeText={(val) =>
+                          handleUpdateSet(item.id, index, "reps", val)
+                        }
+                        returnKeyType="done"
+                      />
+                    </View>
+                    <TouchableOpacity
+                      style={[
+                        styles.checkBtn,
+                        set.done && styles.checkedBtn,
+                        { width: 36, height: 36, marginLeft: 5 },
+                      ]}
+                      onPress={() => toggleSetDone(item.id, index)}
+                    >
+                      <Check color={set.done ? "#000" : "#444"} size={16} />
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={{ width: 30, alignItems: "center", marginLeft: 5 }}
+                      onPress={() => handleRemoveSet(item.id, index)}
+                    >
+                      <Trash2 color="#444" size={18} />
+                    </TouchableOpacity>
+                  </View>
+                ))}
                 <TouchableOpacity
-                  onPress={() => handleRemoveExercise(item.id)}
-                  style={{ padding: 5 }}
+                  style={styles.addSetBtn}
+                  onPress={() => handleAddSet(item.id)}
                 >
-                  <X color="#ff4444" size={24} />
+                  <Plus color="#2ecc71" size={16} />
+                  <Text style={styles.addSetBtnText}>セットを追加!</Text>
                 </TouchableOpacity>
               </View>
-
-              <View style={styles.setRowHeader}>
-                <Text style={[styles.colLabel, { width: "15%" }]}>SET</Text>
-                <Text style={[styles.colLabel, { width: "25%" }]}>KG</Text>
-                <Text style={[styles.colLabel, { width: "25%" }]}>REPS</Text>
-                <Text style={[styles.colLabel, { width: "15%" }]}>DONE</Text>
-                <Text style={[styles.colLabel, { width: "10%" }]} />
-              </View>
-
-              {item.sets.map((set, index) => (
-                <View key={index} style={styles.setRow}>
-                  <View style={[styles.setBadge, { width: "15%" }]}>
-                    <Text style={styles.setText}>{index + 1}</Text>
-                  </View>
-                  <View style={[styles.inputBox, { width: "25%" }]}>
-                    <TextInput
-                      style={styles.inputFieldText}
-                      keyboardType="numeric"
-                      placeholder="-"
-                      placeholderTextColor="#444"
-                      value={set.weight.toString()}
-                      onChangeText={(val) =>
-                        handleUpdateSet(item.id, index, "weight", val)
-                      }
-                      returnKeyType="done"
-                    />
-                  </View>
-                  <View style={[styles.inputBox, { width: "25%" }]}>
-                    <TextInput
-                      style={styles.inputFieldText}
-                      keyboardType="numeric"
-                      placeholder="-"
-                      placeholderTextColor="#444"
-                      value={set.reps.toString()}
-                      onChangeText={(val) =>
-                        handleUpdateSet(item.id, index, "reps", val)
-                      }
-                      returnKeyType="done"
-                    />
-                  </View>
-                  <TouchableOpacity
-                    style={[
-                      styles.checkBtn,
-                      set.done && styles.checkedBtn,
-                      { width: 36, height: 36, marginLeft: 5 },
-                    ]}
-                    onPress={() => toggleSetDone(item.id, index)}
-                  >
-                    <Check color={set.done ? "#000" : "#444"} size={16} />
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={{ width: 30, alignItems: "center", marginLeft: 5 }}
-                    onPress={() => handleRemoveSet(item.id, index)}
-                  >
-                    <Trash2 color="#444" size={18} />
-                  </TouchableOpacity>
-                </View>
-              ))}
-              <TouchableOpacity
-                style={styles.addSetBtn}
-                onPress={() => handleAddSet(item.id)}
-              >
-                <Plus color="#2ecc71" size={16} />
-                <Text style={styles.addSetBtnText}>セットを追加!</Text>
-              </TouchableOpacity>
-            </View>
-          ))}
+            );
+          })}
 
           <TouchableOpacity
             style={styles.addExerciseBtn}
