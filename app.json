@@ -1,7 +1,7 @@
 {
   "expo": {
     "name": "fitness-app",
-    "slug": "fitness-app",
+    "slug": "notefit-ai",
     "scheme": "fitness-app",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -16,6 +16,8 @@
       "supportsTablet": true
     },
     "android": {
+      "package": "com.takimoto.shoa.notefitai",
+      "versionCode": 1,
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#ffffff"
@@ -27,6 +29,12 @@
     "plugins": [
       "expo-notifications",
       "@react-native-community/datetimepicker"
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "1ecff325-3fa5-4e9b-ae1b-36ac4c6f76ea"
+      }
+    },
+    "owner": "takki-and-shoa"
   }
 }
