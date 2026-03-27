@@ -2,12 +2,13 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { getApp } from "firebase/app";
 import { getFunctions, httpsCallable } from "firebase/functions";
 import { doc, serverTimestamp, setDoc, getDoc, collection, query, getDocs } from "firebase/firestore";
-import { Sparkles, Trash2, X, BookOpen, Search } from "lucide-react-native"; // ★ Searchアイコン追加
+import { Sparkles, Trash2, X, BookOpen, Search, Star } from "lucide-react-native"; 
 import React, { useState, useCallback } from "react";
 import { useFocusEffect } from "@react-navigation/native";
 import {
   ActivityIndicator,
   Alert,
+  SafeAreaView,
   ScrollView,
   Text,
   TextInput,
@@ -15,12 +16,9 @@ import {
   View,
   Modal
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
 
 import { auth, db } from "../../firebaseConfig";
 import { styles } from "../../theme/styles";
-import { calcAgeYearsFromBirthDate } from "../../utils/demographics";
-import { getUserDemographics } from "../../utils/firestoreProfile";
 
 type Meal = {
   id: string;
@@ -29,6 +27,7 @@ type Meal = {
   pro: number;
   fat: number;
   carb: number;
+  isFavorite?: boolean; 
 };
 
 const STORAGE_KEY_BASE = "@food_meals_today_";
@@ -45,7 +44,14 @@ export default function FoodTabScreen() {
   const [aiInput, setAiInput] = useState("");
   const [isAiLoading, setIsAiLoading] = useState(false);
   const [isDictModalVisible, setDictModalVisible] = useState(false);
-  const [searchQuery, setSearchQuery] = useState(""); // ★ 検索用のState
+  const [searchQuery, setSearchQuery] = useState("");
+  // ★追加：モーダル内のタブ切り替え用State
+  const [modalTab, setModalTab] = useState<'all' | 'favorites'>('all');
+
+  // ★変更：純粋な「あいうえお順」のみでソートする（タブで分けるからお気に入り優先は廃止）
+  const sortDictMeals = (data: Meal[]) => {
+    return [...data].sort((a, b) => a.name.localeCompare(b.name, 'ja'));
+  };
 
   useFocusEffect(
     useCallback(() => {
@@ -72,15 +78,11 @@ export default function FoodTabScreen() {
           console.error("ローカルデータの読み込み失敗:", e);
         }
 
-        // ★辞書データの全件読み込み ＆ 名前順（あいうえお順）にソート
         try {
           const q = query(collection(db, "users", user.uid, "food_dictionary"));
           const snap = await getDocs(q);
           const dictData = snap.docs.map(d => d.data() as Meal);
-          
-          // 日本語の文字コード順に並び替え
-          dictData.sort((a, b) => a.name.localeCompare(b.name, 'ja'));
-          setDictMeals(dictData);
+          setDictMeals(sortDictMeals(dictData));
         } catch (e) {
           console.error("辞書の読み込み失敗:", e);
         }
@@ -162,22 +164,11 @@ export default function FoodTabScreen() {
         return;
       }
 
-      // 2. 辞書になければAI解析（相方さんの本物コード）
-      const demo = await getUserDemographics(user.uid);
-      const ageYears = demo.birthDate ? calcAgeYearsFromBirthDate(demo.birthDate) : undefined;
-
       const app = getApp();
       const functions = getFunctions(app, "asia-northeast1");
       const callable = httpsCallable(functions, "analyzeFoodPFC");
 
-      const res = await callable({
-        text: aiInput.trim(),
-        demographics: {
-          ...(typeof demo.heightCm === "number" ? { heightCm: demo.heightCm } : {}),
-          ...(demo.birthDate ? { birthDate: demo.birthDate } : {}),
-          ...(typeof ageYears === "number" ? { ageYears } : {}),
-        },
-      });
+      const res = await callable({ text: aiInput.trim() });
       const data = res.data as any;
       const total = data?.total;
 
@@ -234,14 +225,15 @@ export default function FoodTabScreen() {
         fat: newFood.fat,
         carb: newFood.carb,
         updatedAt: serverTimestamp(),
-      });
+      }, { merge: true });
 
-      // 追加したアイテムも含めて名前順に再ソート
       setDictMeals(prev => {
+        const existingItem = prev.find(item => item.name === foodName.trim());
+        const isFav = existingItem ? existingItem.isFavorite : false;
+        
         const filtered = prev.filter(item => item.name !== foodName.trim());
-        const newData = [newFood, ...filtered];
-        newData.sort((a, b) => a.name.localeCompare(b.name, 'ja'));
-        return newData;
+        const newData = [{ ...newFood, isFavorite: isFav }, ...filtered];
+        return sortDictMeals(newData);
       });
     }
 
@@ -253,8 +245,31 @@ export default function FoodTabScreen() {
     saveMealsToAll(newMeals);
   };
 
-  // ★ 検索キーワードで辞書を絞り込む
-  const filteredDictMeals = dictMeals.filter(item => item.name.includes(searchQuery));
+  const toggleFavorite = async (mealName: string, currentStatus: boolean) => {
+    const user = auth.currentUser;
+    if (!user) return;
+    
+    const newStatus = !currentStatus;
+
+    setDictMeals(prev => {
+      const newData = prev.map(m => m.name === mealName ? { ...m, isFavorite: newStatus } : m);
+      return sortDictMeals(newData);
+    });
+
+    try {
+      const dictRef = doc(db, "users", user.uid, "food_dictionary", mealName);
+      await setDoc(dictRef, { isFavorite: newStatus }, { merge: true });
+    } catch (e) {
+      console.error("お気に入り更新失敗:", e);
+    }
+  };
+
+  // ★変更：検索キーワードと「タブの状態」の両方で絞り込む
+  const filteredDictMeals = dictMeals.filter(item => {
+    const matchSearch = item.name.includes(searchQuery);
+    const matchTab = modalTab === 'favorites' ? item.isFavorite : true;
+    return matchSearch && matchTab;
+  });
 
   return (
     <SafeAreaView style={styles.container}>
@@ -326,7 +341,7 @@ export default function FoodTabScreen() {
           </View>
         )}
 
-        {/* 手動入力フォーム（履歴から選ぶボタン付き） */}
+        {/* 手動入力フォーム */}
         <View style={{ backgroundColor: '#1a1a1a', padding: 15, borderRadius: 12, marginBottom: 40 }}>
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 15 }}>
             <Text style={{ color: '#2ecc71', fontSize: 16, fontWeight: 'bold' }}>食事を追加・修正</Text>
@@ -371,7 +386,7 @@ export default function FoodTabScreen() {
 
       </ScrollView>
 
-      {/* ★進化：履歴から選ぶモーダル（リアルタイム検索バー付き） */}
+      {/* 履歴から選ぶモーダル */}
       <Modal visible={isDictModalVisible} transparent animationType="slide">
         <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.8)", justifyContent: "flex-end" }}>
           <View style={{ backgroundColor: "#2a2a2a", height: "85%", borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20 }}>
@@ -393,30 +408,59 @@ export default function FoodTabScreen() {
                 onChangeText={setSearchQuery}
               />
             </View>
+
+            {/* ★追加：すべて / お気に入り 切り替えタブ */}
+            <View style={{ flexDirection: 'row', backgroundColor: '#1a1a1a', borderRadius: 10, padding: 4, marginBottom: 15 }}>
+              <TouchableOpacity
+                style={{ flex: 1, paddingVertical: 10, alignItems: 'center', backgroundColor: modalTab === 'all' ? '#333' : 'transparent', borderRadius: 8 }}
+                onPress={() => setModalTab('all')}
+              >
+                <Text style={{ color: modalTab === 'all' ? '#fff' : '#666', fontWeight: 'bold' }}>すべて</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={{ flex: 1, paddingVertical: 10, alignItems: 'center', backgroundColor: modalTab === 'favorites' ? '#333' : 'transparent', borderRadius: 8 }}
+                onPress={() => setModalTab('favorites')}
+              >
+                <Text style={{ color: modalTab === 'favorites' ? '#f1c40f' : '#666', fontWeight: 'bold' }}>⭐ お気に入り</Text>
+              </TouchableOpacity>
+            </View>
             
             <ScrollView>
               {filteredDictMeals.length > 0 ? (
                 filteredDictMeals.map((item, idx) => (
-                  <TouchableOpacity
-                    key={idx}
-                    style={{ backgroundColor: '#1a1a1a', padding: 15, borderRadius: 12, marginBottom: 10, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}
-                    onPress={() => {
-                      setFoodName(item.name);
-                      setCal(String(item.cal));
-                      setPro(String(item.pro));
-                      setFat(String(item.fat));
-                      setCarb(String(item.carb));
-                      setDictModalVisible(false); // 選んだら閉じる
-                      setSearchQuery(""); // 検索文字もリセット
-                    }}
+                  <View 
+                    key={idx} 
+                    style={{ backgroundColor: '#1a1a1a', borderRadius: 12, marginBottom: 10, flexDirection: 'row', alignItems: 'center' }}
                   >
-                    <View>
+                    <TouchableOpacity
+                      style={{ flex: 1, padding: 15 }}
+                      onPress={() => {
+                        setFoodName(item.name);
+                        setCal(String(item.cal));
+                        setPro(String(item.pro));
+                        setFat(String(item.fat));
+                        setCarb(String(item.carb));
+                        setDictModalVisible(false); 
+                        setSearchQuery(""); 
+                      }}
+                    >
                       <Text style={{ color: '#fff', fontSize: 16, fontWeight: 'bold', marginBottom: 4 }}>{item.name}</Text>
                       <Text style={{ color: '#888', fontSize: 12 }}>
                         {item.cal}kcal | P: {item.pro}g | F: {item.fat}g | C: {item.carb}g
                       </Text>
-                    </View>
-                  </TouchableOpacity>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity 
+                      style={{ padding: 15 }}
+                      onPress={() => toggleFavorite(item.name, !!item.isFavorite)}
+                    >
+                      <Star 
+                        color={item.isFavorite ? "#f1c40f" : "#666"} 
+                        fill={item.isFavorite ? "#f1c40f" : "transparent"} 
+                        size={24} 
+                      />
+                    </TouchableOpacity>
+                  </View>
                 ))
               ) : (
                 <Text style={{ color: '#666', textAlign: 'center', marginTop: 20 }}>該当する履歴がありません</Text>
