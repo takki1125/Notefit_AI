@@ -1,25 +1,32 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { useRouter } from 'expo-router';
 import { Alert, ScrollView, Switch, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { LogOut, Trash2, X, User, ChevronRight, Target, Bell, Sparkles } from 'lucide-react-native';
+import { LogOut, Trash2, X, User, ChevronRight, Target, Bell, Sparkles, CheckSquare } from 'lucide-react-native';
 import { deleteUser, signOut } from 'firebase/auth';
 import { auth } from '../../firebaseConfig';
 import { styles } from '../../theme/styles';
 import { getUserProfile, setDetailedTrackingEnabled } from '../../utils/firestoreProfile';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export default function SettingsScreen() {
   const router = useRouter();
-  const [detailedEnabled, setDetailedEnabled] = React.useState(false);
-  const [loading, setLoading] = React.useState(true);
+  const [detailedEnabled, setDetailedEnabled] = useState(false);
+  const [autoCheckEnabled, setAutoCheckEnabled] = useState(false);
+  const [loading, setLoading] = useState(true);
 
-  React.useEffect(() => {
+  useEffect(() => {
     const run = async () => {
       const user = auth.currentUser;
       if (!user) return;
       try {
         const profile = await getUserProfile(user.uid);
         setDetailedEnabled(!!profile?.isDetailedTrackingEnabled);
+        
+        // ローカルから自動チェックの設定を読み込む
+        const autoCheckVal = await AsyncStorage.getItem('@auto_check_set');
+        setAutoCheckEnabled(autoCheckVal === 'true');
+
       } finally {
         setLoading(false);
       }
@@ -87,6 +94,7 @@ export default function SettingsScreen() {
         {/* セクション：記録 */}
         <View style={{ marginTop: 20 }}>
           <Text style={[styles.sectionHeaderText, { marginBottom: 10 }]}>TRACKING</Text>
+          
           <TouchableOpacity
             style={[styles.routineItem, { marginBottom: 10 }]}
             onPress={() => router.push('/settings/meal-reminders')}
@@ -102,6 +110,7 @@ export default function SettingsScreen() {
               <ChevronRight color="#444" size={20} />
             </View>
           </TouchableOpacity>
+
           <View style={styles.routineItem}>
             <View style={{ flex: 1 }}>
               <Text style={styles.routineNameText}>詳細な身体データを記録する</Text>
@@ -122,6 +131,33 @@ export default function SettingsScreen() {
               }}
               disabled={loading}
               trackColor={{ false: '#333', true: '#2ecc71' }}
+              thumbColor={'#fff'}
+            />
+          </View>
+        </View>
+
+        {/* セクション：ワークアウト */}
+        <View style={{ marginTop: 20 }}>
+          <Text style={[styles.sectionHeaderText, { marginBottom: 10 }]}>WORKOUT</Text>
+          
+          <View style={styles.routineItem}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
+              <View style={{ backgroundColor: '#333', padding: 8, borderRadius: 10, marginRight: 15 }}>
+                <CheckSquare color="#4facfe" size={20} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.routineNameText}>セットを自動で「完了」にする</Text>
+                <Text style={styles.routineDescText}>種目追加時にチェックを入れた状態にする</Text>
+              </View>
+            </View>
+            <Switch
+              value={autoCheckEnabled}
+              onValueChange={async (v) => {
+                setAutoCheckEnabled(v);
+                await AsyncStorage.setItem('@auto_check_set', v ? 'true' : 'false');
+              }}
+              disabled={loading}
+              trackColor={{ false: '#333', true: '#4facfe' }}
               thumbColor={'#fff'}
             />
           </View>
