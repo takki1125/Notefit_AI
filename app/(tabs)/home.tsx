@@ -19,6 +19,8 @@ import {
   X,
   Flame,
   Utensils,
+  ChevronLeft,  // ★ 追加
+  ChevronRight, // ★ 追加
 } from "lucide-react-native";
 import React, { useCallback, useMemo, useState } from "react";
 import {
@@ -107,7 +109,7 @@ const WorkoutDetailModal: React.FC<{
                     {workout.exercises.map((ex, i) => (
                       <View key={i} style={{ marginTop: 10, borderLeftWidth: 2, borderColor: '#2ecc71', paddingLeft: 12, marginBottom: 5 }}>
                         <Text style={{ color: '#eee', fontWeight: 'bold', fontSize: 15, marginBottom: 6 }}>{ex.name}</Text>
-                        {ex.sets.filter(s => s.done).map((set, k) => (
+                        {ex.sets.filter(s => s.done || (s.weight !== "" && s.reps !== "")).map((set, k) => (
                           <View key={k} style={{ flexDirection: 'row', justifyContent: 'space-between', paddingRight: 10, marginBottom: 3 }}>
                             <Text style={{ color: '#888', fontSize: 12 }}>Set {k + 1}</Text>
                             <Text style={{ color: '#ccc', fontSize: 13 }}>{set.weight}kg × {set.reps}reps</Text>
@@ -154,24 +156,37 @@ const WorkoutDetailModal: React.FC<{
   );
 };
 
-// --- カレンダーセクション ---
+// --- ★ 進化：月を切り替えられるカレンダーセクション ---
 const CalendarSection: React.FC<{
+  viewedDate: Date;
   trainedDays: number[];
-  onDayPress: (day: number) => void;
+  onDayPress: (day: number, month: number, year: number) => void;
+  onPrevMonth: () => void;
+  onNextMonth: () => void;
   editMode?: boolean;
   onLongPressEdit?: () => void;
-}> = ({ trainedDays, onDayPress, editMode, onLongPressEdit }) => {
-  const today = new Date();
-  const currentDay = today.getDate();
-  const currentYear = today.getFullYear();
-  const currentMonth = today.getMonth() + 1;
-  const daysInMonth = new Date(currentYear, currentMonth, 0).getDate();
+}> = ({ viewedDate, trainedDays, onDayPress, onPrevMonth, onNextMonth, editMode, onLongPressEdit }) => {
+  const currentYear = viewedDate.getFullYear();
+  const currentMonth = viewedDate.getMonth() + 1;
+  const daysInMonth = new Date(currentYear, viewedDate.getMonth() + 1, 0).getDate();
   const days = Array.from({ length: daysInMonth }, (_, i) => i + 1);
 
+  const today = new Date();
+  const isCurrentMonth = today.getFullYear() === currentYear && today.getMonth() === viewedDate.getMonth();
+  const currentDay = today.getDate();
+
   const header = (
-    <View style={styles.calendarHeader}>
-      <Text style={styles.monthText}>{currentMonth}</Text>
-      <Text style={styles.yearText}>{currentYear}</Text>
+    <View style={[styles.calendarHeader, { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }]}>
+      <TouchableOpacity onPress={onPrevMonth} disabled={editMode} style={{ padding: 10 }}>
+        <ChevronLeft color="#fff" size={24} />
+      </TouchableOpacity>
+      <View style={{ flexDirection: 'row', alignItems: 'baseline' }}>
+        <Text style={styles.monthText}>{currentMonth}</Text>
+        <Text style={styles.yearText}>{currentYear}</Text>
+      </View>
+      <TouchableOpacity onPress={onNextMonth} disabled={editMode} style={{ padding: 10 }}>
+        <ChevronRight color="#fff" size={24} />
+      </TouchableOpacity>
     </View>
   );
 
@@ -191,7 +206,7 @@ const CalendarSection: React.FC<{
       </View>
       <View style={[styles.daysGrid, { justifyContent: 'flex-start' }]}>
         {days.map((day) => {
-          const isToday = day === currentDay;
+          const isToday = isCurrentMonth && day === currentDay;
           const isTrained = trainedDays.includes(day);
           const cell = (
             <View style={[styles.dayCircle, isToday && styles.activeDayCircle, isTrained && !isToday && styles.trainedDayCircle]}>
@@ -206,7 +221,7 @@ const CalendarSection: React.FC<{
             <TouchableOpacity
               key={day}
               style={{ width: "14.28%", alignItems: "center", marginBottom: 10 }}
-              onPress={() => onDayPress(day)}
+              onPress={() => onDayPress(day, currentMonth, currentYear)}
               onLongPress={onLongPressEdit}
               delayLongPress={450}
             >
@@ -229,7 +244,10 @@ export default function HomeTabScreen() {
   const [addWidgetModalVisible, setAddWidgetModalVisible] = useState(false);
 
   const [history, setHistory] = useState<Workout[]>([]);
-  const [trainedDays, setTrainedDays] = useState<number[]>([]);
+  
+  // ★ 追加：現在見ている月を管理するState
+  const [viewedDate, setViewedDate] = useState(new Date());
+
   const [modalVisible, setModalVisible] = useState(false);
   const [selectedDateWorkouts, setSelectedDateWorkouts] = useState<Workout[]>([]);
   const [selectedDateFoodLog, setSelectedDateFoodLog] = useState<DailyFoodLog | null>(null);
@@ -250,9 +268,19 @@ export default function HomeTabScreen() {
         return { id: d.id, ...data, dateObj, dateStr: dateObj.toLocaleDateString(), day: dateObj.getDate() };
       });
       setHistory(historyData);
-      setTrainedDays([...new Set(historyData.filter(w => w.dateObj.getMonth() === new Date().getMonth()).map(w => w.day))]);
     } catch (e) { console.error(e); }
   }, []);
+
+  // ★ 追加：見ている月が変わったら、その月にトレーニングした日だけを抽出する
+  const trainedDays = useMemo(() => {
+    return [...new Set(history
+      .filter(w => 
+        w.dateObj.getFullYear() === viewedDate.getFullYear() && 
+        w.dateObj.getMonth() === viewedDate.getMonth()
+      )
+      .map(w => w.day)
+    )];
+  }, [history, viewedDate]);
 
   const fetchTodayMeals = useCallback(async () => {
     const user = auth.currentUser;
@@ -288,19 +316,22 @@ export default function HomeTabScreen() {
     }, []),
   );
 
-  const handleDayPress = async (day: number) => {
-    const dayWorkouts = history.filter(item => item.day === day);
+  // ★ 修正：タップされた日付の年と月も受け取って、正確にフィルターする
+  const handleDayPress = async (day: number, month: number, year: number) => {
+    const dayWorkouts = history.filter(item => 
+      item.day === day && 
+      item.dateObj.getMonth() + 1 === month && 
+      item.dateObj.getFullYear() === year
+    );
     setSelectedDateWorkouts(dayWorkouts);
 
     const user = auth.currentUser;
     if (user) {
       try {
-        const today = new Date();
-        const year = today.getFullYear();
-        const month = String(today.getMonth() + 1).padStart(2, '0');
+        const monthStr = String(month).padStart(2, '0');
         const dayStr = String(day).padStart(2, '0');
 
-        const docId = `${year}-${month}-${dayStr}_Food`;
+        const docId = `${year}-${monthStr}-${dayStr}_Food`;
         const docRef = doc(db, "users", user.uid, "food_logs", docId);
         const docSnap = await getDoc(docRef);
 
@@ -380,8 +411,11 @@ export default function HomeTabScreen() {
       case "calendar":
         return (
           <CalendarSection
+            viewedDate={viewedDate}
             trainedDays={trainedDays}
             onDayPress={handleDayPress}
+            onPrevMonth={() => setViewedDate(new Date(viewedDate.getFullYear(), viewedDate.getMonth() - 1, 1))}
+            onNextMonth={() => setViewedDate(new Date(viewedDate.getFullYear(), viewedDate.getMonth() + 1, 1))}
             editMode={editMode}
             onLongPressEdit={!editMode ? onLongPressEdit : undefined}
           />
@@ -421,7 +455,7 @@ export default function HomeTabScreen() {
                     )}
                     <View style={{ gap: 10 }}>
                       {workout.exercises.map((ex, i) => {
-                        const doneSets = ex.sets.filter(s => s.done);
+                        const doneSets = ex.sets.filter(s => s.done || (s.weight !== "" && s.reps !== ""));
                         return (
                           <View key={i} style={{ marginBottom: 10 }}>
                             <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 4 }}>
@@ -598,7 +632,6 @@ export default function HomeTabScreen() {
     [isEditMode, displayName, router, hiddenIds.length],
   );
 
-  /** 非表示のウィジェットがあるときだけ。編集モード外でも一覧から戻せるようにする */
   const listFooter = useMemo(() => {
     if (hiddenIds.length === 0) return null;
     return (
