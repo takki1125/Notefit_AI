@@ -177,7 +177,7 @@ const ExerciseSelectorModal: React.FC<ExerciseSelectorModalProps> = ({
   // ★追加：UIのボタンから呼ばれる保存処理
   const handleSaveCustomExercise = async () => {
     if (!newExerciseName.trim()) {
-      Alert.alert("エラー", "種目名を入力してくれ");
+      Alert.alert("エラー", "種目名を入力してください");
       return;
     }
     if (!selectedCategory) return;
@@ -769,7 +769,7 @@ const TrainingTabScreen: React.FC<Props> = ({ navigation }) => {
   };
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
       <View style={styles.headerRow}>
         <View style={styles.headerContent}>
           <View>

@@ -153,7 +153,7 @@ export default function StatsTabScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
       <View style={styles.headerRow}>
         <View style={styles.headerContent}>
           <Text style={styles.headerLabel}>Analytics</Text>

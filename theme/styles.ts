@@ -2,8 +2,8 @@ import { StyleSheet } from 'react-native';
 
 export const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#1a1a1a' },
-  contentContainer: { padding: 16, paddingBottom: 100 },
-  scrollContent: { paddingHorizontal: 16, paddingBottom: 100 },
+  contentContainer: { padding: 16, paddingBottom: 150 },
+  scrollContent: { paddingHorizontal: 16, paddingBottom: 150 },
   centered: { flex: 1, backgroundColor: '#1a1a1a', justifyContent: 'center', alignItems: 'center' },
   card: { backgroundColor: '#2a2a2a', borderRadius: 20, padding: 16, marginBottom: 20 },
 
