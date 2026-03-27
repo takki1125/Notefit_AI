@@ -1,11 +1,11 @@
-/** ホームタブで並べ替え可能なウィジェット ID（順序はユーザー保存） */
+/** ホームタブで並べ替え可能なウィジェット ID（この順序がデフォルトになります） */
 export const HOME_WIDGET_IDS = [
-  "metrics",
-  "goal",
-  "ai",
-  "calendar",
-  "workout",
-  "nutrition",
+  "calendar",  // ★ 1番上：継続の証！
+  "workout",   // ★ 2番目：今日のメインディッシュ
+  "nutrition", // ★ 3番目：食事管理
+  "ai",        // 4番目：AIの知恵
+  "metrics",   // 5番目：日々の計測
+  "goal",      // 6番目：最終目標
 ] as const;
 
 export type HomeWidgetId = (typeof HOME_WIDGET_IDS)[number];
@@ -15,7 +15,8 @@ export function parseVisibleWidgetOrder(saved: string[] | null | undefined): Hom
   const seen = new Set<HomeWidgetId>();
   const result: HomeWidgetId[] = [];
   for (const id of saved ?? []) {
-    if (HOME_WIDGET_IDS.includes(id as HomeWidgetId) && !seen.has(id as HomeWidgetId)) {
+    // HOME_WIDGET_IDS を配列として扱うために type-cast
+    if ((HOME_WIDGET_IDS as readonly string[]).includes(id) && !seen.has(id as HomeWidgetId)) {
       const w = id as HomeWidgetId;
       seen.add(w);
       result.push(w);
@@ -25,6 +26,7 @@ export function parseVisibleWidgetOrder(saved: string[] | null | undefined): Hom
 }
 
 export function defaultHomeWidgetOrder(): HomeWidgetId[] {
+  // ここで HOME_WIDGET_IDS を返しているので、上の配列順がそのまま初期状態になる
   return [...HOME_WIDGET_IDS];
 }
 
@@ -34,10 +36,10 @@ export function hiddenWidgetIds(visible: HomeWidgetId[]): HomeWidgetId[] {
 }
 
 export const HOME_WIDGET_LABELS: Record<HomeWidgetId, string> = {
-  metrics: "今日の体重",
-  goal: "目標の進捗",
-  ai: "AIアドバイス",
   calendar: "カレンダー",
   workout: "トレーニング",
   nutrition: "栄養",
+  ai: "AIアドバイス",
+  metrics: "今日の体重",
+  goal: "目標の進捗",
 };
