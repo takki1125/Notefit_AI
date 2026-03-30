@@ -20,17 +20,20 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
+import { useRouter } from "expo-router";
 import { getApp } from "firebase/app";
 import { getFunctions, httpsCallable } from "firebase/functions";
 import { ChevronLeft, Menu, Pin, Plus, Send, Sparkles } from "lucide-react-native";
 
 import { auth } from "../../firebaseConfig";
+import { useCoinBalance } from "../../hooks/useCoinBalance";
 import { styles as themeStyles } from "../../theme/styles";
 import { fetchAdviceNutrition, fetchAdviceWorkouts } from "../../utils/adviceContext";
 import { calcAgeYearsFromBirthDate } from "../../utils/demographics";
 import { formatDateId, getDailyMetric, getDailyMetricsLastNDays } from "../../utils/firestoreDailyMetrics";
 import { getAiCoachSettings, getUserDemographics, getUserProfile } from "../../utils/firestoreProfile";
 import type { AiCoachSettings } from "../../utils/models";
+import { DISPLAY_FALLBACK_AI_CHAT_COIN_COST } from "../../utils/monetizationTypes";
 
 const STORAGE_KEY_BASE = "@ai_chats_v1_";
 const MAX_SESSIONS = 40;
@@ -91,6 +94,7 @@ function formatRelativeTime(ts: number): string {
 }
 
 export default function AiAdviceTabScreen() {
+  const router = useRouter();
   const scrollRef = useRef<ScrollView>(null);
   const slideAnim = useRef(new Animated.Value(-DRAWER_WIDTH)).current;
   const [input, setInput] = useState("");
@@ -103,6 +107,7 @@ export default function AiAdviceTabScreen() {
   const [renameVisible, setRenameVisible] = useState(false);
   const [renameSessionId, setRenameSessionId] = useState<string | null>(null);
   const [renameDraft, setRenameDraft] = useState("");
+  const coinBalance = useCoinBalance();
 
   const activeSession = useMemo(
     () => sessions.find((s) => s.id === activeId) ?? null,
@@ -495,13 +500,18 @@ export default function AiAdviceTabScreen() {
         messages: [...s.messages, assistantMsg],
       }));
     } catch (e: any) {
-      const msg = e?.message || "送信に失敗しました。";
+      const code = typeof e?.code === "string" ? e.code : "";
+      const rawMsg = typeof e?.message === "string" ? e.message : "送信に失敗しました。";
       patchSessionById(sendSessionId, (s) => ({
         ...s,
         messages: s.messages.filter((m) => m.id !== userMsg.id),
       }));
       setInput(trimmed);
-      Alert.alert("エラー", msg);
+      if (code === "functions/failed-precondition" && /コイン/.test(rawMsg)) {
+        Alert.alert("コインが不足しています", rawMsg);
+      } else {
+        Alert.alert("エラー", rawMsg);
+      }
     } finally {
       setSending(false);
     }
@@ -533,9 +543,16 @@ export default function AiAdviceTabScreen() {
           </TouchableOpacity>
           <View style={local.headerCenter}>
             <Sparkles color="#4facfe" size={18} />
-            <Text style={local.headerTitle} numberOfLines={1}>
-              {activeSession?.title ?? "AIアドバイス"}
-            </Text>
+            <View style={local.headerTitleBlock}>
+              <Text style={local.headerTitle} numberOfLines={1}>
+                {activeSession?.title ?? "AIアドバイス"}
+              </Text>
+              {coinBalance !== null ? (
+                <Text style={local.headerCoinSub} numberOfLines={1}>
+                  コイン {coinBalance}
+                </Text>
+              ) : null}
+            </View>
           </View>
           <TouchableOpacity
             onPress={createSession}
@@ -558,8 +575,18 @@ export default function AiAdviceTabScreen() {
             <View style={local.emptyWrap}>
               <Text style={local.emptyTitle}>気になることを自由に相談</Text>
               <Text style={local.emptyBody}>
+                1 回の送信で約 {DISPLAY_FALLBACK_AI_CHAT_COIN_COST} コインを消費します（サーバー設定）。残高は上部に表示されます。
+              </Text>
+              <Text style={local.emptyBody}>
                 左上のメニューから過去の会話を開けます。長押しでピン留め・名前変更・削除。履歴はこの端末に保存されます。
               </Text>
+              <TouchableOpacity
+                style={local.emptyLink}
+                onPress={() => router.push("/settings/monetization")}
+                activeOpacity={0.85}
+              >
+                <Text style={local.emptyLinkText}>コイン・プラン・今後の機能を見る →</Text>
+              </TouchableOpacity>
             </View>
           ) : (
             messages.map((m) => (
@@ -747,12 +774,25 @@ const local = StyleSheet.create({
     gap: 6,
     paddingHorizontal: 4,
   },
+  headerTitleBlock: { flex: 1, minWidth: 0, alignItems: "center" },
   headerTitle: { color: "#fff", fontSize: 17, fontWeight: "bold", flexShrink: 1 },
+  headerCoinSub: { color: "#9aa0a6", fontSize: 12, marginTop: 2 },
   scroll: { flex: 1 },
   scrollContent: { padding: 16, paddingBottom: 24 },
   emptyWrap: { paddingVertical: 24, paddingHorizontal: 8 },
   emptyTitle: { color: "#fff", fontSize: 16, fontWeight: "bold", marginBottom: 10 },
-  emptyBody: { color: "#999", fontSize: 14, lineHeight: 22 },
+  emptyBody: { color: "#999", fontSize: 14, lineHeight: 22, marginBottom: 12 },
+  emptyLink: {
+    marginTop: 8,
+    alignSelf: "center",
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    backgroundColor: "#2a2a2a",
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#f1c40f55",
+  },
+  emptyLinkText: { color: "#f1c40f", fontSize: 14, fontWeight: "700" },
   bubbleWrap: { marginBottom: 12, width: "100%" },
   bubbleWrapUser: { alignItems: "flex-end" },
   bubbleWrapAssistant: { alignItems: "flex-start" },
