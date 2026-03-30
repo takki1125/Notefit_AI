@@ -28,7 +28,8 @@
     },
     "plugins": [
       "expo-notifications",
-      "@react-native-community/datetimepicker"
+      "@react-native-community/datetimepicker",
+      "expo-router"
     ],
     "extra": {
       "eas": {
