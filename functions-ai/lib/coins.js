@@ -56,6 +56,11 @@ const RC_KEYS = {
 const DEFAULT_AI_CHAT_COST = 10;
 const DEFAULT_REGISTRATION_BONUS = 300;
 exports.COIN_EXPIRY_DAYS = 179;
+/**
+ * 消費レコード用の「事実上の無期限」。旧コードの 864e15ms は Instant 換算で秒が範囲外になり、
+ * Android 向け Firestore が Timestamp を読むとクラッシュする（例: seconds must be within … but was: 8640000000000）。
+ */
+const NEVER_EXPIRES_AT = firestore_1.Timestamp.fromMillis(253402300799999);
 function expiryTimestamp() {
     const d = new Date();
     d.setDate(d.getDate() + exports.COIN_EXPIRY_DAYS);
@@ -127,7 +132,7 @@ async function appendConsume(uid, amount, note) {
     await ref.set({
         amount: -Math.abs(Math.floor(amount)),
         type: "ai_consume",
-        expires_at: firestore_1.Timestamp.fromMillis(8640000000000000),
+        expires_at: NEVER_EXPIRES_AT,
         created_at: firestore_1.FieldValue.serverTimestamp(),
         ...(note ? { note } : {}),
     });
