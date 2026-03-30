@@ -36,11 +36,12 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.aiCoachChat = exports.generateDailyAIAdvice = exports.analyzeFoodPFC = void 0;
+exports.aiCoachChat = exports.generateDailyAIAdvice = exports.analyzeFoodPFC = exports.grantRegistrationBonus = void 0;
 const https_1 = require("firebase-functions/v2/https");
 const logger = __importStar(require("firebase-functions/logger"));
 const params_1 = require("firebase-functions/params");
 const openai_1 = __importDefault(require("openai"));
+const coins_1 = require("./coins");
 // Secret Manager（Gen2 は v2/https + defineSecret）
 const OPENAI_API_KEY = (0, params_1.defineSecret)("OPENAI_API_KEY");
 function createOpenAIClient() {
@@ -112,6 +113,17 @@ const callableOpts = {
     secrets: [OPENAI_API_KEY],
     cors: true,
 };
+const publicCallableOpts = {
+    region: "asia-northeast1",
+    cors: true,
+};
+/** メール認証済みユーザーの初回登録ボーナス（冪等） */
+exports.grantRegistrationBonus = (0, https_1.onCall)(publicCallableOpts, async (request) => {
+    if (!request.auth) {
+        throw new https_1.HttpsError("unauthenticated", "ログインが必要です。");
+    }
+    return (0, coins_1.grantRegistrationBonusIfNeeded)(request.auth.uid);
+});
 /** 食事の PFC 推定（クライアント: food タブ） */
 exports.analyzeFoodPFC = (0, https_1.onCall)(callableOpts, async (request) => {
     try {
@@ -430,6 +442,125 @@ ${workoutBlock}
         throw new https_1.HttpsError("internal", error?.message || "Unknown error in generateDailyAIAdvice.");
     }
 });
+/**
+ * クライアントが generateDailyAIAdvice と同形のフィールドを渡したとき、
+ * ホームの「今日のAIアドバイス」と同種の事実ブロックを組み立てる（推測防止用）。
+ * 目標未設定でも食事・トレ・体重推移は記載する。
+ */
+function buildChatAdviceContextBlock(data) {
+    const phase = data?.phase;
+    const targetWeight = Number(data?.targetWeight);
+    const targetCal = Number(data?.targetCal);
+    const hasGoal = !!phase &&
+        ["cut", "maintain", "bulk"].includes(phase) &&
+        Number.isFinite(targetWeight) &&
+        targetWeight > 0 &&
+        Number.isFinite(targetCal) &&
+        targetCal > 0;
+    const today = data?.today;
+    const todayWeight = Number(today?.weight);
+    const todayBodyFatPercentage = typeof today?.bodyFatPercentage === "number" ? today.bodyFatPercentage : undefined;
+    const recentWeightsRaw = Array.isArray(data?.recentWeights) ? data.recentWeights : [];
+    const recentWeights = recentWeightsRaw
+        .map((p) => ({
+        dateId: typeof p?.dateId === "string" ? p.dateId : "",
+        weight: Number(p?.weight),
+        bodyFatPercentage: typeof p?.bodyFatPercentage === "number" ? p.bodyFatPercentage : undefined,
+    }))
+        .filter((p) => p.dateId.length > 0 && Number.isFinite(p.weight));
+    const tn = data?.todayNutrition;
+    const todayNutrition = {
+        hasData: !!tn?.hasData,
+        totalCal: Number.isFinite(Number(tn?.totalCal)) ? Number(tn.totalCal) : 0,
+        totalPro: Number.isFinite(Number(tn?.totalPro)) ? Number(tn.totalPro) : 0,
+        totalFat: Number.isFinite(Number(tn?.totalFat)) ? Number(tn.totalFat) : 0,
+        totalCarb: Number.isFinite(Number(tn?.totalCarb)) ? Number(tn.totalCarb) : 0,
+        mealNames: Array.isArray(tn?.mealNames)
+            ? tn.mealNames.filter((x) => typeof x === "string").slice(0, 15)
+            : [],
+    };
+    const rwRaw = Array.isArray(data?.recentWorkouts) ? data.recentWorkouts : [];
+    const recentWorkouts = rwRaw
+        .map((s) => ({
+        dateId: typeof s?.dateId === "string" ? s.dateId : "",
+        routineName: typeof s?.routineName === "string" ? s.routineName : "ワークアウト",
+        durationMinutes: s?.durationMinutes === null
+            ? null
+            : Number.isFinite(Number(s?.durationMinutes))
+                ? Number(s.durationMinutes)
+                : null,
+        isToday: !!s?.isToday,
+        exerciseLines: Array.isArray(s?.exerciseLines)
+            ? s.exerciseLines.filter((x) => typeof x === "string").slice(0, 10)
+            : [],
+    }))
+        .filter((s) => s.dateId.length > 0)
+        .slice(0, 6);
+    const hasNutritionData = todayNutrition.hasData &&
+        (todayNutrition.totalCal > 0 ||
+            todayNutrition.mealNames.length > 0 ||
+            todayNutrition.totalPro > 0 ||
+            todayNutrition.totalFat > 0 ||
+            todayNutrition.totalCarb > 0);
+    const hasWorkoutData = recentWorkouts.length > 0;
+    const weightDayCount = recentWeights.length;
+    const sparseContext = weightDayCount < 2 || (!hasNutritionData && !hasWorkoutData);
+    const recentText = recentWeights.length
+        ? recentWeights
+            .slice(-7)
+            .map((p) => `- ${p.dateId}: ${p.weight}kg`)
+            .join("\n")
+        : `- （直近データなし）`;
+    const nutritionBlock = hasNutritionData
+        ? [
+            `- 記録あり（この範囲のみ事実として扱う）`,
+            `- 摂取: ${todayNutrition.totalCal}kcal, P${todayNutrition.totalPro}g / F${todayNutrition.totalFat}g / C${todayNutrition.totalCarb}g`,
+            todayNutrition.mealNames.length
+                ? `- 食事例: ${todayNutrition.mealNames.join("、")}`
+                : `- （品目名なし）`,
+        ].join("\n")
+        : `- （本日の食事記録なし／未同期）※食事管理をしていない可能性あり。食事内容は推測しない`;
+    const workoutBlock = recentWorkouts.length > 0
+        ? recentWorkouts
+            .map((w, i) => {
+            const tag = w.isToday ? "【本日】" : "";
+            const dur = w.durationMinutes != null ? `${w.durationMinutes}分` : "時間不明";
+            const ex = w.exerciseLines.length ? w.exerciseLines.join(" / ") : "（セット詳細なし）";
+            return `${i + 1}. ${tag}${w.dateId} ${w.routineName} (${dur})\n   ${ex}`;
+        })
+            .join("\n")
+        : `- （直近のトレーニング記録なし／未同期）※筋トレをしていない可能性あり。セッション内容は推測しない`;
+    const todayWeightLine = Number.isFinite(todayWeight) && todayWeight > 0 ? String(todayWeight) : "未記録";
+    const todayBfLine = typeof todayBodyFatPercentage === "number" ? String(todayBodyFatPercentage) : "N/A";
+    const goalSection = hasGoal
+        ? `phase: ${phase}
+targetWeight: ${targetWeight}
+targetCal: ${targetCal}
+today.weight: ${todayWeightLine}
+today.bodyFatPercentage: ${todayBfLine}`
+        : `phase / targetWeight / targetCal: （未設定または未同期）
+today.weight: ${todayWeightLine}
+today.bodyFatPercentage: ${todayBfLine}`;
+    return `
+## アプリから同期された記録（ホームの「今日のAIアドバイス」と同種の参照データ）
+- この節の数値・メニュー・種目だけを事実として扱う。記録にない情報は推測・でっち上げをしない。
+- データが少ないモード: ${sparseContext ? "はい（断定を避け、次の一歩や一般論に寄せる）" : "いいえ"}
+- 体重データの日数（直近）: ${weightDayCount}日分
+- 本日の食事記録を参照できる: ${hasNutritionData ? "はい" : "いいえ"}
+- トレーニング記録がある: ${hasWorkoutData ? "はい" : "いいえ"}
+
+${goalSection}
+
+recentWeights:
+${recentText}
+
+todayNutrition:
+${nutritionBlock}
+
+recentWorkouts:
+${workoutBlock}
+`.trim();
+}
 /** フリー相談チャット（AIアドバイスタブ） */
 exports.aiCoachChat = (0, https_1.onCall)(callableOpts, async (request) => {
     try {
@@ -453,9 +584,31 @@ exports.aiCoachChat = (0, https_1.onCall)(callableOpts, async (request) => {
         if (sanitized.length === 0 || sanitized[sanitized.length - 1].role !== "user") {
             throw new https_1.HttpsError("invalid-argument", "Last message must be from the user with non-empty content.");
         }
+        const uid = request.auth.uid;
+        const coinCost = await (0, coins_1.getAiConsultCoinCost)();
+        let charged = 0;
+        if (coinCost > 0) {
+            await (0, coins_1.spendCoinsForAiChatOrThrow)(uid, coinCost);
+            charged = coinCost;
+        }
         const aiCoach = parseAiCoachPayload(request.data);
         const demo = parseDemographicsPayload(request.data);
-        const openai = createOpenAIClient();
+        const adviceContextBlock = buildChatAdviceContextBlock(request.data);
+        let openai;
+        try {
+            openai = createOpenAIClient();
+        }
+        catch (e) {
+            if (charged > 0) {
+                try {
+                    await (0, coins_1.refundAiChatCoins)(uid, charged);
+                }
+                catch (re) {
+                    logger.error("refund after OpenAI init failure", re);
+                }
+            }
+            throw e;
+        }
         const systemPrompt = `
 あなたは日本語で回答するフィットネス・食事・トレーニングに関するコーチAIです。
 
@@ -468,22 +621,41 @@ ${buildAiCoachPromptBlock(aiCoach)}
 - 極端な断食・脱水・危険な重量など、健康を損なう指示はしない。
 - ユーザーの文脈が不明なときは、確認の質問をしてよい。
 
-参考（ユーザーがアプリに登録している場合のみ）: ${formatDemographicsForPrompt(demo)}
+参考（身長・年齢など、ユーザーがアプリに登録している場合のみ）: ${formatDemographicsForPrompt(demo)}
+
+${adviceContextBlock}
 `.trim();
-        const completion = await openai.chat.completions.create({
-            model: "gpt-4o-mini",
-            messages: [
-                { role: "system", content: systemPrompt },
-                ...sanitized.map((m) => ({ role: m.role, content: m.content })),
-            ],
-            temperature: 0.65,
-            max_tokens: 1200,
-        });
-        const reply = completion.choices[0]?.message?.content?.trim();
-        if (!reply) {
-            throw new https_1.HttpsError("internal", "Failed to get reply from OpenAI.");
+        let reply;
+        try {
+            const completion = await openai.chat.completions.create({
+                model: "gpt-4o-mini",
+                messages: [
+                    { role: "system", content: systemPrompt },
+                    ...sanitized.map((m) => ({ role: m.role, content: m.content })),
+                ],
+                temperature: 0.65,
+                max_tokens: 1200,
+            });
+            reply = completion.choices[0]?.message?.content?.trim() ?? "";
+            if (!reply) {
+                throw new https_1.HttpsError("internal", "Failed to get reply from OpenAI.");
+            }
         }
-        return { reply };
+        catch (error) {
+            if (charged > 0 && !(error instanceof https_1.HttpsError && error.code === "failed-precondition")) {
+                try {
+                    await (0, coins_1.refundAiChatCoins)(uid, charged);
+                }
+                catch (re) {
+                    logger.error("refund after OpenAI completion failure", re);
+                }
+            }
+            if (error instanceof https_1.HttpsError)
+                throw error;
+            logger.error("aiCoachChat OpenAI error", error);
+            throw new https_1.HttpsError("internal", error?.message || "Unknown error in aiCoachChat.");
+        }
+        return { reply, coinsCharged: charged };
     }
     catch (error) {
         if (error instanceof https_1.HttpsError)
