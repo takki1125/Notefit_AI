@@ -11,6 +11,7 @@ export default function SettingsLayout() {
       <Stack.Screen name="goals" />
       <Stack.Screen name="meal-reminders" />
       <Stack.Screen name="ai-coach" />
+      <Stack.Screen name="monetization" />
     </Stack>
   );
 }
