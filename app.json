@@ -29,11 +29,7 @@
     "plugins": [
       "expo-notifications",
       "@react-native-community/datetimepicker",
-<<<<<<< Updated upstream
-      "expo-router"
-=======
       "expo-web-browser"
->>>>>>> Stashed changes
     ],
     "extra": {
       "eas": {
