@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useRouter } from 'expo-router';
 import { Alert, ScrollView, Switch, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { LogOut, Trash2, X, User, ChevronRight, Target, Bell, Sparkles, CheckSquare } from 'lucide-react-native';
+import { LogOut, Trash2, X, User, ChevronRight, Target, Bell, Sparkles, CheckSquare, Coins } from 'lucide-react-native';
 import { deleteUser, signOut } from 'firebase/auth';
 import { auth } from '../../firebaseConfig';
 import { styles } from '../../theme/styles';
@@ -71,6 +71,26 @@ export default function SettingsScreen() {
       </View>
 
       <ScrollView contentContainerStyle={styles.scrollContent}>
+        {/* セクション：コイン・課金（プレビュー含む） */}
+        <View style={{ marginTop: 10 }}>
+          <Text style={[styles.sectionHeaderText, { marginBottom: 10 }]}>コイン・プレミアム</Text>
+          <TouchableOpacity
+            style={[styles.routineItem, { marginBottom: 10 }]}
+            onPress={() => router.push('/settings/monetization')}
+          >
+            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+              <View style={{ backgroundColor: '#352a10', padding: 8, borderRadius: 10, marginRight: 15 }}>
+                <Coins color="#f1c40f" size={20} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.routineNameText}>コイン・プラン・ミッション</Text>
+                <Text style={styles.routineDescText}>残高の確認・将来のサブスク/UIプレビュー</Text>
+              </View>
+              <ChevronRight color="#444" size={20} />
+            </View>
+          </TouchableOpacity>
+        </View>
+
         {/* セクション：AI */}
         <View style={{ marginTop: 20 }}>
           <Text style={[styles.sectionHeaderText, { marginBottom: 10 }]}>AI</Text>
