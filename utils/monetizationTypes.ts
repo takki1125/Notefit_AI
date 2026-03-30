@@ -8,6 +8,9 @@ import type { Timestamp } from "firebase/firestore";
 /** 資金決済法対応: 獲得から 180 日未満で失効（運用例: 179 日後 23:59 などは CF 側で expires_at を計算） */
 export const COIN_EXPIRY_DAYS_FROM_GRANT = 179;
 
+/** 画面表示用の目安（Remote Config とサーバーデフォルトに合わせる・未取得時の文言用） */
+export const DISPLAY_FALLBACK_AI_CHAT_COIN_COST = 10;
+
 /** Firebase Remote Config のパラメータ名（コンソールと一致させる） */
 export const REMOTE_CONFIG_KEYS = {
   /** AI 相談 1 回あたりのコイン消費量（整数） */
