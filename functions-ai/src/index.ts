@@ -3,6 +3,13 @@ import * as logger from "firebase-functions/logger";
 import { defineSecret } from "firebase-functions/params";
 import OpenAI from "openai";
 
+import {
+  getAiConsultCoinCost,
+  grantRegistrationBonusIfNeeded,
+  refundAiChatCoins,
+  spendCoinsForAiChatOrThrow,
+} from "./coins";
+
 // Secret Manager（Gen2 は v2/https + defineSecret）
 const OPENAI_API_KEY = defineSecret("OPENAI_API_KEY");
 
@@ -96,6 +103,19 @@ const callableOpts = {
   secrets: [OPENAI_API_KEY],
   cors: true,
 };
+
+const publicCallableOpts = {
+  region: "asia-northeast1" as const,
+  cors: true,
+};
+
+/** メール認証済みユーザーの初回登録ボーナス（冪等） */
+export const grantRegistrationBonus = onCall(publicCallableOpts, async (request) => {
+  if (!request.auth) {
+    throw new HttpsError("unauthenticated", "ログインが必要です。");
+  }
+  return grantRegistrationBonusIfNeeded(request.auth.uid);
+});
 
 /** 食事の PFC 推定（クライアント: food タブ） */
 export const analyzeFoodPFC = onCall(callableOpts, async (request) => {
@@ -631,11 +651,31 @@ export const aiCoachChat = onCall(callableOpts, async (request) => {
       );
     }
 
+    const uid = request.auth.uid;
+    const coinCost = await getAiConsultCoinCost();
+    let charged = 0;
+    if (coinCost > 0) {
+      await spendCoinsForAiChatOrThrow(uid, coinCost);
+      charged = coinCost;
+    }
+
     const aiCoach = parseAiCoachPayload(request.data);
     const demo = parseDemographicsPayload(request.data);
     const adviceContextBlock = buildChatAdviceContextBlock(request.data);
 
-    const openai = createOpenAIClient();
+    let openai: OpenAI;
+    try {
+      openai = createOpenAIClient();
+    } catch (e) {
+      if (charged > 0) {
+        try {
+          await refundAiChatCoins(uid, charged);
+        } catch (re) {
+          logger.error("refund after OpenAI init failure", re);
+        }
+      }
+      throw e;
+    }
 
     const systemPrompt = `
 あなたは日本語で回答するフィットネス・食事・トレーニングに関するコーチAIです。
@@ -654,22 +694,36 @@ ${buildAiCoachPromptBlock(aiCoach)}
 ${adviceContextBlock}
 `.trim();
 
-    const completion = await openai.chat.completions.create({
-      model: "gpt-4o-mini",
-      messages: [
-        { role: "system", content: systemPrompt },
-        ...sanitized.map((m) => ({ role: m.role, content: m.content })),
-      ],
-      temperature: 0.65,
-      max_tokens: 1200,
-    });
+    let reply: string;
+    try {
+      const completion = await openai.chat.completions.create({
+        model: "gpt-4o-mini",
+        messages: [
+          { role: "system", content: systemPrompt },
+          ...sanitized.map((m) => ({ role: m.role, content: m.content })),
+        ],
+        temperature: 0.65,
+        max_tokens: 1200,
+      });
 
-    const reply = completion.choices[0]?.message?.content?.trim();
-    if (!reply) {
-      throw new HttpsError("internal", "Failed to get reply from OpenAI.");
+      reply = completion.choices[0]?.message?.content?.trim() ?? "";
+      if (!reply) {
+        throw new HttpsError("internal", "Failed to get reply from OpenAI.");
+      }
+    } catch (error: any) {
+      if (charged > 0 && !(error instanceof HttpsError && error.code === "failed-precondition")) {
+        try {
+          await refundAiChatCoins(uid, charged);
+        } catch (re) {
+          logger.error("refund after OpenAI completion failure", re);
+        }
+      }
+      if (error instanceof HttpsError) throw error;
+      logger.error("aiCoachChat OpenAI error", error);
+      throw new HttpsError("internal", error?.message || "Unknown error in aiCoachChat.");
     }
 
-    return { reply };
+    return { reply, coinsCharged: charged };
   } catch (error: any) {
     if (error instanceof HttpsError) throw error;
     logger.error("aiCoachChat error", error);
