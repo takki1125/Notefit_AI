@@ -20,6 +20,12 @@ const DEFAULT_REGISTRATION_BONUS = 300;
 
 export const COIN_EXPIRY_DAYS = 179;
 
+/**
+ * 消費レコード用の「事実上の無期限」。旧コードの 864e15ms は Instant 換算で秒が範囲外になり、
+ * Android 向け Firestore が Timestamp を読むとクラッシュする（例: seconds must be within … but was: 8640000000000）。
+ */
+const NEVER_EXPIRES_AT: Timestamp = Timestamp.fromMillis(253402300799999);
+
 function expiryTimestamp(): Timestamp {
   const d = new Date();
   d.setDate(d.getDate() + COIN_EXPIRY_DAYS);
@@ -89,7 +95,7 @@ async function appendConsume(uid: string, amount: number, note?: string): Promis
   await ref.set({
     amount: -Math.abs(Math.floor(amount)),
     type: "ai_consume",
-    expires_at: Timestamp.fromMillis(8640000000000000),
+    expires_at: NEVER_EXPIRES_AT,
     created_at: FieldValue.serverTimestamp(),
     ...(note ? { note } : {}),
   });
