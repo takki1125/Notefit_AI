@@ -3,7 +3,6 @@ import {
   ActivityIndicator,
   Alert,
   KeyboardAvoidingView,
-  Linking,
   Platform,
   StyleSheet,
   Text,
@@ -17,6 +16,7 @@ import {
   sendEmailVerification,
   signInWithEmailAndPassword,
 } from 'firebase/auth';
+import * as WebBrowser from 'expo-web-browser'; // ★ 追加
 
 import { auth } from '../../firebaseConfig';
 
@@ -56,8 +56,9 @@ const LoginScreen: React.FC = () => {
     }
   };
 
-  const openTerms = () => {
-    Linking.openURL('https://takki1125.github.io/Notefit-AI-docs/');
+  // ★ 修正：WebBrowserを使ってアプリ内で開くように変更
+  const openTerms = async () => {
+    await WebBrowser.openBrowserAsync('https://takki1125.github.io/Notefit-AI-docs/');
     setTermsOpened(true);
   };
 
@@ -227,4 +228,3 @@ const styles = StyleSheet.create({
 });
 
 export default LoginScreen;
-
