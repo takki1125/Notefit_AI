@@ -49,9 +49,12 @@ import {
 import { auth, db } from "../../firebaseConfig";
 import DailyAIAdviceCard from "../../components/ai/DailyAIAdviceCard";
 import GoalProgressCard from "../../components/goal/GoalProgressCard";
+import { CoinHubSummary } from "../../components/monetization/CoinHubSummary";
 import { DailyMetricQuickInput } from "../../components/metrics/DailyMetricQuickInput";
+import { useCoinBalance } from "../../hooks/useCoinBalance";
 import { useHomeWidgetOrder } from "../../hooks/useHomeWidgetOrder";
 import { styles } from "../../theme/styles";
+import { requestRegistrationBonus } from "../../utils/coinBalance";
 
 // --- 型定義 ---
 type WorkoutSet = { weight: number | string; reps: number | string; done: boolean; };
@@ -278,6 +281,7 @@ const CalendarSection: React.FC<{
 export default function HomeTabScreen() {
   const router = useRouter();
   const uid = auth.currentUser?.uid;
+  const coinBalance = useCoinBalance();
   const { order, persistOrder, addWidget, hydrated } = useHomeWidgetOrder(uid);
 
   const [isEditMode, setIsEditMode] = useState(false);
@@ -345,7 +349,16 @@ export default function HomeTabScreen() {
     }
   }, []);
 
-  useFocusEffect(useCallback(() => { fetchHistory(); fetchTodayMeals(); }, [fetchHistory, fetchTodayMeals]));
+  useFocusEffect(
+    useCallback(() => {
+      fetchHistory();
+      fetchTodayMeals();
+      const u = auth.currentUser;
+      if (u) {
+        void requestRegistrationBonus().catch(() => {});
+      }
+    }, [fetchHistory, fetchTodayMeals]),
+  );
 
   useFocusEffect(
     useCallback(() => {
@@ -667,6 +680,11 @@ export default function HomeTabScreen() {
                   <Plus color="#2ecc71" size={26} strokeWidth={2.5} />
                 </TouchableOpacity>
               )}
+              <CoinHubSummary
+                balance={coinBalance}
+                compact
+                onPress={() => router.push("/settings/monetization")}
+              />
               <TouchableOpacity onPress={() => router.push("/settings")} style={styles.iconButton}>
                 <SettingsIcon color="#fff" size={24} />
               </TouchableOpacity>
@@ -677,20 +695,33 @@ export default function HomeTabScreen() {
                 <Text style={styles.homeWelcomeText}>Welcome back,</Text>
                 <Text style={styles.routineText}>{displayName}</Text>
               </View>
-              <TouchableOpacity onPress={() => router.push("/settings")} style={styles.iconButton}>
-                <SettingsIcon color="#fff" size={24} />
-              </TouchableOpacity>
+              <View style={{ flexDirection: "row", alignItems: "center" }}>
+                <CoinHubSummary
+                  balance={coinBalance}
+                  compact
+                  onPress={() => router.push("/settings/monetization")}
+                />
+                <TouchableOpacity onPress={() => router.push("/settings")} style={styles.iconButton}>
+                  <SettingsIcon color="#fff" size={24} />
+                </TouchableOpacity>
+              </View>
             </>
           )}
         </View>
         {!isEditMode && (
-          <Text style={{ color: "#666", fontSize: 12, paddingHorizontal: 20, marginBottom: 14 }}>
-            任意のウィジェットを長押しで編集モード
-          </Text>
+          <>
+            <CoinHubSummary
+              balance={coinBalance}
+              onPress={() => router.push("/settings/monetization")}
+            />
+            <Text style={{ color: "#666", fontSize: 12, paddingHorizontal: 20, marginBottom: 14 }}>
+              任意のウィジェットを長押しで編集モード
+            </Text>
+          </>
         )}
       </>
     ),
-    [isEditMode, displayName, router, hiddenIds.length],
+    [isEditMode, displayName, router, hiddenIds.length, coinBalance],
   );
 
   const listFooter = useMemo(() => {
