@@ -14,8 +14,40 @@ service cloud.firestore {
       allow read, write: if request.auth != null && request.auth.uid == userId;
     }
 
-    // ユーザーサブコレクション（workouts, food_logs, daily_metrics, daily_advice, routines, food_dictionary など）
-    match /users/{userId}/{document=**} {
+    // --- マネタイズ: コイン台帳（付与・消費・FIFO は Cloud Functions のみ） ---
+    match /users/{userId}/coin_transactions/{txId} {
+      allow read: if request.auth != null && request.auth.uid == userId;
+      allow write: if false;
+    }
+
+    // --- エンゲージメント: ミッション等の監査ログ（書き込みはサーバーのみ想定） ---
+    match /users/{userId}/mission_events/{eventId} {
+      allow read: if request.auth != null && request.auth.uid == userId;
+      allow write: if false;
+    }
+
+    // ユーザーサブコレクション（明示リストのみクライアント書き込み可）
+    // 注意: {document=**} と併用すると「いずれかの allow が true なら許可」になるため、
+    // 改ざん禁止パスは上で個別に deny write したうえで、ここでは残ラインのみ列挙する。
+    match /users/{userId}/workouts/{docId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+    match /users/{userId}/food_logs/{docId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+    match /users/{userId}/food_dictionary/{docId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+    match /users/{userId}/routines/{docId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+    match /users/{userId}/custom_exercises/{docId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+    match /users/{userId}/daily_advice/{docId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+    match /users/{userId}/daily_metrics/{docId} {
       allow read, write: if request.auth != null && request.auth.uid == userId;
     }
   }
