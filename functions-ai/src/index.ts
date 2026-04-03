@@ -4,6 +4,7 @@ import { defineSecret } from "firebase-functions/params";
 import OpenAI from "openai";
 
 import {
+  applyRewardAdCoinGrant,
   getAiConsultCoinCost,
   grantRegistrationBonusIfNeeded,
   refundAiChatCoins,
@@ -115,6 +116,14 @@ export const grantRegistrationBonus = onCall(publicCallableOpts, async (request)
     throw new HttpsError("unauthenticated", "ログインが必要です。");
   }
   return grantRegistrationBonusIfNeeded(request.auth.uid);
+});
+
+/** リワード広告視聴完了後のコイン付与（日次上限あり・サーバー台帳） */
+export const grantRewardAdCoins = onCall(publicCallableOpts, async (request) => {
+  if (!request.auth) {
+    throw new HttpsError("unauthenticated", "ログインが必要です。");
+  }
+  return applyRewardAdCoinGrant(request.auth.uid);
 });
 
 /** 食事の PFC 推定（クライアント: food タブ） */
