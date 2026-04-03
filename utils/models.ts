@@ -1,5 +1,16 @@
 export type Phase = 'cut' | 'maintain' | 'bulk';
 
+/** カロリー自動計算用：日常の活動量（PAL の目安） */
+export type ActivityLevel =
+  | 'sedentary'
+  | 'light'
+  | 'moderate'
+  | 'active'
+  | 'very_active';
+
+/** BMR 式用（登録は任意・未登録時はモーダルで選択） */
+export type CalorieEstimateSex = 'male' | 'female';
+
 export interface UserProfile {
   uid: string;
   phase: Phase;
