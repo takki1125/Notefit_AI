@@ -12,8 +12,9 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { Check, ChevronLeft, Target } from 'lucide-react-native';
+import { Check, ChevronLeft, Sparkles, Target } from 'lucide-react-native';
 
+import AutoCalorieModal from '../../components/goals/AutoCalorieModal';
 import { auth } from '../../firebaseConfig';
 import { styles as shared } from '../../theme/styles';
 import type { Phase } from '../../utils/models';
@@ -35,6 +36,7 @@ export default function GoalsScreen() {
   const [phase, setPhase] = useState<Phase>('cut');
   const [targetWeight, setTargetWeight] = useState('');
   const [targetCal, setTargetCal] = useState('');
+  const [autoCalOpen, setAutoCalOpen] = useState(false);
 
   useEffect(() => {
     const run = async () => {
@@ -152,6 +154,15 @@ export default function GoalsScreen() {
               />
 
               <TouchableOpacity
+                style={local.autoButton}
+                onPress={() => setAutoCalOpen(true)}
+                activeOpacity={0.85}
+              >
+                <Sparkles color="#2ecc71" size={18} />
+                <Text style={local.autoButtonText}>目安から自動で入れる</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
                 style={[
                   shared.loginButton,
                   {
@@ -176,6 +187,13 @@ export default function GoalsScreen() {
           )}
         </View>
       </KeyboardAvoidingView>
+
+      <AutoCalorieModal
+        visible={autoCalOpen}
+        onClose={() => setAutoCalOpen(false)}
+        phase={phase}
+        onApply={(kcal) => setTargetCal(String(kcal))}
+      />
     </SafeAreaView>
   );
 }
@@ -209,6 +227,23 @@ const local = StyleSheet.create({
   },
   phaseTextActive: {
     color: '#000',
+  },
+  autoButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 12,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#2ecc71',
+    backgroundColor: '#142818',
+    marginBottom: 10,
+  },
+  autoButtonText: {
+    color: '#2ecc71',
+    fontSize: 14,
+    fontWeight: '600',
   },
 });
 
