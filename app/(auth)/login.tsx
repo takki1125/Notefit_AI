@@ -15,8 +15,9 @@ import {
   createUserWithEmailAndPassword,
   sendEmailVerification,
   signInWithEmailAndPassword,
+  signOut, // ★ 追加：強制ログアウト用
 } from 'firebase/auth';
-import * as WebBrowser from 'expo-web-browser'; // ★ 追加
+import * as WebBrowser from 'expo-web-browser';
 
 import { auth } from '../../firebaseConfig';
 
@@ -37,18 +38,35 @@ const LoginScreen: React.FC = () => {
     setLoading(true);
     try {
       if (isSignUp) {
+        // ① アカウント作成
         const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-        const user = userCredential.user;
-        await sendEmailVerification(user);
+        // ② 確認メール送信
+        await sendEmailVerification(userCredential.user);
+        
+        // ★ これだけでOK！あとは _layout.tsx が勝手に verify 画面に飛ばしてくれる！
+        // （アラートや signOut は全部消したぞ）
+
       } else {
-        await signInWithEmailAndPassword(auth, email, password);
+        // ログイン処理
+        const userCredential = await signInWithEmailAndPassword(auth, email, password);
+        const user = userCredential.user;
+
+        // ★ ログイン時は未確認なら弾く（ここは残す）
+        if (!user.emailVerified) {
+          await signOut(auth);
+          Alert.alert(
+            'メール確認が未完了です',
+            '登録時にお送りしたメールのリンクをタップして、本登録を完了してください。'
+          );
+          return;
+        }
       }
     } catch (error: any) {
       let errorMessage = 'エラーが発生しました。';
       if (error.code === 'auth/email-already-in-use') errorMessage = 'このメールアドレスは既に使われています。';
       if (error.code === 'auth/invalid-email') errorMessage = 'メールアドレスの形式が正しくありません。';
-      if (error.code === 'auth/user-not-found') errorMessage = 'ユーザーが見つかりません。';
-      if (error.code === 'auth/wrong-password') errorMessage = 'パスワードが間違っています。';
+      if (error.code === 'auth/user-not-found' || error.code === 'auth/invalid-credential') errorMessage = 'メールアドレスかパスワードが間違っています。';
+      if (error.code === 'auth/wrong-password') errorMessage = 'メールアドレスかパスワードが間違っています。';
       if (error.code === 'auth/weak-password') errorMessage = 'パスワードは6文字以上で設定してください。';
       Alert.alert('エラー', errorMessage);
     } finally {
@@ -56,7 +74,6 @@ const LoginScreen: React.FC = () => {
     }
   };
 
-  // ★ 修正：WebBrowserを使ってアプリ内で開くように変更
   const openTerms = async () => {
     await WebBrowser.openBrowserAsync('https://takki1125.github.io/Notefit-AI-docs/');
     setTermsOpened(true);
