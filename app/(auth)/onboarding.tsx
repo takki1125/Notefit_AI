@@ -12,7 +12,9 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
+import { Sparkles } from 'lucide-react-native';
 
+import AutoCalorieModal from '../../components/goals/AutoCalorieModal';
 import { auth } from '../../firebaseConfig';
 import { styles as shared } from '../../theme/styles';
 import type { Phase } from '../../utils/models';
@@ -32,6 +34,7 @@ export default function OnboardingScreen() {
   const [targetWeight, setTargetWeight] = useState('');
   const [targetCal, setTargetCal] = useState('');
   const [saving, setSaving] = useState(false);
+  const [autoCalOpen, setAutoCalOpen] = useState(false);
 
   const canSubmit = useMemo(() => {
     const w = Number(targetWeight);
@@ -112,10 +115,19 @@ export default function OnboardingScreen() {
               style={shared.inputField}
               value={targetCal}
               onChangeText={setTargetCal}
-              placeholder="例: 2000"
+              placeholder="例: 2000 または下のボタンで自動"
               placeholderTextColor="#444"
               keyboardType="numeric"
             />
+
+            <TouchableOpacity
+              style={local.autoButton}
+              onPress={() => setAutoCalOpen(true)}
+              activeOpacity={0.85}
+            >
+              <Sparkles color="#2ecc71" size={18} />
+              <Text style={local.autoButtonText}>目安から自動で入れる</Text>
+            </TouchableOpacity>
 
             <TouchableOpacity
               style={[
@@ -138,6 +150,13 @@ export default function OnboardingScreen() {
           </View>
         </View>
       </KeyboardAvoidingView>
+
+      <AutoCalorieModal
+        visible={autoCalOpen}
+        onClose={() => setAutoCalOpen(false)}
+        phase={phase}
+        onApply={(kcal) => setTargetCal(String(kcal))}
+      />
     </SafeAreaView>
   );
 }
@@ -190,6 +209,23 @@ const local = StyleSheet.create({
     marginTop: 12,
     textAlign: 'center',
     lineHeight: 18,
+  },
+  autoButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 12,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#2ecc71',
+    backgroundColor: '#142818',
+    marginBottom: 10,
+  },
+  autoButtonText: {
+    color: '#2ecc71',
+    fontSize: 14,
+    fontWeight: '600',
   },
 });
 
