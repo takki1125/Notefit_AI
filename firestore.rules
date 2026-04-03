@@ -26,6 +26,11 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // サーバー専用（例: リワード広告の日次カウント）。クライアントからの読み書き不可
+    match /users/{userId}/private_meta/{docId} {
+      allow read, write: if false;
+    }
+
     // ユーザーサブコレクション（明示リストのみクライアント書き込み可）
     // 注意: {document=**} と併用すると「いずれかの allow が true なら許可」になるため、
     // 改ざん禁止パスは上で個別に deny write したうえで、ここでは残ラインのみ列挙する。
