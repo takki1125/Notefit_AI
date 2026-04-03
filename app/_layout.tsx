@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, View } from 'react-native';
+import { ActivityIndicator, Platform, View } from 'react-native';
 // ★ Slot を Stack に変更！
 import { Redirect, Stack, useSegments } from 'expo-router'; 
 import { StatusBar } from 'expo-status-bar';
@@ -50,6 +50,11 @@ export default function RootLayout() {
     if (user) return;
     void cancelMealReminderNotifications();
   }, [user]);
+
+  useEffect(() => {
+    if (Platform.OS !== 'android' && Platform.OS !== 'ios') return;
+    void import('../utils/mobileAdsInit').then((m) => m.ensureMobileAdsInitialized());
+  }, []);
 
   useEffect(() => {
     if (initializing || !profileChecked || !user?.emailVerified || needsOnboarding) return;
