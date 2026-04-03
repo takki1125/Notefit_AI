@@ -1,0 +1,27 @@
+import React from "react";
+import { StyleSheet, View } from "react-native";
+import { BannerAd, BannerAdSize } from "react-native-google-mobile-ads";
+
+import { getBannerAdUnitId } from "../../utils/adMobUnits";
+
+export function BannerAdSlot() {
+  const unitId = getBannerAdUnitId();
+  if (!unitId) return null;
+
+  return (
+    <View style={styles.wrap}>
+      <BannerAd
+        unitId={unitId}
+        size={BannerAdSize.ANCHORED_ADAPTIVE_BANNER}
+        requestOptions={{}}
+      />
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  wrap: {
+    alignItems: "center",
+    overflow: "hidden",
+  },
+});
