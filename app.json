@@ -13,7 +13,8 @@
       "backgroundColor": "#ffffff"
     },
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.takimoto.shoa.notefitai"
     },
     "android": {
       "package": "com.takimoto.shoa.notefitai",
@@ -29,12 +30,22 @@
     "plugins": [
       "expo-notifications",
       "@react-native-community/datetimepicker",
-      "expo-web-browser"
+      "expo-web-browser",
+      [
+        "react-native-google-mobile-ads",
+        {
+          "androidAppId": "ca-app-pub-3940256099942544~3347511713",
+          "iosAppId": "ca-app-pub-3940256099942544~1458002511",
+          "userTrackingUsageDescription": "広告の最適化のために利用することがあります。"
+        }
+      ]
     ],
     "extra": {
       "eas": {
         "projectId": "1ecff325-3fa5-4e9b-ae1b-36ac4c6f76ea"
-      }
+      },
+      "adMobBannerUnitId": "",
+      "adMobRewardedUnitId": ""
     },
     "owner": "takki-and-shoa"
   }
