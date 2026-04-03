@@ -13,6 +13,7 @@ import { sendEmailVerification, signOut } from 'firebase/auth';
 
 import { auth } from '../../firebaseConfig';
 import { useAuthState } from '../../hooks/useAuthState';
+import { router } from 'expo-router';
 
 const VerificationScreen: React.FC = () => {
   const [loading, setLoading] = useState(false);
@@ -22,9 +23,22 @@ const VerificationScreen: React.FC = () => {
     setLoading(true);
     try {
       await auth.currentUser?.reload();
-      if (auth.currentUser?.emailVerified) {
-        Alert.alert('確認成功', '本人確認が完了しました！');
-        await forceRefreshUser();
+      const updatedUser = auth.currentUser;
+
+      if (updatedUser?.emailVerified) {
+        // Firebaseの認証状態を強制リフレッシュ
+        await updatedUser.getIdToken(true); 
+
+        Alert.alert('確認成功', '本人確認が完了しました！', [
+          {
+            text: 'OK',
+            onPress: async () => {
+              // 状態を最新に更新して、初期設定画面へ強制移動！
+              await forceRefreshUser(); 
+              router.replace('/onboarding'); 
+            }
+          }
+        ]);
       } else {
         Alert.alert(
           '未完了',
@@ -32,6 +46,7 @@ const VerificationScreen: React.FC = () => {
         );
       }
     } catch (e) {
+      console.error(e);
       Alert.alert('エラー', '情報の更新に失敗しました。');
     } finally {
       setLoading(false);
