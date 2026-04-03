@@ -55,3 +55,11 @@ export async function requestRegistrationBonus(): Promise<RegistrationBonusResul
   const res = await fn({});
   return res.data as RegistrationBonusResult;
 }
+
+export type GrantRewardAdResult = { granted: boolean; amount?: number };
+
+export async function requestGrantRewardAdCoins(): Promise<GrantRewardAdResult> {
+  const fn = httpsCallable(getFunctions(getApp(), "asia-northeast1"), "grantRewardAdCoins");
+  const res = await fn({});
+  return res.data as GrantRewardAdResult;
+}
