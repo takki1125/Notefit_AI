@@ -1,7 +1,15 @@
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 
 import { db } from '../firebaseConfig';
-import type { AiCoachSettings, MealReminderSettings, Phase, UserDemographics, UserProfile } from './models';
+import type {
+  ActivityLevel,
+  AiCoachSettings,
+  CalorieEstimateSex,
+  MealReminderSettings,
+  Phase,
+  UserDemographics,
+  UserProfile,
+} from './models';
 import { DEFAULT_AI_COACH_SETTINGS } from './models';
 import { normalizeAiCoachSettings } from './aiCoachSettings';
 
@@ -23,6 +31,8 @@ type UserDocShape = Partial<{
   aiCoachStyle?: string;
   aiTonePreset?: string;
   aiCustomInstructions?: string;
+  calorieEstimateSex?: string;
+  activityLevel?: string;
 }>;
 
 export const DEFAULT_MEAL_REMINDER_SETTINGS: MealReminderSettings = {
@@ -170,5 +180,64 @@ export async function setAiCoachSettings(uid: string, settings: AiCoachSettings)
     },
     { merge: true },
   );
+}
+
+const ACTIVITY_LEVELS: ActivityLevel[] = ['sedentary', 'light', 'moderate', 'active', 'very_active'];
+
+function parseActivityLevel(raw: unknown): ActivityLevel | undefined {
+  if (typeof raw !== 'string') return undefined;
+  return ACTIVITY_LEVELS.includes(raw as ActivityLevel) ? (raw as ActivityLevel) : undefined;
+}
+
+function parseCalorieEstimateSex(raw: unknown): CalorieEstimateSex | undefined {
+  if (raw === 'male' || raw === 'female') return raw;
+  return undefined;
+}
+
+export async function getCalorieEstimatePrefs(uid: string): Promise<{
+  sex?: CalorieEstimateSex;
+  activityLevel?: ActivityLevel;
+}> {
+  const snap = await getDoc(doc(db, 'users', uid));
+  if (!snap.exists()) return {};
+  const data = snap.data() as UserDocShape;
+  return {
+    sex: parseCalorieEstimateSex(data.calorieEstimateSex),
+    activityLevel: parseActivityLevel(data.activityLevel),
+  };
+}
+
+export async function setCalorieEstimatePrefs(
+  uid: string,
+  prefs: { sex: CalorieEstimateSex; activityLevel: ActivityLevel },
+): Promise<void> {
+  await setDoc(
+    doc(db, 'users', uid),
+    {
+      calorieEstimateSex: prefs.sex,
+      activityLevel: prefs.activityLevel,
+      updatedAt: new Date(),
+    },
+    { merge: true },
+  );
+}
+
+/** 目標カロリー自動計算フローで入力された身長・生年月日をプロフィールに反映 */
+export async function mergeUserDemographicsFields(
+  uid: string,
+  fields: { heightCm?: number; birthDate?: string },
+): Promise<void> {
+  const payload: Record<string, unknown> = { updatedAt: new Date() };
+  if (typeof fields.heightCm === 'number' && Number.isFinite(fields.heightCm) && fields.heightCm >= 80 && fields.heightCm <= 250) {
+    payload.heightCm = fields.heightCm;
+  }
+  if (
+    typeof fields.birthDate === 'string' &&
+    /^\d{4}-\d{2}-\d{2}$/.test(fields.birthDate.trim())
+  ) {
+    payload.birthDate = fields.birthDate.trim();
+  }
+  if (Object.keys(payload).length <= 1) return;
+  await setDoc(doc(db, 'users', uid), payload, { merge: true });
 }
 
