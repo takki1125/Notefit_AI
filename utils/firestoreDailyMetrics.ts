@@ -77,3 +77,16 @@ export async function getDailyMetricsLastNDays(uid: string, n: number): Promise<
   return metrics.sort((a, b) => a.date.localeCompare(b.date));
 }
 
+/** 直近の体重記録（日付降順で1件）。無ければ null */
+export async function getLatestWeightKg(uid: string): Promise<number | null> {
+  const q = query(
+    collection(db, 'users', uid, 'daily_metrics'),
+    orderBy('date', 'desc'),
+    limit(1),
+  );
+  const snap = await getDocs(q);
+  if (snap.empty) return null;
+  const data = snap.docs[0].data() as { weight?: unknown };
+  return typeof data?.weight === 'number' && Number.isFinite(data.weight) ? data.weight : null;
+}
+
