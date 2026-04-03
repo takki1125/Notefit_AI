@@ -3,7 +3,6 @@ import {
   Crown,
   Gift,
   Megaphone,
-  PlayCircle,
   ShoppingBag,
   Target,
   X,
@@ -20,6 +19,8 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
+import { BannerAdSlot } from "../../components/ads/BannerAdSlot";
+import { RewardedAdOfferRow } from "../../components/ads/RewardedAdOfferRow";
 import { FeatureStatusBadge } from "../../components/monetization/FeatureStatusBadge";
 import {
   PREVIEW_COIN_PACKS,
@@ -205,29 +206,25 @@ export default function MonetizationScreen() {
             ))}
           </ScrollView>
 
-          <TouchableOpacity style={[theme.card, local.rewardBtn]} onPress={() => plannedAlert("リワード広告")}>
-            <PlayCircle color="#2ecc71" size={26} />
-            <View style={{ flex: 1, marginLeft: 12 }}>
-              <Text style={local.rewardTitle}>動画広告を見てコイン（予定）</Text>
-              <Text style={local.rewardSub}>AdMob リワード完了で少量付与</Text>
-            </View>
-            <FeatureStatusBadge variant="planned" />
-          </TouchableOpacity>
+          <RewardedAdOfferRow themeCardStyle={theme.card} />
         </View>
 
         {/* --- 準備中: 広告枠プレビュー --- */}
         <View style={local.sectionBlock}>
           <View style={local.sectionTitleRow}>
-            <Text style={local.sectionTitle}>広告表示（フリープラン想定）</Text>
-            <FeatureStatusBadge variant="planned" />
+            <Text style={local.sectionTitle}>バナー広告（フリープラン想定）</Text>
+            <FeatureStatusBadge variant="live" label="AdMob" />
           </View>
 
-          <View style={local.adBannerMock}>
-            <Megaphone color="#666" size={20} />
-            <Text style={local.adBannerText}>バナー広告枠（画面下部想定・AdMob）</Text>
+          <View style={local.adBannerFrame}>
+            <View style={local.adBannerLabelRow}>
+              <Megaphone color="#666" size={18} />
+              <Text style={local.adBannerLabel}>Google AdMob（開発時はテスト広告）</Text>
+            </View>
+            <BannerAdSlot />
           </View>
           <Text style={local.adCaption}>
-            Tier1 以上ではバナー・インタースティシャルを出さない想定。リワードは任意で残します。
+            Tier1 以上ではバナーを隠す想定。本番では app.json の extra に本番ユニット ID を設定し、開発ビルドで確認してください。
           </Text>
         </View>
 
@@ -287,22 +284,22 @@ const local = StyleSheet.create({
   packLabel: { color: "#fff", fontWeight: "700", marginTop: 10 },
   packCoins: { color: "#f1c40f", fontSize: 18, fontWeight: "800", marginTop: 4 },
   packPrice: { color: "#666", fontSize: 11, marginTop: 8 },
-  rewardBtn: { flexDirection: "row", alignItems: "center", marginTop: 8 },
-  rewardTitle: { color: "#fff", fontWeight: "700", fontSize: 15 },
-  rewardSub: { color: "#888", fontSize: 12, marginTop: 4 },
-  adBannerMock: {
-    height: 56,
+  adBannerFrame: {
     backgroundColor: "#252525",
-    borderRadius: 8,
+    borderRadius: 12,
     borderWidth: 1,
     borderColor: "#333",
-    borderStyle: "dashed",
+    paddingVertical: 10,
+    paddingHorizontal: 8,
+    alignItems: "center",
+  },
+  adBannerLabelRow: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "center",
-    gap: 10,
+    gap: 8,
+    marginBottom: 8,
   },
-  adBannerText: { color: "#666", fontSize: 12 },
+  adBannerLabel: { color: "#666", fontSize: 12 },
   adCaption: { color: "#555", fontSize: 11, marginTop: 10, lineHeight: 16 },
   footnote: { color: "#444", fontSize: 11, marginTop: 28, lineHeight: 16, textAlign: "center" },
 });
