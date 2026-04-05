@@ -752,8 +752,17 @@ const TrainingTabScreen: React.FC<Props> = ({ navigation }) => {
               {
                 text: "OK",
                 onPress: () => {
-                  setMenu([]);
-                  navigation?.navigate?.("home");
+                  void (async () => {
+                    try {
+                      const { presentInterstitialWhenReady } = await import(
+                        "../../utils/interstitialAdPresenter"
+                      );
+                      await presentInterstitialWhenReady({ bypassCooldown: true });
+                    } finally {
+                      setMenu([]);
+                      navigation?.navigate?.("home");
+                    }
+                  })();
                 },
               },
             ]);

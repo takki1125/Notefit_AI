@@ -53,7 +53,9 @@ export default function RootLayout() {
 
   useEffect(() => {
     if (Platform.OS !== 'android' && Platform.OS !== 'ios') return;
-    void import('../utils/mobileAdsInit').then((m) => m.ensureMobileAdsInitialized());
+    void import('../utils/mobileAdsInit')
+      .then((m) => m.ensureMobileAdsInitialized())
+      .then(() => import('../utils/interstitialAdPresenter').then((p) => p.preloadInterstitial()));
   }, []);
 
   useEffect(() => {

@@ -15,6 +15,15 @@ function firebaseErrorMessage(err: unknown): string {
   if (code === "functions/resource-exhausted") {
     return "本日の獲得上限に達しています。また明日お試しください。";
   }
+  if (code === "functions/not-found") {
+    return "コイン付与に接続できませんでした。通信環境を確認し、今も続く場合は default の Cloud Functions がデプロイされているか確認してください（firebase deploy --only functions:default）。";
+  }
+  if (code === "functions/unavailable" || code === "functions/deadline-exceeded") {
+    return "サーバーが混み合っています。しばらくしてからお試しください。";
+  }
+  if (code === "functions/unauthenticated") {
+    return "ログインの有効期限が切れている可能性があります。再ログインしてからお試しください。";
+  }
   return msg || "エラーが発生しました。";
 }
 
@@ -95,7 +104,7 @@ export function RewardedAdOfferRow({ themeCardStyle }: RewardedAdOfferRowProps) 
             ? "読み込みに失敗しました。タップで再試行"
             : busy
               ? "広告を読み込み中…"
-              : "AdMob リワード完了でコイン付与（1 日に上限あり）"}
+              : "広告を最後まで見ると 10 コイン付与（1 日に上限あり）"}
         </Text>
       </View>
       {busy ? (

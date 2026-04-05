@@ -231,8 +231,17 @@ export function useTrainingSession(navigation: any): UseTrainingSessionResult {
               {
                 text: 'OK',
                 onPress: () => {
-                  setMenu([]);
-                  navigation.navigate('HomeTab');
+                  void (async () => {
+                    try {
+                      const { presentInterstitialWhenReady } = await import(
+                        '../utils/interstitialAdPresenter'
+                      );
+                      await presentInterstitialWhenReady({ bypassCooldown: true });
+                    } finally {
+                      setMenu([]);
+                      navigation.navigate('HomeTab');
+                    }
+                  })();
                 },
               },
             ]);

@@ -238,6 +238,10 @@ export default function FoodTabScreen() {
     }
 
     setFoodName(""); setCal(""); setPro(""); setFat(""); setCarb("");
+
+    void import("../../utils/interstitialAdPresenter").then((m) =>
+      m.recordFoodAddAndMaybePresentInterstitial(),
+    );
   };
 
   const handleRemoveFood = (id: string) => {

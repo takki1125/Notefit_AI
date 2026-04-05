@@ -3,8 +3,23 @@ import * as logger from "firebase-functions/logger";
 import { defineSecret } from "firebase-functions/params";
 import OpenAI from "openai";
 
+import { applyRewardAdCoinGrant } from "./rewardAdCoins";
+
 // Secret Manager 上のシークレットを定義
 const OPENAI_API_KEY = defineSecret("OPENAI_API_KEY");
+
+const publicCallableOpts = {
+  region: "asia-northeast1" as const,
+  cors: true,
+};
+
+/** リワード広告コイン付与 — default codebase（クライアントはこの名前で呼ぶ） */
+export const grantRewardAdCoins = onCall(publicCallableOpts, async (request) => {
+  if (!request.auth) {
+    throw new HttpsError("unauthenticated", "ログインが必要です。");
+  }
+  return applyRewardAdCoinGrant(request.auth.uid);
+});
 
 // OpenAI クライアント生成ヘルパ
 function createOpenAIClient() {
