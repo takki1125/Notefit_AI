@@ -36,25 +36,13 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.analyzeFoodPFC = exports.grantRewardAdCoins = void 0;
+exports.analyzeFoodPFC = void 0;
 const https_1 = require("firebase-functions/v2/https");
 const logger = __importStar(require("firebase-functions/logger"));
 const params_1 = require("firebase-functions/params");
 const openai_1 = __importDefault(require("openai"));
-const rewardAdCoins_1 = require("./rewardAdCoins");
 // Secret Manager 上のシークレットを定義
 const OPENAI_API_KEY = (0, params_1.defineSecret)("OPENAI_API_KEY");
-const publicCallableOpts = {
-    region: "asia-northeast1",
-    cors: true,
-};
-/** リワード広告コイン付与 — default codebase（クライアントはこの名前で呼ぶ） */
-exports.grantRewardAdCoins = (0, https_1.onCall)(publicCallableOpts, async (request) => {
-    if (!request.auth) {
-        throw new https_1.HttpsError("unauthenticated", "ログインが必要です。");
-    }
-    return (0, rewardAdCoins_1.applyRewardAdCoinGrant)(request.auth.uid);
-});
 // OpenAI クライアント生成ヘルパ
 function createOpenAIClient() {
     const apiKey = OPENAI_API_KEY.value();

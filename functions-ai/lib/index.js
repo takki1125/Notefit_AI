@@ -36,7 +36,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.aiCoachChat = exports.generateDailyAIAdvice = exports.analyzeFoodPFC = exports.grantRegistrationBonus = void 0;
+exports.aiCoachChat = exports.generateDailyAIAdvice = exports.analyzeFoodPFC = exports.grantRewardAdCoins = exports.grantRegistrationBonus = void 0;
 const https_1 = require("firebase-functions/v2/https");
 const logger = __importStar(require("firebase-functions/logger"));
 const params_1 = require("firebase-functions/params");
@@ -116,6 +116,7 @@ const callableOpts = {
 const publicCallableOpts = {
     region: "asia-northeast1",
     cors: true,
+    invoker: "public",
 };
 /** メール認証済みユーザーの初回登録ボーナス（冪等） */
 exports.grantRegistrationBonus = (0, https_1.onCall)(publicCallableOpts, async (request) => {
@@ -123,6 +124,13 @@ exports.grantRegistrationBonus = (0, https_1.onCall)(publicCallableOpts, async (
         throw new https_1.HttpsError("unauthenticated", "ログインが必要です。");
     }
     return (0, coins_1.grantRegistrationBonusIfNeeded)(request.auth.uid);
+});
+/** リワード広告視聴後のコイン付与（grantRegistrationBonus と同じ codebase / デプロイ手順） */
+exports.grantRewardAdCoins = (0, https_1.onCall)(publicCallableOpts, async (request) => {
+    if (!request.auth) {
+        throw new https_1.HttpsError("unauthenticated", "ログインが必要です。");
+    }
+    return (0, coins_1.applyRewardAdCoinGrant)(request.auth.uid);
 });
 /** 食事の PFC 推定（クライアント: food タブ） */
 exports.analyzeFoodPFC = (0, https_1.onCall)(callableOpts, async (request) => {

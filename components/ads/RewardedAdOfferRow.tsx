@@ -16,7 +16,7 @@ function firebaseErrorMessage(err: unknown): string {
     return "本日の獲得上限に達しています。また明日お試しください。";
   }
   if (code === "functions/not-found") {
-    return "コイン付与に接続できませんでした。通信環境を確認し、今も続く場合は default の Cloud Functions がデプロイされているか確認してください（firebase deploy --only functions:default）。";
+    return "コイン付与サーバーに接続できません。PC で「firebase deploy --only functions:ai」を実行し、Firebase Console の Functions（東京）に grantRewardAdCoins があるか確認してください。";
   }
   if (code === "functions/unavailable" || code === "functions/deadline-exceeded") {
     return "サーバーが混み合っています。しばらくしてからお試しください。";

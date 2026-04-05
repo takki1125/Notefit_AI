@@ -6,8 +6,12 @@ import {
   getDocs,
   onSnapshot,
 } from "firebase/firestore";
-import { getFunctions, httpsCallable } from "firebase/functions";
+import { getFunctions, httpsCallable, httpsCallableFromURL } from "firebase/functions";
 import { db } from "../firebaseConfig";
+import {
+  getGrantRewardCallableOverrideUrl,
+  GRANT_REWARD_CALLABLE_NAME_CANDIDATES,
+} from "./grantRewardCallableConfig";
 import { USER_SUBCOLLECTIONS } from "./monetizationTypes";
 
 /** Cloud Functions と同じ基準で利用可能コインを合算 */
@@ -58,8 +62,30 @@ export async function requestRegistrationBonus(): Promise<RegistrationBonusResul
 
 export type GrantRewardAdResult = { granted: boolean; amount?: number };
 
+function isFunctionsNotFound(e: unknown): boolean {
+  return typeof (e as { code?: string })?.code === "string" && (e as { code: string }).code === "functions/not-found";
+}
+
 export async function requestGrantRewardAdCoins(): Promise<GrantRewardAdResult> {
-  const fn = httpsCallable(getFunctions(getApp(), "asia-northeast1"), "grantRewardAdCoins");
-  const res = await fn({});
-  return res.data as GrantRewardAdResult;
+  const region = getFunctions(getApp(), "asia-northeast1");
+  const overrideUrl = getGrantRewardCallableOverrideUrl();
+  if (overrideUrl) {
+    const fn = httpsCallableFromURL(region, overrideUrl);
+    const res = await fn({});
+    return res.data as GrantRewardAdResult;
+  }
+
+  let lastError: unknown;
+  for (const name of GRANT_REWARD_CALLABLE_NAME_CANDIDATES) {
+    try {
+      const fn = httpsCallable(region, name);
+      const res = await fn({});
+      return res.data as GrantRewardAdResult;
+    } catch (e) {
+      lastError = e;
+      if (isFunctionsNotFound(e)) continue;
+      throw e;
+    }
+  }
+  throw lastError;
 }

@@ -36,6 +36,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.COIN_EXPIRY_DAYS = void 0;
 exports.getAiConsultCoinCost = getAiConsultCoinCost;
 exports.getRegistrationBonusAmount = getRegistrationBonusAmount;
+exports.applyRewardAdCoinGrant = applyRewardAdCoinGrant;
 exports.computeCoinBalance = computeCoinBalance;
 exports.spendCoinsForAiChatOrThrow = spendCoinsForAiChatOrThrow;
 exports.refundAiChatCoins = refundAiChatCoins;
@@ -103,6 +104,63 @@ async function getRegistrationBonusAmount() {
         logger.warn("getRegistrationBonusAmount: Remote Config fallback", e);
         return DEFAULT_REGISTRATION_BONUS;
     }
+}
+/** リワード広告 1 回あたりの付与（固定。変更はこの定数で） */
+const REWARD_AD_COINS_PER_VIEW = 10;
+/** 東京日付ごとのリワード広告付与上限 */
+const MAX_REWARD_AD_GRANTS_PER_DAY = 25;
+function tokyoDateKey() {
+    return new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Tokyo" });
+}
+/**
+ * リワード広告視聴後のコイン付与（1 リクエスト = 1 回分。日次上限あり）
+ * ※ 厳密な広告完了証明は SSV が理想。日次上限で過剰付与を抑える。
+ */
+async function applyRewardAdCoinGrant(uid) {
+    const amount = REWARD_AD_COINS_PER_VIEW;
+    if (amount <= 0) {
+        return { granted: false };
+    }
+    const dayKey = tokyoDateKey();
+    const stateRef = db.collection("users").doc(uid).collection("private_meta").doc("reward_ad_daily");
+    try {
+        await db.runTransaction(async (tx) => {
+            const snap = await tx.get(stateRef);
+            let count = 0;
+            let storedDay = dayKey;
+            if (snap.exists) {
+                const d = snap.data();
+                storedDay = typeof d.day_key === "string" ? d.day_key : dayKey;
+                count = Number.isFinite(Number(d.count)) ? Number(d.count) : 0;
+            }
+            if (storedDay !== dayKey) {
+                count = 0;
+            }
+            if (count >= MAX_REWARD_AD_GRANTS_PER_DAY) {
+                throw new https_1.HttpsError("resource-exhausted", "本日のリワード広告によるコイン獲得上限に達しています。");
+            }
+            const txRef = db.collection("users").doc(uid).collection("coin_transactions").doc();
+            tx.set(txRef, {
+                amount,
+                type: "reward_ad",
+                expires_at: expiryTimestamp(),
+                created_at: firestore_1.FieldValue.serverTimestamp(),
+                idempotency_key: `reward_ad_${dayKey}_${count + 1}`,
+            });
+            tx.set(stateRef, {
+                day_key: dayKey,
+                count: count + 1,
+                updated_at: firestore_1.FieldValue.serverTimestamp(),
+            }, { merge: true });
+        });
+    }
+    catch (e) {
+        if (e instanceof https_1.HttpsError)
+            throw e;
+        logger.error("applyRewardAdCoinGrant", e);
+        throw new https_1.HttpsError("internal", "コイン付与に失敗しました。");
+    }
+    return { granted: true, amount };
 }
 /** 正の付与（未失効）＋負の消費を合算した利用可能残高 */
 async function computeCoinBalance(uid) {
