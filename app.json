@@ -45,7 +45,8 @@
         "projectId": "1ecff325-3fa5-4e9b-ae1b-36ac4c6f76ea"
       },
       "adMobBannerUnitId": "",
-      "adMobRewardedUnitId": ""
+      "adMobRewardedUnitId": "",
+      "adMobInterstitialUnitId": ""
     },
     "owner": "takki-and-shoa"
   }

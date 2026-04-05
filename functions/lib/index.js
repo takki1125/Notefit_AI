@@ -36,13 +36,25 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.analyzeFoodPFC = void 0;
+exports.analyzeFoodPFC = exports.grantRewardAdCoins = void 0;
 const https_1 = require("firebase-functions/v2/https");
 const logger = __importStar(require("firebase-functions/logger"));
 const params_1 = require("firebase-functions/params");
 const openai_1 = __importDefault(require("openai"));
+const rewardAdCoins_1 = require("./rewardAdCoins");
 // Secret Manager 上のシークレットを定義
 const OPENAI_API_KEY = (0, params_1.defineSecret)("OPENAI_API_KEY");
+const publicCallableOpts = {
+    region: "asia-northeast1",
+    cors: true,
+};
+/** リワード広告コイン付与 — default codebase（クライアントはこの名前で呼ぶ） */
+exports.grantRewardAdCoins = (0, https_1.onCall)(publicCallableOpts, async (request) => {
+    if (!request.auth) {
+        throw new https_1.HttpsError("unauthenticated", "ログインが必要です。");
+    }
+    return (0, rewardAdCoins_1.applyRewardAdCoinGrant)(request.auth.uid);
+});
 // OpenAI クライアント生成ヘルパ
 function createOpenAIClient() {
     const apiKey = OPENAI_API_KEY.value();
@@ -50,6 +62,30 @@ function createOpenAIClient() {
         throw new Error("OPENAI_API_KEY is not set in Secret Manager.");
     }
     return new openai_1.default({ apiKey });
+}
+function parseDemographicsPayload(data) {
+    const d = data?.demographics;
+    if (!d || typeof d !== "object")
+        return {};
+    const rawH = Number(d.heightCm);
+    const heightCm = Number.isFinite(rawH) && rawH >= 50 && rawH <= 250 ? Math.round(rawH * 10) / 10 : undefined;
+    const birthDate = typeof d.birthDate === "string" && /^\d{4}-\d{2}-\d{2}$/.test(d.birthDate) ? d.birthDate : undefined;
+    const rawA = Number(d.ageYears);
+    const ageYears = Number.isFinite(rawA) && rawA >= 3 && rawA <= 120 ? Math.floor(rawA) : undefined;
+    return { heightCm, birthDate, ageYears };
+}
+function formatDemographicsForPrompt(parsed) {
+    if (!parsed.heightCm && !parsed.birthDate && parsed.ageYears == null) {
+        return "（身長・年齢の追加情報なし）";
+    }
+    const parts = [];
+    if (parsed.heightCm)
+        parts.push(`身長 約${parsed.heightCm}cm`);
+    if (parsed.birthDate)
+        parts.push(`生年月日 ${parsed.birthDate}`);
+    if (parsed.ageYears != null)
+        parts.push(`満年齢 約${parsed.ageYears}歳`);
+    return parts.join(" / ");
 }
 // Cloud Functions (Callable) 本体
 exports.analyzeFoodPFC = (0, https_1.onCall)({
@@ -66,6 +102,7 @@ exports.analyzeFoodPFC = (0, https_1.onCall)({
         if (!text || typeof text !== "string" || !text.trim()) {
             throw new https_1.HttpsError("invalid-argument", "Parameter 'text' must be a non-empty string.");
         }
+        const demo = parseDemographicsPayload(request.data);
         const openai = createOpenAIClient();
         // プロンプト作成
         const systemPrompt = `
@@ -74,6 +111,8 @@ exports.analyzeFoodPFC = (0, https_1.onCall)({
 ユーザーから自然文で食事内容（例: 「昼に唐揚げ弁当とおにぎり1個、味噌汁」）が与えられます。
 その内容から、おおよそのカロリーとPFC（タンパク質・脂質・炭水化物）を推定し、
 必ず次のJSONフォーマットだけを返してください。
+
+任意で身長・年齢（満年齢）が与えられる場合、一般的な食事量の目安として参考にし、現実的な数値になるよう意識する（個別の医学的栄養処方や診断は行わない）。
 
 出力JSONフォーマット:
 {
@@ -102,7 +141,9 @@ exports.analyzeFoodPFC = (0, https_1.onCall)({
 - items は将来の拡張用ですが、現時点でも可能な範囲で 1〜数件に分割してください。
 - 説明文やコメントは一切出力せず、指定のJSONオブジェクトのみを返してください。
 `;
-        const userPrompt = `食事内容: ${text}`;
+        const userPrompt = `利用可能な身体情報（参考・推定補助用）: ${formatDemographicsForPrompt(demo)}
+
+食事内容: ${text}`;
         // OpenAI 呼び出し（gpt-4o-mini + JSON オブジェクト）
         const completion = await openai.chat.completions.create({
             model: "gpt-4o-mini",
