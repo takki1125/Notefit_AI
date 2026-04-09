@@ -36,12 +36,13 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.aiCoachChat = exports.generateDailyAIAdvice = exports.analyzeFoodPFC = exports.grantRewardAdCoins = exports.grantRegistrationBonus = void 0;
+exports.getMissionsSnapshot = exports.claimMissionReward = exports.deleteMealRoutine = exports.deleteCustomExercise = exports.createMealRoutine = exports.createCustomExercise = exports.revenueCatWebhook = exports.aiCoachChat = exports.generateDailyAIAdvice = exports.analyzeFoodPFC = exports.grantRewardAdCoins = exports.grantRegistrationBonus = void 0;
 const https_1 = require("firebase-functions/v2/https");
 const logger = __importStar(require("firebase-functions/logger"));
 const params_1 = require("firebase-functions/params");
 const openai_1 = __importDefault(require("openai"));
 const coins_1 = require("./coins");
+const subscriptionMirror_1 = require("./subscriptionMirror");
 // Secret Manager（Gen2 は v2/https + defineSecret）
 const OPENAI_API_KEY = (0, params_1.defineSecret)("OPENAI_API_KEY");
 function createOpenAIClient() {
@@ -593,6 +594,8 @@ exports.aiCoachChat = (0, https_1.onCall)(callableOpts, async (request) => {
             throw new https_1.HttpsError("invalid-argument", "Last message must be from the user with non-empty content.");
         }
         const uid = request.auth.uid;
+        const isPremium = await (0, subscriptionMirror_1.isPremiumSubscriptionActive)(uid);
+        const chatModel = await (0, coins_1.resolveAiCoachChatModel)(isPremium);
         const coinCost = await (0, coins_1.getAiConsultCoinCost)();
         let charged = 0;
         if (coinCost > 0) {
@@ -636,7 +639,7 @@ ${adviceContextBlock}
         let reply;
         try {
             const completion = await openai.chat.completions.create({
-                model: "gpt-4o-mini",
+                model: chatModel,
                 messages: [
                     { role: "system", content: systemPrompt },
                     ...sanitized.map((m) => ({ role: m.role, content: m.content })),
@@ -672,3 +675,13 @@ ${adviceContextBlock}
         throw new https_1.HttpsError("internal", error?.message || "Unknown error in aiCoachChat.");
     }
 });
+var revenueCatWebhook_1 = require("./revenueCatWebhook");
+Object.defineProperty(exports, "revenueCatWebhook", { enumerable: true, get: function () { return revenueCatWebhook_1.revenueCatWebhook; } });
+var userContentCallables_1 = require("./userContentCallables");
+Object.defineProperty(exports, "createCustomExercise", { enumerable: true, get: function () { return userContentCallables_1.createCustomExercise; } });
+Object.defineProperty(exports, "createMealRoutine", { enumerable: true, get: function () { return userContentCallables_1.createMealRoutine; } });
+Object.defineProperty(exports, "deleteCustomExercise", { enumerable: true, get: function () { return userContentCallables_1.deleteCustomExercise; } });
+Object.defineProperty(exports, "deleteMealRoutine", { enumerable: true, get: function () { return userContentCallables_1.deleteMealRoutine; } });
+var missions_1 = require("./missions");
+Object.defineProperty(exports, "claimMissionReward", { enumerable: true, get: function () { return missions_1.claimMissionReward; } });
+Object.defineProperty(exports, "getMissionsSnapshot", { enumerable: true, get: function () { return missions_1.getMissionsSnapshot; } });

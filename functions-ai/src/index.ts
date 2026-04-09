@@ -8,8 +8,10 @@ import {
   getAiConsultCoinCost,
   grantRegistrationBonusIfNeeded,
   refundAiChatCoins,
+  resolveAiCoachChatModel,
   spendCoinsForAiChatOrThrow,
 } from "./coins";
+import { isPremiumSubscriptionActive } from "./subscriptionMirror";
 
 // Secret Manager（Gen2 は v2/https + defineSecret）
 const OPENAI_API_KEY = defineSecret("OPENAI_API_KEY");
@@ -662,6 +664,8 @@ export const aiCoachChat = onCall(callableOpts, async (request) => {
     }
 
     const uid = request.auth.uid;
+    const isPremium = await isPremiumSubscriptionActive(uid);
+    const chatModel = await resolveAiCoachChatModel(isPremium);
     const coinCost = await getAiConsultCoinCost();
     let charged = 0;
     if (coinCost > 0) {
@@ -707,7 +711,7 @@ ${adviceContextBlock}
     let reply: string;
     try {
       const completion = await openai.chat.completions.create({
-        model: "gpt-4o-mini",
+        model: chatModel,
         messages: [
           { role: "system", content: systemPrompt },
           ...sanitized.map((m) => ({ role: m.role, content: m.content })),
@@ -740,3 +744,12 @@ ${adviceContextBlock}
     throw new HttpsError("internal", error?.message || "Unknown error in aiCoachChat.");
   }
 });
+
+export { revenueCatWebhook } from "./revenueCatWebhook";
+export {
+  createCustomExercise,
+  createMealRoutine,
+  deleteCustomExercise,
+  deleteMealRoutine,
+} from "./userContentCallables";
+export { claimMissionReward, getMissionsSnapshot } from "./missions";

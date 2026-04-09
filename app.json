@@ -47,7 +47,9 @@
       "adMobBannerUnitId": "",
       "adMobRewardedUnitId": "",
       "adMobInterstitialUnitId": "",
-      "grantRewardCallableUrl": ""
+      "grantRewardCallableUrl": "",
+      "revenueCatIosApiKey": "",
+      "revenueCatAndroidApiKey": ""
     },
     "owner": "takki-and-shoa"
   }

@@ -3,14 +3,18 @@ import {
   Crown,
   Gift,
   Megaphone,
+  RefreshCw,
   ShoppingBag,
   Target,
   X,
   Zap,
 } from "lucide-react-native";
-import React from "react";
+import type { PurchasesPackage } from "react-native-purchases";
+import React, { useCallback, useEffect, useState } from "react";
 import {
+  ActivityIndicator,
   Alert,
+  Platform,
   ScrollView,
   StyleSheet,
   Text,
@@ -22,20 +26,18 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { BannerAdSlot } from "../../components/ads/BannerAdSlot";
 import { RewardedAdOfferRow } from "../../components/ads/RewardedAdOfferRow";
 import { FeatureStatusBadge } from "../../components/monetization/FeatureStatusBadge";
-import {
-  PREVIEW_COIN_PACKS,
-  PREVIEW_DAILY_MISSIONS_FREE,
-  PREVIEW_LOGIN_STREAK_DAYS,
-  PREVIEW_SUBSCRIPTION_TIERS,
-  PREVIEW_TIER_EXTRA_MISSIONS,
-} from "../../constants/monetizationPreview";
+import { PREVIEW_COIN_PACKS, PREVIEW_LOGIN_STREAK_DAYS, PREVIEW_SUBSCRIPTION_TIERS } from "../../constants/monetizationPreview";
 import { useCoinBalance } from "../../hooks/useCoinBalance";
+import { useSubscriptionEntitlements } from "../../hooks/useSubscriptionEntitlements";
 import { styles as theme } from "../../theme/styles";
 import {
   COIN_EXPIRY_DAYS_FROM_GRANT,
   DISPLAY_FALLBACK_AI_CHAT_COIN_COST,
   dailyMissionSlotCount,
 } from "../../utils/monetizationTypes";
+import { interpretRevenueCatPurchaseError } from "../../utils/revenueCatPurchaseErrors";
+import { claimMissionReward, fetchMissionsSnapshot, type MissionsSnapshotResponse } from "../../utils/missionCallables";
+import { ensureRevenueCatConfigured, getRevenueCatLibrary, isRevenueCatSupportedPlatform } from "../../utils/revenueCat";
 
 function plannedAlert(name: string) {
   Alert.alert(
@@ -50,6 +52,136 @@ export default function MonetizationScreen() {
   const balance = useCoinBalance();
   const slotsFree = dailyMissionSlotCount("free");
   const slotsPaid = dailyMissionSlotCount("tier1");
+  const { flags, refreshCustomerInfo, revenueCatReady, loading: entitlementsLoading } =
+    useSubscriptionEntitlements();
+
+  const [packages, setPackages] = useState<PurchasesPackage[]>([]);
+  const [offeringsLoading, setOfferingsLoading] = useState(false);
+  const [offeringsError, setOfferingsError] = useState<string | null>(null);
+  const [purchaseBusyId, setPurchaseBusyId] = useState<string | null>(null);
+  const [restoreBusy, setRestoreBusy] = useState(false);
+
+  const [missionSnap, setMissionSnap] = useState<MissionsSnapshotResponse | null>(null);
+  const [missionLoading, setMissionLoading] = useState(false);
+  const [claimBusyId, setClaimBusyId] = useState<string | null>(null);
+
+  const loadMissions = useCallback(async () => {
+    setMissionLoading(true);
+    try {
+      const s = await fetchMissionsSnapshot();
+      setMissionSnap(s);
+    } catch {
+      setMissionSnap(null);
+    } finally {
+      setMissionLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadMissions();
+  }, [loadMissions]);
+
+  const onClaimMission = async (missionId: string, bucket: "daily" | "weekly") => {
+    setClaimBusyId(`${bucket}:${missionId}`);
+    try {
+      const r = await claimMissionReward(missionId, bucket);
+      if (r.granted) {
+        Alert.alert("達成", `${r.amount ?? 0} コインを獲得しました。`);
+      } else if (r.duplicate) {
+        Alert.alert("済み", "すでに受け取り済みです。");
+      }
+      await loadMissions();
+    } catch (e: unknown) {
+      const msg =
+        typeof e === "object" && e !== null && "message" in e
+          ? String((e as { message: unknown }).message)
+          : "受け取りに失敗しました。";
+      Alert.alert("エラー", msg);
+    } finally {
+      setClaimBusyId(null);
+    }
+  };
+
+  const loadOfferings = useCallback(async () => {
+    if (!isRevenueCatSupportedPlatform() || !ensureRevenueCatConfigured()) {
+      setPackages([]);
+      setOfferingsError(null);
+      return;
+    }
+    const lib = getRevenueCatLibrary();
+    if (!lib) {
+      setOfferingsError("課金モジュールを読み込めませんでした。");
+      return;
+    }
+    setOfferingsLoading(true);
+    setOfferingsError(null);
+    try {
+      const offerings = await lib.default.getOfferings();
+      const current = offerings.current;
+      setPackages(current?.availablePackages ?? []);
+      if (!current || (current.availablePackages?.length ?? 0) === 0) {
+        setOfferingsError(
+          "RevenueCat に Current Offering またはパッケージが設定されていません。ダッシュボードを確認してください。",
+        );
+      }
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "オファリングの取得に失敗しました。";
+      setOfferingsError(msg);
+      setPackages([]);
+    } finally {
+      setOfferingsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadOfferings();
+  }, [loadOfferings, revenueCatReady]);
+
+  const onPurchasePackage = async (pkg: PurchasesPackage) => {
+    const lib = getRevenueCatLibrary();
+    if (!lib) return;
+    const id = pkg.identifier;
+    setPurchaseBusyId(id);
+    try {
+      await lib.default.purchasePackage(pkg);
+      await refreshCustomerInfo();
+      Alert.alert("購入ありがとうございます", "プレミアム特典が有効になりました。");
+    } catch (e) {
+      const { userCancelled, message } = interpretRevenueCatPurchaseError(e);
+      if (userCancelled) {
+        return;
+      }
+      Alert.alert("購入できませんでした", message);
+    } finally {
+      setPurchaseBusyId(null);
+    }
+  };
+
+  const onRestorePurchases = async () => {
+    const lib = getRevenueCatLibrary();
+    if (!lib) {
+      Alert.alert("復元できません", "この端末ではストア課金に対応していません。");
+      return;
+    }
+    if (!ensureRevenueCatConfigured()) {
+      Alert.alert("復元できません", "RevenueCat API キーが app.json の extra に設定されていません。");
+      return;
+    }
+    setRestoreBusy(true);
+    try {
+      await lib.default.restorePurchases();
+      await refreshCustomerInfo();
+      Alert.alert("復元しました", "購読状態をストアと同期しました。");
+    } catch (e) {
+      const { userCancelled, message } = interpretRevenueCatPurchaseError(e);
+      if (userCancelled) {
+        return;
+      }
+      Alert.alert("復元に失敗しました", message);
+    } finally {
+      setRestoreBusy(false);
+    }
+  };
 
   return (
     <SafeAreaView style={theme.container}>
@@ -101,87 +233,191 @@ export default function MonetizationScreen() {
           </View>
         </View>
 
-        {/* --- 準備中: ミッション・ログイン --- */}
+        {/* --- ミッション（サーバー検証・コイン付与） --- */}
         <View style={local.sectionBlock}>
           <View style={local.sectionTitleRow}>
-            <Text style={local.sectionTitle}>デイリーミッション・ログイン</Text>
-            <FeatureStatusBadge variant="planned" />
+            <Text style={local.sectionTitle}>デイリー＆ウィークリーミッション</Text>
+            <FeatureStatusBadge variant="live" label="CF" />
           </View>
           <Text style={local.sectionDesc}>
-            無料は 1 日 {slotsFree} 枠、Tier1/2 は {slotsPaid}
-            枠を想定（プレースホルダー表示のみ）。
+            達成は東京日付基準で Cloud Functions が確認します。無料はデイリー {slotsFree} 種＋ウィークリー、プレミアムはデイリー {slotsPaid} 種まで表示されます。
           </Text>
 
           <View style={theme.card}>
             <Text style={local.missionHead}>ログインボーナス（予定）</Text>
-            <Text style={local.streakText}>連続ログイン {PREVIEW_LOGIN_STREAK_DAYS} 日 • 明日からカウント開始予定</Text>
+            <Text style={local.streakText}>
+              連続ログイン {PREVIEW_LOGIN_STREAK_DAYS} 日 • 別途実装予定
+            </Text>
           </View>
 
-          <Text style={local.missionListTitle}>今日のミッション（UIのみ）</Text>
-          {PREVIEW_DAILY_MISSIONS_FREE.map((m) => (
-            <TouchableOpacity
-              key={m.id}
-              style={[theme.routineItem, local.missionRow]}
-              activeOpacity={0.75}
-              onPress={() => plannedAlert("デイリーミッション")}
-            >
-              <View style={{ flex: 1 }}>
-                <Text style={theme.routineNameText}>{m.title}</Text>
-                <Text style={theme.routineDescText}>
-                  報酬 {m.rewardCoins} コイン • {m.progressLabel}
-                </Text>
-              </View>
-              <FeatureStatusBadge variant="planned" label="未接続" />
+          <View style={[local.sectionTitleRow, { marginTop: 8 }]}>
+            <Text style={local.missionListTitle}>今日・今週のミッション</Text>
+            <TouchableOpacity onPress={() => void loadMissions()} hitSlop={12}>
+              <RefreshCw color="#888" size={18} />
             </TouchableOpacity>
-          ))}
-          <Text style={local.missionListTitle}>サブスク枠拡張イメージ（+{PREVIEW_TIER_EXTRA_MISSIONS.length} 枠）</Text>
-          {PREVIEW_TIER_EXTRA_MISSIONS.map((m) => (
-            <View key={m.id} style={[theme.routineItem, local.missionRow, { opacity: 0.65 }]}>
-              <View style={{ flex: 1 }}>
-                <Text style={theme.routineNameText}>{m.title}</Text>
-                <Text style={theme.routineDescText}>Tier1 以上で解放予定</Text>
-              </View>
-              <FeatureStatusBadge variant="planned" label="ロック" />
-            </View>
-          ))}
+          </View>
+          {missionLoading ? (
+            <ActivityIndicator color="#2ecc71" style={{ marginVertical: 12 }} />
+          ) : !missionSnap ? (
+            <Text style={local.tierBullet}>
+              ミッション一覧を取得できませんでした。`firebase deploy --only functions:ai` で getMissionsSnapshot / claimMissionReward
+              をデプロイしてください。
+            </Text>
+          ) : (
+            <>
+              <Text style={[local.tierBullet, { marginBottom: 8 }]}>
+                今日（東京）{missionSnap.tokyoToday} ／ 週 {missionSnap.weekStart} 〜 {missionSnap.weekEnd}
+              </Text>
+              {missionSnap.missions
+                .filter((m) => m.bucket === "daily")
+                .map((m) => {
+                  const busy = claimBusyId === `daily:${m.id}`;
+                  return (
+                    <TouchableOpacity
+                      key={m.id}
+                      style={[theme.routineItem, local.missionRow, m.claimed && { opacity: 0.7 }]}
+                      activeOpacity={m.canClaim ? 0.75 : 1}
+                      disabled={busy || !m.canClaim}
+                      onPress={() => (m.canClaim ? void onClaimMission(m.id, "daily") : undefined)}
+                    >
+                      <View style={{ flex: 1 }}>
+                        <Text style={theme.routineNameText}>{m.title}</Text>
+                        <Text style={theme.routineDescText}>
+                          報酬 {m.rewardCoins} コイン • 進捗 {m.progressLabel}
+                          {m.requiresPremium ? " • プレミアム" : ""}
+                        </Text>
+                      </View>
+                      {busy ? (
+                        <ActivityIndicator color="#2ecc71" />
+                      ) : m.claimed ? (
+                        <FeatureStatusBadge variant="live" label="受取済" />
+                      ) : m.canClaim ? (
+                        <FeatureStatusBadge variant="live" label="受取" />
+                      ) : (
+                        <FeatureStatusBadge variant="planned" label="未達成" />
+                      )}
+                    </TouchableOpacity>
+                  );
+                })}
+              <Text style={[local.missionListTitle, { marginTop: 16 }]}>ウィークリー</Text>
+              {missionSnap.missions
+                .filter((m) => m.bucket === "weekly")
+                .map((m) => {
+                  const busy = claimBusyId === `weekly:${m.id}`;
+                  return (
+                    <TouchableOpacity
+                      key={m.id}
+                      style={[theme.routineItem, local.missionRow, m.claimed && { opacity: 0.7 }]}
+                      activeOpacity={m.canClaim ? 0.75 : 1}
+                      disabled={busy || !m.canClaim}
+                      onPress={() => (m.canClaim ? void onClaimMission(m.id, "weekly") : undefined)}
+                    >
+                      <View style={{ flex: 1 }}>
+                        <Text style={theme.routineNameText}>{m.title}</Text>
+                        <Text style={theme.routineDescText}>
+                          報酬 {m.rewardCoins} コイン • 進捗 {m.progressLabel}
+                        </Text>
+                      </View>
+                      {busy ? (
+                        <ActivityIndicator color="#2ecc71" />
+                      ) : m.claimed ? (
+                        <FeatureStatusBadge variant="live" label="受取済" />
+                      ) : m.canClaim ? (
+                        <FeatureStatusBadge variant="live" label="受取" />
+                      ) : (
+                        <FeatureStatusBadge variant="planned" label="未達成" />
+                      )}
+                    </TouchableOpacity>
+                  );
+                })}
+            </>
+          )}
         </View>
 
-        {/* --- 準備中: サブスク --- */}
+        {/* --- サブスク（RevenueCat） --- */}
         <View style={local.sectionBlock}>
           <View style={local.sectionTitleRow}>
             <Text style={local.sectionTitle}>サブスクリプション</Text>
-            <FeatureStatusBadge variant="planned" />
+            <FeatureStatusBadge variant={revenueCatReady ? "live" : "planned"} label={revenueCatReady ? "RC" : "要設定"} />
           </View>
-          <Text style={local.sectionDesc}>全プラン 1 週間無料トライアル（.store 設定・RevenueCat 想定）</Text>
+          <Text style={local.sectionDesc}>
+            {flags.hideAds
+              ? "プレミアム有効: バナー／インタースティシャル非表示（リワードは可）・AIチャット上位モデル・マイ種目無制限・食事ルーティーン無制限 など。"
+              : "プラン購入で上記の特典と、Webhook 経由のサブスク更新コイン付与が有効になります（表示反映まで数秒〜数分のずれがある場合があります）。"}
+          </Text>
 
-          {PREVIEW_SUBSCRIPTION_TIERS.map((t) => (
-            <TouchableOpacity
-              key={t.tier}
-              style={[theme.card, local.tierCard, t.highlight && local.tierHighlight]}
-              activeOpacity={0.85}
-              onPress={() => plannedAlert("サブスクリプション購入")}
-            >
-              <View style={local.tierTitleRow}>
-                <Crown color={t.highlight ? "#f1c40f" : "#888"} size={20} />
-                <Text style={local.tierName}>{t.nameJa}</Text>
-                {t.highlight ? <FeatureStatusBadge variant="planned" label="おすすめ" /> : null}
-              </View>
-              <Text style={local.tierPrice}>{t.priceJa}</Text>
-              {t.bullets.map((line) => (
-                <Text key={line} style={local.tierBullet}>
-                  • {line}
-                </Text>
+          {Platform.OS !== "ios" && Platform.OS !== "android" ? (
+            <Text style={local.tierBullet}>サブスクリプションは iOS / Android 端末でのみご利用いただけます。</Text>
+          ) : !revenueCatReady ? (
+            <Text style={local.tierBullet}>
+              app.json の extra に revenueCatIosApiKey / revenueCatAndroidApiKey を設定し、開発ビルドを再作成してください。
+            </Text>
+          ) : (
+            <>
+              {entitlementsLoading || offeringsLoading ? (
+                <ActivityIndicator color="#2ecc71" style={{ marginVertical: 16 }} />
+              ) : null}
+              {offeringsError ? <Text style={[local.tierBullet, { color: "#e74c3c" }]}>{offeringsError}</Text> : null}
+
+              {packages.map((pkg) => {
+                const title = pkg.product.title || pkg.identifier;
+                const price = pkg.product.priceString;
+                const busy = purchaseBusyId === pkg.identifier;
+                return (
+                  <TouchableOpacity
+                    key={pkg.identifier}
+                    style={[theme.card, local.tierCard]}
+                    activeOpacity={0.85}
+                    disabled={busy}
+                    onPress={() => onPurchasePackage(pkg)}
+                  >
+                    <View style={local.tierTitleRow}>
+                      <Crown color="#f1c40f" size={20} />
+                      <Text style={local.tierName}>{title}</Text>
+                      {busy ? <ActivityIndicator color="#2ecc71" /> : null}
+                    </View>
+                    <Text style={local.tierPrice}>{price}</Text>
+                    <Text style={local.tierBullet}>• タップしてストア決済画面へ</Text>
+                  </TouchableOpacity>
+                );
+              })}
+
+              <Text style={[local.missionListTitle, { marginTop: 16 }]}>プラン例（参考・表示のみ）</Text>
+              {PREVIEW_SUBSCRIPTION_TIERS.map((t) => (
+                <View
+                  key={t.tier}
+                  style={[theme.card, local.tierCard, t.highlight && local.tierHighlight, { opacity: 0.7 }]}
+                >
+                  <View style={local.tierTitleRow}>
+                    <Crown color={t.highlight ? "#f1c40f" : "#888"} size={20} />
+                    <Text style={local.tierName}>{t.nameJa}</Text>
+                  </View>
+                  <Text style={local.tierPrice}>{t.priceJa}</Text>
+                  {t.bullets.map((line) => (
+                    <Text key={line} style={local.tierBullet}>
+                      • {line}
+                    </Text>
+                  ))}
+                </View>
               ))}
-            </TouchableOpacity>
-          ))}
-          <TouchableOpacity
-            style={local.linkBtn}
-            onPress={() =>
-              plannedAlert("ストアのサブスクリプション管理")
-            }
-          >
-            <Text style={local.linkBtnText}>購入の復元・管理（今後）</Text>
-          </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[local.linkBtn, restoreBusy && { opacity: 0.6 }]}
+                disabled={restoreBusy}
+                onPress={() => void onRestorePurchases()}
+              >
+                <View style={local.linkBtnRow}>
+                  <RefreshCw color="#4facfe" size={18} />
+                  <Text style={local.linkBtnText}>
+                    {restoreBusy ? "復元処理中…" : "購入を復元（Restore）"}
+                  </Text>
+                </View>
+              </TouchableOpacity>
+              <TouchableOpacity style={local.linkBtn} onPress={() => void loadOfferings()}>
+                <Text style={local.linkBtnText}>オファリングを再読み込み</Text>
+              </TouchableOpacity>
+            </>
+          )}
         </View>
 
         {/* --- 準備中: コイン購入・リワード --- */}
@@ -221,7 +457,7 @@ export default function MonetizationScreen() {
               <Megaphone color="#666" size={18} />
               <Text style={local.adBannerLabel}>Google AdMob（開発時はテスト広告）</Text>
             </View>
-            <BannerAdSlot />
+            <BannerAdSlot suppressed={flags.hideAds} />
           </View>
           <Text style={local.adCaption}>
             Tier1 以上ではバナーを隠す想定。本番では app.json の extra に本番ユニット ID を設定し、開発ビルドで確認してください。
@@ -271,6 +507,7 @@ const local = StyleSheet.create({
   tierPrice: { color: "#888", fontSize: 13, marginBottom: 10 },
   tierBullet: { color: "#bbb", fontSize: 13, lineHeight: 20, marginBottom: 4 },
   linkBtn: { marginTop: 8, paddingVertical: 12, alignItems: "center" },
+  linkBtnRow: { flexDirection: "row", alignItems: "center", gap: 8 },
   linkBtnText: { color: "#4facfe", fontSize: 14 },
   packScroll: { gap: 12, paddingVertical: 4, marginBottom: 12 },
   packCard: {

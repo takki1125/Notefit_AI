@@ -4,7 +4,13 @@ import { BannerAd, BannerAdSize } from "react-native-google-mobile-ads";
 
 import { getBannerAdUnitId } from "../../utils/adMobUnits";
 
-export function BannerAdSlot() {
+type Props = {
+  /** サブスク加入者など、広告を出さないとき true */
+  suppressed?: boolean;
+};
+
+export function BannerAdSlot({ suppressed = false }: Props) {
+  if (suppressed) return null;
   const unitId = getBannerAdUnitId();
   if (!unitId) return null;
 

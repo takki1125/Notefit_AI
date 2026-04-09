@@ -28,8 +28,10 @@ import {
   serverTimestamp,
 } from "firebase/firestore";
 
+import { FREE_CUSTOM_EXERCISE_LIMIT } from "../../constants/subscriptionLimits";
 import { auth, db } from "../../firebaseConfig";
 import { styles } from "../../theme/styles";
+import { callableCreateCustomExercise } from "../../utils/aiUserContentCallables";
 
 type WorkoutSet = {
   weight: string;
@@ -190,17 +192,20 @@ const ExerciseSelectorModal: React.FC<ExerciseSelectorModalProps> = ({
     }
 
     try {
-      await addDoc(collection(db, "users", user.uid, "custom_exercises"), {
-        name: newExerciseName.trim(),
-        categoryLabel: selectedCategory.label,
-        createdAt: serverTimestamp(),
-      });
-      
-      setNewExerciseName(""); // 入力欄をクリア
-      await fetchData(); // 最新のリストを再取得して画面に反映
-    } catch (e) {
+      await callableCreateCustomExercise(newExerciseName.trim(), selectedCategory.label);
+      setNewExerciseName("");
+      await fetchData();
+    } catch (e: unknown) {
       console.error("カスタム種目保存エラー:", e);
-      Alert.alert("エラー", "種目の保存に失敗しました。");
+      const code = (e as { code?: string })?.code;
+      if (code === "functions/resource-exhausted") {
+        Alert.alert(
+          "上限です",
+          `無料プランではマイ種目は最大${FREE_CUSTOM_EXERCISE_LIMIT}件までです。`,
+        );
+      } else {
+        Alert.alert("エラー", "種目の保存に失敗しました。");
+      }
     } finally {
       setIsSaving(false);
     }
