@@ -33,7 +33,7 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.deleteMealRoutine = exports.createMealRoutine = exports.deleteCustomExercise = exports.createCustomExercise = void 0;
+exports.deleteMealRoutine = exports.createMealRoutine = exports.deleteCustomExercise = exports.updateCustomExercise = exports.createCustomExercise = void 0;
 const admin = __importStar(require("firebase-admin"));
 const firestore_1 = require("firebase-admin/firestore");
 const https_1 = require("firebase-functions/v2/https");
@@ -102,6 +102,38 @@ exports.createCustomExercise = (0, https_1.onCall)(publicCallableOpts, async (re
         createdAt: firestore_1.FieldValue.serverTimestamp(),
     });
     return { id: ref.id };
+});
+/** マイ種目の名前・カテゴリ変更（書き込みは Functions のみ） */
+exports.updateCustomExercise = (0, https_1.onCall)(publicCallableOpts, async (request) => {
+    if (!request.auth) {
+        throw new https_1.HttpsError("unauthenticated", "ログインが必要です。");
+    }
+    const uid = request.auth.uid;
+    const exerciseId = typeof request.data?.exerciseId === "string" ? request.data.exerciseId.trim() : "";
+    const name = typeof request.data?.name === "string" ? request.data.name.replace(/\0/g, "").trim().slice(0, 80) : "";
+    const categoryLabel = typeof request.data?.categoryLabel === "string"
+        ? request.data.categoryLabel.replace(/\0/g, "").trim().slice(0, 80)
+        : "";
+    if (!exerciseId) {
+        throw new https_1.HttpsError("invalid-argument", "exerciseId が必要です。");
+    }
+    if (!name) {
+        throw new https_1.HttpsError("invalid-argument", "種目名を入力してください。");
+    }
+    if (!categoryLabel) {
+        throw new https_1.HttpsError("invalid-argument", "カテゴリが不正です。");
+    }
+    const ref = db.collection("users").doc(uid).collection("custom_exercises").doc(exerciseId);
+    const snap = await ref.get();
+    if (!snap.exists) {
+        throw new https_1.HttpsError("not-found", "種目が見つかりません。");
+    }
+    await ref.update({
+        name,
+        categoryLabel,
+        updatedAt: firestore_1.FieldValue.serverTimestamp(),
+    });
+    return { ok: true };
 });
 exports.deleteCustomExercise = (0, https_1.onCall)(publicCallableOpts, async (request) => {
     if (!request.auth) {

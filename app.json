@@ -19,6 +19,9 @@
     "android": {
       "package": "com.takimoto.shoa.notefitai",
       "versionCode": 1,
+      "permissions": [
+        "com.android.vending.BILLING"
+      ],
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#ffffff"

@@ -43,6 +43,14 @@ export async function callableDeleteCustomExercise(exerciseId: string): Promise<
   await invokeAiCallable("deleteCustomExercise", { exerciseId });
 }
 
+export async function callableUpdateCustomExercise(
+  exerciseId: string,
+  name: string,
+  categoryLabel: string,
+): Promise<void> {
+  await invokeAiCallable("updateCustomExercise", { exerciseId, name, categoryLabel });
+}
+
 export async function callableCreateMealRoutine(
   name: string,
   meals: Array<{ name: string; cal: number; pro: number; fat: number; carb: number }>,

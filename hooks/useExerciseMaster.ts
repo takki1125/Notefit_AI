@@ -6,11 +6,20 @@ import { db } from '../firebaseConfig';
 
 // マスターデータコレクション（種目マスタ）から、
 // カテゴリごとの種目一覧を取得して、ピッカー/セレクト用の形に整えるカスタムフック
+/** マスター種目（文字列）またはマイ種目（id 付きで編集・削除可能） */
+export type CustomExerciseListItem = {
+  kind: "custom";
+  id: string;
+  name: string;
+  categoryLabel: string;
+};
+export type ExerciseItem = string | CustomExerciseListItem;
+
 export type ExerciseSection = {
   // セクションタイトル（例: 「ベンチプレス系」など）
   title: string;
-  // そのセクションに属する種目名リスト
-  data: string[];
+  // そのセクションに属する種目（マイ種目セクションは CustomExerciseListItem）
+  data: ExerciseItem[];
 };
 
 export type ExerciseCategory = {

@@ -36,7 +36,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.getMissionsSnapshot = exports.claimMissionReward = exports.deleteMealRoutine = exports.deleteCustomExercise = exports.createMealRoutine = exports.createCustomExercise = exports.revenueCatWebhook = exports.aiCoachChat = exports.generateDailyAIAdvice = exports.analyzeFoodPFC = exports.grantRewardAdCoins = exports.grantRegistrationBonus = void 0;
+exports.getMissionsSnapshot = exports.claimMissionReward = exports.updateCustomExercise = exports.deleteMealRoutine = exports.deleteCustomExercise = exports.createMealRoutine = exports.createCustomExercise = exports.revenueCatWebhook = exports.aiCoachChat = exports.generateDailyAIAdvice = exports.analyzeFoodPFC = exports.grantRewardAdCoins = exports.grantRegistrationBonus = void 0;
 const https_1 = require("firebase-functions/v2/https");
 const logger = __importStar(require("firebase-functions/logger"));
 const params_1 = require("firebase-functions/params");
@@ -682,6 +682,7 @@ Object.defineProperty(exports, "createCustomExercise", { enumerable: true, get: 
 Object.defineProperty(exports, "createMealRoutine", { enumerable: true, get: function () { return userContentCallables_1.createMealRoutine; } });
 Object.defineProperty(exports, "deleteCustomExercise", { enumerable: true, get: function () { return userContentCallables_1.deleteCustomExercise; } });
 Object.defineProperty(exports, "deleteMealRoutine", { enumerable: true, get: function () { return userContentCallables_1.deleteMealRoutine; } });
+Object.defineProperty(exports, "updateCustomExercise", { enumerable: true, get: function () { return userContentCallables_1.updateCustomExercise; } });
 var missions_1 = require("./missions");
 Object.defineProperty(exports, "claimMissionReward", { enumerable: true, get: function () { return missions_1.claimMissionReward; } });
 Object.defineProperty(exports, "getMissionsSnapshot", { enumerable: true, get: function () { return missions_1.getMissionsSnapshot; } });

@@ -84,6 +84,44 @@ export const createCustomExercise = onCall(publicCallableOpts, async (request) =
   return { id: ref.id };
 });
 
+/** マイ種目の名前・カテゴリ変更（書き込みは Functions のみ） */
+export const updateCustomExercise = onCall(publicCallableOpts, async (request) => {
+  if (!request.auth) {
+    throw new HttpsError("unauthenticated", "ログインが必要です。");
+  }
+  const uid = request.auth.uid;
+  const exerciseId =
+    typeof request.data?.exerciseId === "string" ? request.data.exerciseId.trim() : "";
+  const name =
+    typeof request.data?.name === "string" ? request.data.name.replace(/\0/g, "").trim().slice(0, 80) : "";
+  const categoryLabel =
+    typeof request.data?.categoryLabel === "string"
+      ? request.data.categoryLabel.replace(/\0/g, "").trim().slice(0, 80)
+      : "";
+
+  if (!exerciseId) {
+    throw new HttpsError("invalid-argument", "exerciseId が必要です。");
+  }
+  if (!name) {
+    throw new HttpsError("invalid-argument", "種目名を入力してください。");
+  }
+  if (!categoryLabel) {
+    throw new HttpsError("invalid-argument", "カテゴリが不正です。");
+  }
+
+  const ref = db.collection("users").doc(uid).collection("custom_exercises").doc(exerciseId);
+  const snap = await ref.get();
+  if (!snap.exists) {
+    throw new HttpsError("not-found", "種目が見つかりません。");
+  }
+  await ref.update({
+    name,
+    categoryLabel,
+    updatedAt: FieldValue.serverTimestamp(),
+  });
+  return { ok: true as const };
+});
+
 export const deleteCustomExercise = onCall(publicCallableOpts, async (request) => {
   if (!request.auth) {
     throw new HttpsError("unauthenticated", "ログインが必要です。");
