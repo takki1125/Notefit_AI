@@ -19,8 +19,8 @@ import {
   X,
   Flame,
   Utensils,
-  ChevronLeft,  // ★ 追加
-  ChevronRight, // ★ 追加
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react-native";
 import React, { useCallback, useMemo, useState } from "react";
 import {
@@ -40,6 +40,9 @@ import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaView } from "react-native-safe-area-context";
 import * as Haptics from "expo-haptics";
 import { useRouter } from "expo-router";
+
+// ★ 追加: Copilotのインポート
+import { CopilotProvider, CopilotStep, walkthroughable, useCopilot } from "react-native-copilot";
 
 import {
   HOME_WIDGET_LABELS,
@@ -72,7 +75,10 @@ const formatTime = (totalSeconds: number | undefined) => {
   return h > 0 ? `${h}:${m}:${s}` : `${m}:${s}`;
 };
 
-// --- 詳細モーダル（重量・レップス表示対応） ---
+// ★ 追加: 光らせるためのラップコンポーネント（再レンダリングを防ぐために外で定義）
+const WalkthroughableView = walkthroughable(View);
+
+// --- 詳細モーダル（省略せずにそのまま） ---
 const WorkoutDetailModal: React.FC<{
   visible: boolean;
   onClose: () => void;
@@ -173,13 +179,9 @@ const CalendarSection: React.FC<{
   const currentMonthNum = currentMonthIdx + 1;
 
   const displayMonth = currentMonthNum < 10 ? `0${currentMonthNum}` : `${currentMonthNum}`;
-
-  // ★ ここが重要：1日の曜日を取得 (0:日, 1:月, ... 6:土)
   const firstDayOfWeek = new Date(currentYear, currentMonthIdx, 1).getDay();
-
   const daysInMonth = new Date(currentYear, currentMonthIdx + 1, 0).getDate();
   const days = Array.from({ length: daysInMonth }, (_, i) => i + 1);
-  // ★ 1日までの空白を作る
   const blanks = Array.from({ length: firstDayOfWeek }, (_, i) => i);
 
   const today = new Date();
@@ -187,26 +189,15 @@ const CalendarSection: React.FC<{
   const currentDay = today.getDate();
 
   const header = (
-    <View style={{
-      flexDirection: 'row',
-      justifyContent: 'space-between',
-      alignItems: 'center',
-      marginBottom: 20
-    }}>
+    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
       <TouchableOpacity onPress={onPrevMonth} disabled={editMode} style={{ padding: 10 }}>
         <ChevronLeft color="#fff" size={20} />
       </TouchableOpacity>
-
       <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-        <Text style={{ color: '#fff', fontSize: 24, fontWeight: 'bold' }}>
-          {displayMonth}
-        </Text>
+        <Text style={{ color: '#fff', fontSize: 24, fontWeight: 'bold' }}>{displayMonth}</Text>
         <Text style={{ color: '#444', fontSize: 20, marginHorizontal: 8 }}>/</Text>
-        <Text style={{ color: '#666', fontSize: 18, fontWeight: '400' }}>
-          {currentYear}
-        </Text>
+        <Text style={{ color: '#666', fontSize: 18, fontWeight: '400' }}>{currentYear}</Text>
       </View>
-
       <TouchableOpacity onPress={onNextMonth} disabled={editMode} style={{ padding: 10 }}>
         <ChevronRight color="#fff" size={20} />
       </TouchableOpacity>
@@ -216,46 +207,27 @@ const CalendarSection: React.FC<{
   return (
     <View style={styles.card}>
       {!editMode && onLongPressEdit ? (
-        <Pressable onLongPress={onLongPressEdit} delayLongPress={450}>
-          {header}
-        </Pressable>
+        <Pressable onLongPress={onLongPressEdit} delayLongPress={450}>{header}</Pressable>
       ) : (
         header
       )}
-
       <View style={styles.weekRow}>
         {["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"].map((day, index) => (
           <Text key={index} style={styles.weekDayText}>{day}</Text>
         ))}
       </View>
-
       <View style={[styles.daysGrid, { justifyContent: 'flex-start' }]}>
-        {/* ★ 1. まず1日までの空白を描画する */}
-        {blanks.map((_, i) => (
-          <View key={`blank-${i}`} style={{ width: "14.28%", height: 40 }} />
-        ))}
-
-        {/* 2. その後に日付を描画する */}
+        {blanks.map((_, i) => <View key={`blank-${i}`} style={{ width: "14.28%", height: 40 }} />)}
         {days.map((day) => {
           const isToday = isCurrentMonth && day === currentDay;
           const isTrained = trainedDays.includes(day);
-
           const cell = (
-            <View style={[
-              styles.dayCircle,
-              isToday && styles.activeDayCircle,
-              isTrained && !isToday && styles.trainedDayCircle
-            ]}>
-              <Text style={[
-                styles.dayText,
-                isToday && styles.activeDayText,
-                isTrained && !isToday && styles.trainedDayText
-              ]}>
+            <View style={[styles.dayCircle, isToday && styles.activeDayCircle, isTrained && !isToday && styles.trainedDayCircle]}>
+              <Text style={[styles.dayText, isToday && styles.activeDayText, isTrained && !isToday && styles.trainedDayText]}>
                 {day}
               </Text>
             </View>
           );
-
           return editMode ? (
             <View key={day} style={{ width: "14.28%", alignItems: "center", marginBottom: 10 }} pointerEvents="none">
               {cell}
@@ -277,21 +249,20 @@ const CalendarSection: React.FC<{
   );
 };
 
-// --- メイン画面 ---
-export default function HomeTabScreen() {
+// ★ メインコンポーネントの中身を分離
+function HomeTabContent() {
   const router = useRouter();
   const uid = auth.currentUser?.uid;
   const coinBalance = useCoinBalance();
   const { order, persistOrder, addWidget, hydrated } = useHomeWidgetOrder(uid);
 
+  // ★ Copilotのフックを使用
+  const { start } = useCopilot();
+
   const [isEditMode, setIsEditMode] = useState(false);
   const [addWidgetModalVisible, setAddWidgetModalVisible] = useState(false);
-
   const [history, setHistory] = useState<Workout[]>([]);
-
-  // ★ 追加：現在見ている月を管理するState
   const [viewedDate, setViewedDate] = useState(new Date());
-
   const [modalVisible, setModalVisible] = useState(false);
   const [selectedDateWorkouts, setSelectedDateWorkouts] = useState<Workout[]>([]);
   const [selectedDateFoodLog, setSelectedDateFoodLog] = useState<DailyFoodLog | null>(null);
@@ -315,7 +286,6 @@ export default function HomeTabScreen() {
     } catch (e) { console.error(e); }
   }, []);
 
-  // ★ 追加：見ている月が変わったら、その月にトレーニングした日だけを抽出する
   const trainedDays = useMemo(() => {
     return [...new Set(history
       .filter(w =>
@@ -328,17 +298,11 @@ export default function HomeTabScreen() {
 
   const fetchTodayMeals = useCallback(async () => {
     const user = auth.currentUser;
-    if (!user) {
-      setTodayMeals([]);
-      return;
-    }
-
+    if (!user) { setTodayMeals([]); return; }
     const storageKey = `@food_meals_today_${user.uid}`;
     const dateKey = `@food_last_opened_date_${user.uid}`;
-
     const todayStr = new Date().toDateString();
     const storedDate = await AsyncStorage.getItem(dateKey);
-
     if (storedDate !== todayStr) {
       setTodayMeals([]);
       await AsyncStorage.removeItem(storageKey);
@@ -349,15 +313,33 @@ export default function HomeTabScreen() {
     }
   }, []);
 
+  // ★ チュートリアル発火のロジックを追加
   useFocusEffect(
     useCallback(() => {
+      const checkTutorial = async () => {
+        try {
+          const hasSeen = await AsyncStorage.getItem("@tutorial_home");
+          if (!hasSeen) {
+            // 画面遷移のアニメーションが終わるのを少し待ってからチュートリアル開始
+            setTimeout(() => {
+              console.log("チュートリアル発火の合図！"); // ★ついでにログも仕込む
+              start();
+            }, 1500);
+            await AsyncStorage.setItem("@tutorial_home", "true");
+          }
+        } catch (error) {
+          console.error("Tutorial check failed:", error);
+        }
+      };
+
+      checkTutorial();
       fetchHistory();
       fetchTodayMeals();
       const u = auth.currentUser;
       if (u) {
-        void requestRegistrationBonus().catch(() => {});
+        void requestRegistrationBonus().catch(() => { });
       }
-    }, [fetchHistory, fetchTodayMeals]),
+    }, [fetchHistory, fetchTodayMeals, start]),
   );
 
   useFocusEffect(
@@ -369,12 +351,9 @@ export default function HomeTabScreen() {
     }, []),
   );
 
-  // ★ 修正：タップされた日付の年と月も受け取って、正確にフィルターする
   const handleDayPress = async (day: number, month: number, year: number) => {
     const dayWorkouts = history.filter(item =>
-      item.day === day &&
-      item.dateObj.getMonth() + 1 === month &&
-      item.dateObj.getFullYear() === year
+      item.day === day && item.dateObj.getMonth() + 1 === month && item.dateObj.getFullYear() === year
     );
     setSelectedDateWorkouts(dayWorkouts);
 
@@ -383,11 +362,9 @@ export default function HomeTabScreen() {
       try {
         const monthStr = String(month).padStart(2, '0');
         const dayStr = String(day).padStart(2, '0');
-
         const docId = `${year}-${monthStr}-${dayStr}_Food`;
         const docRef = doc(db, "users", user.uid, "food_logs", docId);
         const docSnap = await getDoc(docRef);
-
         if (docSnap.exists()) {
           setSelectedDateFoodLog(docSnap.data() as DailyFoodLog);
         } else {
@@ -403,10 +380,7 @@ export default function HomeTabScreen() {
       "ワークアウトの削除",
       "このトレーニング記録を削除しますか？\nこの操作は取り消せません。",
       [
-        {
-          text: "キャンセル",
-          style: "cancel",
-        },
+        { text: "キャンセル", style: "cancel" },
         {
           text: "削除",
           style: "destructive",
@@ -429,10 +403,8 @@ export default function HomeTabScreen() {
 
   const todayTotalCal = todayMeals.reduce((sum, item) => sum + item.cal, 0);
   const todayTotalPro = todayMeals.reduce((sum, item) => sum + item.pro, 0);
-
   const todayStr = new Date().toLocaleDateString();
   const todaysWorkouts = history.filter(w => w.dateStr === todayStr);
-
   const hiddenIds = useMemo(() => hiddenWidgetIds(order), [order]);
 
   const removeWidget = useCallback(
@@ -457,60 +429,32 @@ export default function HomeTabScreen() {
     const blockPointer = editMode ? "none" as const : "auto";
     const wrapIfEditEntry = (node: React.ReactNode) => {
       if (editMode || !onLongPressEdit) return node;
-      return (
-        <Pressable onLongPress={onLongPressEdit} delayLongPress={450}>
-          {node}
-        </Pressable>
-      );
+      return <Pressable onLongPress={onLongPressEdit} delayLongPress={450}>{node}</Pressable>;
     };
     switch (id) {
-      case "metrics":
-        return wrapIfEditEntry(
-          <View pointerEvents={blockPointer}>
-            <DailyMetricQuickInput />
-          </View>,
-        );
-      case "goal":
-        return wrapIfEditEntry(
-          <View pointerEvents={blockPointer}>
-            <GoalProgressCard />
-          </View>,
-        );
-      case "ai":
-        return wrapIfEditEntry(
-          <View pointerEvents={blockPointer}>
-            <DailyAIAdviceCard />
-          </View>,
-        );
+      case "metrics": return wrapIfEditEntry(<View pointerEvents={blockPointer}><DailyMetricQuickInput /></View>);
+      case "goal": return wrapIfEditEntry(<View pointerEvents={blockPointer}><GoalProgressCard /></View>);
+      case "ai": return wrapIfEditEntry(<View pointerEvents={blockPointer}><DailyAIAdviceCard /></View>);
       case "calendar":
         return (
           <CalendarSection
-            viewedDate={viewedDate}
-            trainedDays={trainedDays}
-            onDayPress={handleDayPress}
+            viewedDate={viewedDate} trainedDays={trainedDays} onDayPress={handleDayPress}
             onPrevMonth={() => setViewedDate(new Date(viewedDate.getFullYear(), viewedDate.getMonth() - 1, 1))}
             onNextMonth={() => setViewedDate(new Date(viewedDate.getFullYear(), viewedDate.getMonth() + 1, 1))}
-            editMode={editMode}
-            onLongPressEdit={!editMode ? onLongPressEdit : undefined}
+            editMode={editMode} onLongPressEdit={!editMode ? onLongPressEdit : undefined}
           />
         );
       case "workout":
         return (
           <TouchableOpacity
-            style={styles.card}
-            activeOpacity={0.8}
-            disabled={editMode}
-            onPress={() => router.push("/training")}
-            onLongPress={!editMode && onLongPressEdit ? onLongPressEdit : undefined}
-            delayLongPress={450}
+            style={styles.card} activeOpacity={0.8} disabled={editMode}
+            onPress={() => router.push("/training")} onLongPress={!editMode && onLongPressEdit ? onLongPressEdit : undefined} delayLongPress={450}
           >
             <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 15 }}>
               <View>
                 <Text style={{ color: "#2ecc71", fontSize: 14, fontWeight: "bold", letterSpacing: 1, marginBottom: 4 }}>WORKOUT</Text>
                 <View style={{ flexDirection: 'row', alignItems: 'baseline' }}>
-                  <Text style={{ color: "#fff", fontSize: 16, fontWeight: "bold" }}>
-                    {todaysWorkouts.length > 0 ? "TODAY" : "START WORKOUT"}
-                  </Text>
+                  <Text style={{ color: "#fff", fontSize: 16, fontWeight: "bold" }}>{todaysWorkouts.length > 0 ? "TODAY" : "START WORKOUT"}</Text>
                   {todaysWorkouts[0]?.durationSeconds && (
                     <Text style={{ color: '#888', fontSize: 12, marginLeft: 10 }}>({formatTime(todaysWorkouts[0].durationSeconds)})</Text>
                   )}
@@ -524,9 +468,7 @@ export default function HomeTabScreen() {
               {todaysWorkouts.length > 0 ? (
                 todaysWorkouts.map((workout, index) => (
                   <View key={workout.id} style={{ marginBottom: index === todaysWorkouts.length - 1 ? 4 : 16 }}>
-                    {todaysWorkouts.length > 1 && (
-                      <Text style={{ color: "#666", fontSize: 9, fontWeight: 'bold', marginBottom: 8, textAlign: 'right' }}>SESSION {todaysWorkouts.length - index}</Text>
-                    )}
+                    {todaysWorkouts.length > 1 && <Text style={{ color: "#666", fontSize: 9, fontWeight: 'bold', marginBottom: 8, textAlign: 'right' }}>SESSION {todaysWorkouts.length - index}</Text>}
                     <View style={{ gap: 10 }}>
                       {workout.exercises.map((ex, i) => {
                         const doneSets = ex.sets.filter(s => s.done || (s.weight !== "" && s.reps !== ""));
@@ -537,9 +479,7 @@ export default function HomeTabScreen() {
                               <Text style={{ color: "#fff", fontSize: 15, fontWeight: 'bold' }}>{ex.name}</Text>
                             </View>
                             {doneSets.length > 0 ? (
-                              <Text style={{ color: '#888', fontSize: 12, paddingLeft: 14 }}>
-                                {doneSets.map(s => `${s.weight}kg×${s.reps}`).join('  |  ')}
-                              </Text>
+                              <Text style={{ color: '#888', fontSize: 12, paddingLeft: 14 }}>{doneSets.map(s => `${s.weight}kg×${s.reps}`).join('  |  ')}</Text>
                             ) : (
                               <Text style={{ color: '#555', fontSize: 12, paddingLeft: 14 }}>未完了</Text>
                             )}
@@ -558,12 +498,8 @@ export default function HomeTabScreen() {
       case "nutrition":
         return (
           <TouchableOpacity
-            style={styles.card}
-            activeOpacity={0.8}
-            disabled={editMode}
-            onPress={() => router.push("/food")}
-            onLongPress={!editMode && onLongPressEdit ? onLongPressEdit : undefined}
-            delayLongPress={450}
+            style={styles.card} activeOpacity={0.8} disabled={editMode}
+            onPress={() => router.push("/food")} onLongPress={!editMode && onLongPressEdit ? onLongPressEdit : undefined} delayLongPress={450}
           >
             <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 15 }}>
               <View>
@@ -581,12 +517,11 @@ export default function HomeTabScreen() {
             </View>
           </TouchableOpacity>
         );
-      default:
-        return null;
+      default: return null;
     }
   };
 
-  function renderWidgetRow(item: HomeWidgetId, drag?: () => void, isActive?: boolean) {
+  const renderWidgetRow = (item: HomeWidgetId, drag?: () => void, isActive?: boolean) => {
     const showChrome = isEditMode;
     const body = (
       <View style={{ flex: 1, minWidth: 0, position: "relative" }}>
@@ -594,21 +529,11 @@ export default function HomeTabScreen() {
           <TouchableOpacity
             onPress={() => removeWidget(item)}
             style={{
-              position: "absolute",
-              top: -6,
-              left: -6,
-              zIndex: 20,
-              width: 26,
-              height: 26,
-              borderRadius: 13,
-              backgroundColor: "#ff3b30",
-              justifyContent: "center",
-              alignItems: "center",
-              borderWidth: 2,
-              borderColor: "#1a1a1a",
+              position: "absolute", top: -6, left: -6, zIndex: 20, width: 26, height: 26,
+              borderRadius: 13, backgroundColor: "#ff3b30", justifyContent: "center", alignItems: "center",
+              borderWidth: 2, borderColor: "#1a1a1a",
             }}
-            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-            accessibilityLabel="ウィジェットを削除"
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} accessibilityLabel="ウィジェットを削除"
           >
             <Minus color="#fff" size={16} strokeWidth={3} />
           </TouchableOpacity>
@@ -617,26 +542,15 @@ export default function HomeTabScreen() {
       </View>
     );
 
-    if (!showChrome) {
-      return <View style={{ marginBottom: 0 }}>{body}</View>;
-    }
+    if (!showChrome) return <View style={{ marginBottom: 0 }}>{body}</View>;
 
     return (
       <ScaleDecorator>
-        <View
-          style={{
-            flexDirection: "row",
-            alignItems: "flex-start",
-            opacity: isActive ? 0.92 : 1,
-            paddingTop: 4,
-          }}
-        >
+        <View style={{ flexDirection: "row", alignItems: "flex-start", opacity: isActive ? 0.92 : 1, paddingTop: 4 }}>
           <TouchableOpacity
-            onLongPress={drag ?? (() => { })}
-            delayLongPress={200}
+            onLongPress={drag ?? (() => { })} delayLongPress={200}
             style={{ paddingTop: 8, paddingRight: 6, paddingLeft: 0 }}
-            hitSlop={{ top: 8, bottom: 8, left: 4, right: 8 }}
-            accessibilityLabel="並び替え"
+            hitSlop={{ top: 8, bottom: 8, left: 4, right: 8 }} accessibilityLabel="並び替え"
           >
             <GripVertical color="#888" size={24} />
           </TouchableOpacity>
@@ -646,74 +560,58 @@ export default function HomeTabScreen() {
     );
   }
 
-  const renderDraggableRow = ({ item, drag, isActive }: RenderItemParams<HomeWidgetId>) =>
-    renderWidgetRow(item, drag, isActive);
-
+  const renderDraggableRow = ({ item, drag, isActive }: RenderItemParams<HomeWidgetId>) => renderWidgetRow(item, drag, isActive);
   const renderStaticRow = ({ item }: { item: HomeWidgetId }) => renderWidgetRow(item);
 
   const listHeader = useMemo(
     () => (
       <>
-        <View style={styles.homeHeader}>
-          {isEditMode ? (
-            <>
-              <TouchableOpacity
-                onPress={() => {
-                  setIsEditMode(false);
-                  setAddWidgetModalVisible(false);
-                }}
-                style={{ paddingVertical: 8, paddingRight: 12 }}
-                hitSlop={{ top: 12, bottom: 12, left: 8, right: 8 }}
-              >
-                <Text style={{ color: "#2ecc71", fontSize: 17, fontWeight: "600" }}>完了</Text>
-              </TouchableOpacity>
-              <View style={{ flex: 1 }}>
-                <Text style={{ color: "#888", fontSize: 12, marginBottom: 2 }}>ホームを編集</Text>
-                <Text style={[styles.routineText, { fontSize: 18 }]}>並べ替え・削除</Text>
-              </View>
-              {hiddenIds.length > 0 && (
-                <TouchableOpacity
-                  onPress={() => setAddWidgetModalVisible(true)}
-                  style={styles.iconButton}
-                  accessibilityLabel="ウィジェットを追加"
-                >
-                  <Plus color="#2ecc71" size={26} strokeWidth={2.5} />
+        {/* ★ ここをCopilotStepで囲む！ */}
+        <CopilotStep
+          text="こちらはホーム画面です。本日のトレーニング記録や摂取カロリー、現在のコイン残高などをひと目でご確認いただけます。"
+          order={1}
+          name="homeIntro"
+        >
+          <WalkthroughableView style={styles.homeHeader}>
+            {isEditMode ? (
+              <>
+                <TouchableOpacity onPress={() => { setIsEditMode(false); setAddWidgetModalVisible(false); }} style={{ paddingVertical: 8, paddingRight: 12 }} hitSlop={{ top: 12, bottom: 12, left: 8, right: 8 }}>
+                  <Text style={{ color: "#2ecc71", fontSize: 17, fontWeight: "600" }}>完了</Text>
                 </TouchableOpacity>
-              )}
-              <CoinHubSummary
-                balance={coinBalance}
-                compact
-                onPress={() => router.push("/settings/monetization")}
-              />
-              <TouchableOpacity onPress={() => router.push("/settings")} style={styles.iconButton}>
-                <SettingsIcon color="#fff" size={24} />
-              </TouchableOpacity>
-            </>
-          ) : (
-            <>
-              <View>
-                <Text style={styles.homeWelcomeText}>Welcome back,</Text>
-                <Text style={styles.routineText}>{displayName}</Text>
-              </View>
-              <View style={{ flexDirection: "row", alignItems: "center" }}>
-                <CoinHubSummary
-                  balance={coinBalance}
-                  compact
-                  onPress={() => router.push("/settings/monetization")}
-                />
+                <View style={{ flex: 1 }}>
+                  <Text style={{ color: "#888", fontSize: 12, marginBottom: 2 }}>ホームを編集</Text>
+                  <Text style={[styles.routineText, { fontSize: 18 }]}>並べ替え・削除</Text>
+                </View>
+                {hiddenIds.length > 0 && (
+                  <TouchableOpacity onPress={() => setAddWidgetModalVisible(true)} style={styles.iconButton} accessibilityLabel="ウィジェットを追加">
+                    <Plus color="#2ecc71" size={26} strokeWidth={2.5} />
+                  </TouchableOpacity>
+                )}
+                <CoinHubSummary balance={coinBalance} compact onPress={() => router.push("/settings/monetization")} />
                 <TouchableOpacity onPress={() => router.push("/settings")} style={styles.iconButton}>
                   <SettingsIcon color="#fff" size={24} />
                 </TouchableOpacity>
-              </View>
-            </>
-          )}
-        </View>
+              </>
+            ) : (
+              <>
+                <View>
+                  <Text style={styles.homeWelcomeText}>Welcome back,</Text>
+                  <Text style={styles.routineText}>{displayName}</Text>
+                </View>
+                <View style={{ flexDirection: "row", alignItems: "center" }}>
+                  <CoinHubSummary balance={coinBalance} compact onPress={() => router.push("/settings/monetization")} />
+                  <TouchableOpacity onPress={() => router.push("/settings")} style={styles.iconButton}>
+                    <SettingsIcon color="#fff" size={24} />
+                  </TouchableOpacity>
+                </View>
+              </>
+            )}
+          </WalkthroughableView>
+        </CopilotStep>
+
         {!isEditMode && (
           <>
-            <CoinHubSummary
-              balance={coinBalance}
-              onPress={() => router.push("/settings/monetization")}
-            />
+            <CoinHubSummary balance={coinBalance} onPress={() => router.push("/settings/monetization")} />
             <Text style={{ color: "#666", fontSize: 12, paddingHorizontal: 20, marginBottom: 14 }}>
               任意のウィジェットを長押しで編集モード
             </Text>
@@ -729,16 +627,7 @@ export default function HomeTabScreen() {
     return (
       <TouchableOpacity
         onPress={() => setAddWidgetModalVisible(true)}
-        style={{
-          marginBottom: 24,
-          paddingVertical: 14,
-          paddingHorizontal: 16,
-          borderRadius: 14,
-          borderWidth: 1,
-          borderColor: "#444",
-          borderStyle: "dashed",
-          alignItems: "center",
-        }}
+        style={{ marginBottom: 24, paddingVertical: 14, paddingHorizontal: 16, borderRadius: 14, borderWidth: 1, borderColor: "#444", borderStyle: "dashed", alignItems: "center" }}
       >
         <Text style={{ color: "#2ecc71", fontWeight: "600", fontSize: 15 }}>+ ウィジェットを追加</Text>
         <Text style={{ color: "#666", fontSize: 12, marginTop: 4 }}>非表示にした項目をホームに戻せます</Text>
@@ -770,75 +659,51 @@ export default function HomeTabScreen() {
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
         {isEditMode ? (
-          <DraggableFlatList
-            {...listCommon}
-            onDragEnd={({ data }) => void persistOrder(data)}
-            renderItem={renderDraggableRow}
-            containerStyle={{ flex: 1 }}
-          />
+          <DraggableFlatList {...listCommon} onDragEnd={({ data }) => void persistOrder(data)} renderItem={renderDraggableRow} containerStyle={{ flex: 1 }} />
         ) : (
-          <FlatList
-            {...listCommon}
-            renderItem={renderStaticRow}
-          />
+          <FlatList {...listCommon} renderItem={renderStaticRow} />
         )}
 
-        <Modal
-          visible={addWidgetModalVisible}
-          transparent
-          animationType="slide"
-          onRequestClose={() => setAddWidgetModalVisible(false)}
-        >
+        {/* --- 省略せずにウィジェット追加モーダルを配置 --- */}
+        <Modal visible={addWidgetModalVisible} transparent animationType="slide" onRequestClose={() => setAddWidgetModalVisible(false)}>
           <View style={{ flex: 1, justifyContent: "flex-end" }}>
             <Pressable style={{ flex: 1 }} onPress={() => setAddWidgetModalVisible(false)} />
-            <View
-              style={{
-                backgroundColor: "#262626",
-                borderTopLeftRadius: 22,
-                borderTopRightRadius: 22,
-                paddingHorizontal: 20,
-                paddingTop: 18,
-                paddingBottom: 28,
-              }}
-            >
+            <View style={{ backgroundColor: "#262626", borderTopLeftRadius: 22, borderTopRightRadius: 22, paddingHorizontal: 20, paddingTop: 18, paddingBottom: 28 }}>
               <Text style={{ color: "#fff", fontSize: 18, fontWeight: "700", marginBottom: 4 }}>ウィジェットを追加</Text>
               <Text style={{ color: "#888", fontSize: 13, marginBottom: 12 }}>ホームに表示する項目を選んでください</Text>
               {hiddenIds.length === 0 ? (
-                <Text style={{ color: "#888", fontSize: 14, paddingVertical: 8 }}>
-                  追加できるウィジェットはありません
-                </Text>
+                <Text style={{ color: "#888", fontSize: 14, paddingVertical: 8 }}>追加できるウィジェットはありません</Text>
               ) : (
                 hiddenIds.map((id) => (
-                  <TouchableOpacity
-                    key={id}
-                    onPress={() => {
-                      addWidget(id);
-                      setAddWidgetModalVisible(false);
-                    }}
-                    style={{ paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: "#333" }}
-                  >
+                  <TouchableOpacity key={id} onPress={() => { addWidget(id); setAddWidgetModalVisible(false); }} style={{ paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: "#333" }}>
                     <Text style={{ color: "#fff", fontSize: 16 }}>{HOME_WIDGET_LABELS[id]}</Text>
                   </TouchableOpacity>
                 ))
               )}
-              <TouchableOpacity
-                onPress={() => setAddWidgetModalVisible(false)}
-                style={{ marginTop: 14, alignItems: "center", paddingVertical: 10 }}
-              >
+              <TouchableOpacity onPress={() => setAddWidgetModalVisible(false)} style={{ marginTop: 14, alignItems: "center", paddingVertical: 10 }}>
                 <Text style={{ color: "#888", fontSize: 15 }}>キャンセル</Text>
               </TouchableOpacity>
             </View>
           </View>
         </Modal>
 
-        <WorkoutDetailModal
-          visible={modalVisible}
-          onClose={() => setModalVisible(false)}
-          workouts={selectedDateWorkouts}
-          foodLog={selectedDateFoodLog}
-          onDelete={handleDeleteWorkout}
-        />
+        <WorkoutDetailModal visible={modalVisible} onClose={() => setModalVisible(false)} workouts={selectedDateWorkouts} foodLog={selectedDateFoodLog} onDelete={handleDeleteWorkout} />
       </SafeAreaView>
     </GestureHandlerRootView>
+  );
+}
+
+// ★ 最後に全体をラップしてエクスポート
+export default function HomeTabScreen() {
+  return (
+    <CopilotProvider
+      stopOnOutsideClick={true} // 外側タップでチュートリアルを閉じられるようにする
+      androidStatusBarVisible={true} // Androidのステータスバー周りのバグ回避
+      tooltipStyle={{ backgroundColor: "#262626", borderRadius: 12 }} // ダークモードに馴染む色に設定
+      stepNumberComponent={() => null} // 1/1 みたいなステップの丸い数字アイコンを非表示にしてスッキリさせる
+      labels={{ skip: "スキップ", previous: "前へ", next: "次へ", finish: "OK" }} // ボタンの日本語化
+    >
+      <HomeTabContent />
+    </CopilotProvider>
   );
 }
