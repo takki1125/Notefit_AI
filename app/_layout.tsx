@@ -5,6 +5,7 @@ import { Redirect, Stack, useSegments } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 
+import { SubscriptionEntitlementSync } from '../components/SubscriptionEntitlementSync';
 import { useAuthState } from '../hooks/useAuthState';
 import { getUserProfile, getMealReminderSettings } from '../utils/firestoreProfile';
 import {
@@ -50,6 +51,21 @@ export default function RootLayout() {
     if (user) return;
     void cancelMealReminderNotifications();
   }, [user]);
+
+  useEffect(() => {
+    if (Platform.OS !== 'ios' && Platform.OS !== 'android') return;
+    let cancelled = false;
+    void import('../utils/revenueCat').then((m) => {
+      if (cancelled) return;
+      return m.syncRevenueCatWithFirebaseUser({
+        uid: user?.uid ?? null,
+        emailVerified: !!user?.emailVerified,
+      });
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.uid, user?.emailVerified]);
 
   useEffect(() => {
     if (Platform.OS !== 'android' && Platform.OS !== 'ios') return;
@@ -108,6 +124,7 @@ export default function RootLayout() {
   return (
     <SafeAreaProvider>
       <View style={{ flex: 1, backgroundColor: '#1a1a1a' }}>
+      <SubscriptionEntitlementSync />
       <StatusBar style="light" />
       <Stack screenOptions={{ headerShown: false }}>
   <Stack.Screen name="(tabs)" />

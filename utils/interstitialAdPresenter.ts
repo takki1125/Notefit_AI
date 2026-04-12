@@ -5,6 +5,7 @@ import {
   FOOD_ADDS_PER_INTERSTITIAL,
   INTERSTITIAL_MIN_INTERVAL_MS,
 } from "../constants/adPlacement";
+import { shouldPresentNonRewardAds } from "./adSuppression";
 import { getInterstitialAdUnitId, isNativeAdPlatform } from "./adMobUnits";
 import { ensureMobileAdsInitialized } from "./mobileAdsInit";
 
@@ -48,7 +49,7 @@ async function markInterstitialPresented(): Promise<void> {
 }
 
 export function preloadInterstitial(): void {
-  if (!isNativeAdPlatform()) return;
+  if (!isNativeAdPlatform() || !shouldPresentNonRewardAds()) return;
   void ensureMobileAdsInitialized().then(() => {
     const ad = getOrCreateInterstitial();
     if (!ad) return;
@@ -67,7 +68,7 @@ export type PresentInterstitialOptions = {
 export async function presentInterstitialWhenReady(
   opts: PresentInterstitialOptions = {},
 ): Promise<void> {
-  if (!isNativeAdPlatform()) return;
+  if (!isNativeAdPlatform() || !shouldPresentNonRewardAds()) return;
   await ensureMobileAdsInitialized();
   const ad = getOrCreateInterstitial();
   if (!ad) return;
@@ -102,7 +103,7 @@ export async function presentInterstitialWhenReady(
  * 食事が 1 件保存されたあとに呼ぶ。FOOD_ADDS_PER_INTERSTITIAL 件に達したタイミングでインターを試みる。
  */
 export async function recordFoodAddAndMaybePresentInterstitial(): Promise<void> {
-  if (!isNativeAdPlatform()) return;
+  if (!isNativeAdPlatform() || !shouldPresentNonRewardAds()) return;
   const raw = await AsyncStorage.getItem(STORAGE_FOOD_COUNT);
   let count = raw ? parseInt(raw, 10) : 0;
   if (!Number.isFinite(count) || count < 0) count = 0;

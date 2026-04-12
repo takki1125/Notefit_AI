@@ -15,7 +15,7 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useFocusEffect } from "@react-navigation/native"; // ★ これを追加
 import AsyncStorage from "@react-native-async-storage/async-storage"; // ★ これを追加
-import { Check, ChevronDown, Clock, Dumbbell, Plus, Trash2, X } from "lucide-react-native";
+import { Check, ChevronDown, Clock, Dumbbell, Pencil, Plus, Trash2, X } from "lucide-react-native";
 import {
   addDoc,
   setDoc,
@@ -28,8 +28,18 @@ import {
   serverTimestamp,
 } from "firebase/firestore";
 
+import { FREE_CUSTOM_EXERCISE_LIMIT } from "../../constants/subscriptionLimits";
+import { type CustomExerciseListItem } from "../../hooks/useExerciseMaster";
 import { auth, db } from "../../firebaseConfig";
 import { styles } from "../../theme/styles";
+import {
+  callableCreateCustomExercise,
+  callableDeleteCustomExercise,
+  callableUpdateCustomExercise,
+} from "../../utils/aiUserContentCallables";
+
+type ExerciseSectionRow = { title: string; data: (string | CustomExerciseListItem)[] };
+type ExerciseCategoryRow = { id: string; label: string; sections: ExerciseSectionRow[] };
 
 type WorkoutSet = {
   weight: string;
@@ -69,23 +79,21 @@ const ExerciseSelectorModal: React.FC<ExerciseSelectorModalProps> = ({
   onClose,
   onSelect,
 }) => {
-  const [categories, setCategories] = useState<
-    {
-      id: string;
-      label: string;
-      sections: { title: string; data: string[] }[];
-    }[]
-  >([]);
+  const [categories, setCategories] = useState<ExerciseCategoryRow[]>([]);
   const [loading, setLoading] = useState(true);
-  const [selectedCategory, setSelectedCategory] = useState<{
-    id: string;
-    label: string;
-    sections: { title: string; data: string[] }[];
-  } | null>(null);
+  const [selectedCategory, setSelectedCategory] = useState<ExerciseCategoryRow | null>(null);
 
   // ★追加：新しい種目名を入力・保存するためのState
   const [newExerciseName, setNewExerciseName] = useState("");
   const [isSaving, setIsSaving] = useState(false);
+  const [editTarget, setEditTarget] = useState<{
+    id: string;
+    name: string;
+    categoryLabel: string;
+  } | null>(null);
+  const [editName, setEditName] = useState("");
+  const [editCategoryLabel, setEditCategoryLabel] = useState("");
+  const [savingEdit, setSavingEdit] = useState(false);
 
   const fetchData = async () => {
     const user = auth.currentUser;
@@ -98,11 +106,7 @@ const ExerciseSelectorModal: React.FC<ExerciseSelectorModalProps> = ({
         getDocs(collection(db, "users", user.uid, "custom_exercises"))
       ]);
 
-      const data: {
-        id: string;
-        label: string;
-        sections: { title: string; data: string[] }[];
-      }[] = [];
+      const data: ExerciseCategoryRow[] = [];
 
       // ① マスターデータ処理
       masterSnap.forEach((d) => {
@@ -130,14 +134,28 @@ const ExerciseSelectorModal: React.FC<ExerciseSelectorModalProps> = ({
       });
 
       // ② 個人データを「オリジナル」セクションに挿入
-      const customDocs = customSnap.docs.map(doc => doc.data());
-      
-      data.forEach(targetCat => {
-        const matchingCustoms = customDocs.filter(c => c.categoryLabel === targetCat.label);
+      const customDocs = customSnap.docs.map((d) => {
+        const x = d.data() as { name?: string; categoryLabel?: string };
+        return {
+          id: d.id,
+          name: typeof x.name === "string" ? x.name : "",
+          categoryLabel: typeof x.categoryLabel === "string" ? x.categoryLabel : "",
+        };
+      });
+
+      data.forEach((targetCat) => {
+        const matchingCustoms = customDocs.filter((c) => c.categoryLabel === targetCat.label);
         if (matchingCustoms.length > 0) {
           targetCat.sections.unshift({
             title: "オリジナル",
-            data: matchingCustoms.map(c => c.name)
+            data: matchingCustoms.map(
+              (c): CustomExerciseListItem => ({
+                kind: "custom",
+                id: c.id,
+                name: c.name,
+                categoryLabel: c.categoryLabel,
+              }),
+            ),
           });
         }
       });
@@ -190,23 +208,83 @@ const ExerciseSelectorModal: React.FC<ExerciseSelectorModalProps> = ({
     }
 
     try {
-      await addDoc(collection(db, "users", user.uid, "custom_exercises"), {
-        name: newExerciseName.trim(),
-        categoryLabel: selectedCategory.label,
-        createdAt: serverTimestamp(),
-      });
-      
-      setNewExerciseName(""); // 入力欄をクリア
-      await fetchData(); // 最新のリストを再取得して画面に反映
-    } catch (e) {
+      await callableCreateCustomExercise(newExerciseName.trim(), selectedCategory.label);
+      setNewExerciseName("");
+      await fetchData();
+    } catch (e: unknown) {
       console.error("カスタム種目保存エラー:", e);
-      Alert.alert("エラー", "種目の保存に失敗しました。");
+      const code = (e as { code?: string })?.code;
+      if (code === "functions/resource-exhausted") {
+        Alert.alert(
+          "上限です",
+          `無料プランではマイ種目は最大${FREE_CUSTOM_EXERCISE_LIMIT}件までです。`,
+        );
+      } else {
+        Alert.alert("エラー", "種目の保存に失敗しました。");
+      }
     } finally {
       setIsSaving(false);
     }
   };
 
+  const openEditCustom = (c: CustomExerciseListItem) => {
+    setEditTarget({ id: c.id, name: c.name, categoryLabel: c.categoryLabel });
+    setEditName(c.name);
+    setEditCategoryLabel(c.categoryLabel);
+  };
+
+  const closeEditCustom = () => {
+    setEditTarget(null);
+    setEditName("");
+    setEditCategoryLabel("");
+  };
+
+  const handleSaveEditCustom = async () => {
+    if (!editTarget) return;
+    const name = editName.trim();
+    if (!name) {
+      Alert.alert("エラー", "種目名を入力してください");
+      return;
+    }
+    const cat = editCategoryLabel.trim();
+    if (!cat) {
+      Alert.alert("エラー", "部位を選んでください");
+      return;
+    }
+    setSavingEdit(true);
+    try {
+      await callableUpdateCustomExercise(editTarget.id, name, cat);
+      closeEditCustom();
+      await fetchData();
+    } catch (e: unknown) {
+      Alert.alert("エラー", (e as Error)?.message ?? "更新に失敗しました。");
+    } finally {
+      setSavingEdit(false);
+    }
+  };
+
+  const confirmDeleteCustom = (id: string, displayName: string) => {
+    Alert.alert("削除", `「${displayName}」を削除しますか？`, [
+      { text: "キャンセル", style: "cancel" },
+      {
+        text: "削除",
+        style: "destructive",
+        onPress: () => {
+          void (async () => {
+            try {
+              await callableDeleteCustomExercise(id);
+              await fetchData();
+            } catch {
+              Alert.alert("エラー", "削除に失敗しました。");
+            }
+          })();
+        },
+      },
+    ]);
+  };
+
   return (
+    <>
     <Modal
       visible={visible}
       animationType="slide"
@@ -259,25 +337,69 @@ const ExerciseSelectorModal: React.FC<ExerciseSelectorModalProps> = ({
 
             <SectionList
               sections={selectedCategory?.sections || []}
-              keyExtractor={(item, index) => `${item}-${index}`}
+              keyExtractor={(item, index) =>
+                typeof item === "string" ? `${item}_${index}` : item.id
+              }
               stickySectionHeadersEnabled={false}
               renderSectionHeader={({ section: { title } }) => (
                 <View style={styles.sectionHeader}>
                   <Text style={[styles.sectionHeaderText, title === "オリジナル" && { color: "#f1c40f" }]}>{title}</Text>
                 </View>
               )}
-              renderItem={({ item, section }) => (
-                <TouchableOpacity
-                  style={styles.exerciseListItem}
-                  onPress={() => {
-                    onSelect(item, selectedCategory?.label || "他");
-                    onClose();
-                  }}
-                >
-                  <Text style={[styles.exerciseListText, section.title === "オリジナル" && { color: "#f1c40f", fontWeight: "bold" }]}>{item}</Text>
-                  <Plus color="#2ecc71" size={20} />
-                </TouchableOpacity>
-              )}
+              renderItem={({ item, section }) => {
+                if (typeof item === "string") {
+                  return (
+                    <TouchableOpacity
+                      style={styles.exerciseListItem}
+                      onPress={() => {
+                        onSelect(item, selectedCategory?.label || "他");
+                        onClose();
+                      }}
+                    >
+                      <Text style={styles.exerciseListText}>{item}</Text>
+                      <Plus color="#2ecc71" size={20} />
+                    </TouchableOpacity>
+                  );
+                }
+                const c = item;
+                return (
+                  <View
+                    style={[
+                      styles.exerciseListItem,
+                      { flexDirection: "row", alignItems: "center", paddingRight: 8 },
+                    ]}
+                  >
+                    <TouchableOpacity
+                      style={{ flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}
+                      onPress={() => {
+                        onSelect(c.name, selectedCategory?.label || "他");
+                        onClose();
+                      }}
+                    >
+                      <Text
+                        style={[
+                          styles.exerciseListText,
+                          section.title === "オリジナル" && { color: "#f1c40f", fontWeight: "bold" },
+                          { flex: 1 },
+                        ]}
+                      >
+                        {c.name}
+                      </Text>
+                      <Plus color="#2ecc71" size={20} />
+                    </TouchableOpacity>
+                    <TouchableOpacity onPress={() => openEditCustom(c)} style={{ padding: 8 }} accessibilityLabel="編集">
+                      <Pencil color="#4facfe" size={20} />
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      onPress={() => confirmDeleteCustom(c.id, c.name)}
+                      style={{ padding: 8 }}
+                      accessibilityLabel="削除"
+                    >
+                      <Trash2 color="#ff4444" size={20} />
+                    </TouchableOpacity>
+                  </View>
+                );
+              }}
               // ★進化：リストの一番下に入力フォームを常時表示！
               ListFooterComponent={
                 <View style={{ marginTop: 20, marginBottom: 40, padding: 15, backgroundColor: "#1a1a1a", borderRadius: 12, marginHorizontal: 16 }}>
@@ -307,6 +429,85 @@ const ExerciseSelectorModal: React.FC<ExerciseSelectorModalProps> = ({
         )}
       </SafeAreaView>
     </Modal>
+
+    <Modal visible={editTarget !== null} transparent animationType="fade">
+      <View
+        style={{
+          flex: 1,
+          backgroundColor: "rgba(0,0,0,0.85)",
+          justifyContent: "center",
+          padding: 20,
+        }}
+      >
+        <View style={{ backgroundColor: "#2a2a2a", borderRadius: 16, padding: 16 }}>
+          <Text style={{ color: "#fff", fontSize: 17, fontWeight: "bold", marginBottom: 12 }}>オリジナル種目を編集</Text>
+          <Text style={{ color: "#888", fontSize: 12, marginBottom: 6 }}>種目名</Text>
+          <TextInput
+            style={{
+              backgroundColor: "#1a1a1a",
+              color: "#fff",
+              borderRadius: 10,
+              padding: 12,
+              marginBottom: 14,
+              borderWidth: 1,
+              borderColor: "#444",
+            }}
+            placeholder="種目名"
+            placeholderTextColor="#666"
+            value={editName}
+            onChangeText={setEditName}
+            editable={!savingEdit}
+          />
+          <Text style={{ color: "#888", fontSize: 12, marginBottom: 8 }}>部位（タブ）</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 16 }}>
+            <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
+              {categories.map((cat) => {
+                const on = editCategoryLabel === cat.label;
+                return (
+                  <TouchableOpacity
+                    key={cat.id}
+                    onPress={() => setEditCategoryLabel(cat.label)}
+                    style={{
+                      backgroundColor: on ? "#2ecc71" : "#1a1a1a",
+                      paddingHorizontal: 14,
+                      paddingVertical: 8,
+                      borderRadius: 20,
+                      borderWidth: 1,
+                      borderColor: on ? "#2ecc71" : "#444",
+                    }}
+                  >
+                    <Text style={{ color: on ? "#000" : "#ccc", fontWeight: on ? "800" : "500" }}>{cat.label}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          </ScrollView>
+          <View style={{ flexDirection: "row", justifyContent: "flex-end", gap: 12 }}>
+            <TouchableOpacity onPress={closeEditCustom} disabled={savingEdit}>
+              <Text style={{ color: "#888", padding: 10 }}>キャンセル</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={{
+                backgroundColor: "#2ecc71",
+                paddingHorizontal: 18,
+                paddingVertical: 10,
+                borderRadius: 10,
+                opacity: savingEdit ? 0.6 : 1,
+              }}
+              onPress={() => void handleSaveEditCustom()}
+              disabled={savingEdit}
+            >
+              {savingEdit ? (
+                <ActivityIndicator color="#000" />
+              ) : (
+                <Text style={{ color: "#000", fontWeight: "800" }}>保存</Text>
+              )}
+            </TouchableOpacity>
+          </View>
+        </View>
+      </View>
+    </Modal>
+    </>
   );
 };
 

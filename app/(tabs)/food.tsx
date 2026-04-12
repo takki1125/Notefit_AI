@@ -2,7 +2,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { getApp } from "firebase/app";
 import { getFunctions, httpsCallable } from "firebase/functions";
 import { doc, serverTimestamp, setDoc, getDoc, collection, query, getDocs } from "firebase/firestore";
-import { Sparkles, Trash2, X, BookOpen, Search, Star } from "lucide-react-native"; 
+import { Sparkles, Trash2, X, BookOpen, Search, Star, ClipboardList, Check, Plus } from "lucide-react-native";
 import React, { useState, useCallback } from "react";
 import { useFocusEffect } from "@react-navigation/native";
 import {
@@ -17,8 +17,13 @@ import {
   Modal
 } from "react-native";
 
+import { FREE_MEAL_ROUTINE_LIMIT } from "../../constants/subscriptionLimits";
+import { useRouter } from "expo-router";
+
 import { auth, db } from "../../firebaseConfig";
+import { useSubscriptionEntitlements } from "../../hooks/useSubscriptionEntitlements";
 import { styles } from "../../theme/styles";
+import { callableCreateMealRoutine, callableDeleteMealRoutine } from "../../utils/aiUserContentCallables";
 
 type Meal = {
   id: string;
@@ -30,12 +35,41 @@ type Meal = {
   isFavorite?: boolean; 
 };
 
+type MealRoutineRow = {
+  id: string;
+  name: string;
+  meals: Omit<Meal, "id" | "isFavorite">[];
+};
+
+type RoutineEditorMode = "closed" | "fromToday" | "fromScratch";
+
+type ScratchMealDraft = {
+  key: string;
+  name: string;
+  cal: string;
+  pro: string;
+  fat: string;
+  carb: string;
+};
+
 const STORAGE_KEY_BASE = "@food_meals_today_";
 const DATE_KEY_BASE = '@food_last_opened_date_'; 
 
 export default function FoodTabScreen() {
+  const router = useRouter();
+  const { flags } = useSubscriptionEntitlements();
+  const mealRoutineUnlimited = flags.hideAds || flags.unlockExtraExercises;
+
   const [meals, setMeals] = useState<Meal[]>([]);
-  const [dictMeals, setDictMeals] = useState<Meal[]>([]); 
+  const [dictMeals, setDictMeals] = useState<Meal[]>([]);
+  const [mealRoutines, setMealRoutines] = useState<MealRoutineRow[]>([]);
+  const [routineEditorMode, setRoutineEditorMode] = useState<RoutineEditorMode>("closed");
+  const [newRoutineName, setNewRoutineName] = useState("");
+  const [routineSelectedIds, setRoutineSelectedIds] = useState<Record<string, boolean>>({});
+  const [scratchMealDrafts, setScratchMealDrafts] = useState<ScratchMealDraft[]>([]);
+  const [savingRoutine, setSavingRoutine] = useState(false);
+  const [scratchAiInput, setScratchAiInput] = useState("");
+  const [isScratchAiLoading, setIsScratchAiLoading] = useState(false);
   const [foodName, setFoodName] = useState("");
   const [cal, setCal] = useState("");
   const [pro, setPro] = useState("");
@@ -86,6 +120,32 @@ export default function FoodTabScreen() {
         } catch (e) {
           console.error("辞書の読み込み失敗:", e);
         }
+
+        try {
+          const rq = query(collection(db, "users", user.uid, "meal_routines"));
+          const rsnap = await getDocs(rq);
+          const rows: MealRoutineRow[] = rsnap.docs.map((d) => {
+            const x = d.data() as {
+              name?: string;
+              meals?: { name?: string; cal?: number; pro?: number; fat?: number; carb?: number }[];
+            };
+            const rawMeals = Array.isArray(x.meals) ? x.meals : [];
+            return {
+              id: d.id,
+              name: typeof x.name === "string" ? x.name : "ルーティーン",
+              meals: rawMeals.map((m) => ({
+                name: typeof m.name === "string" ? m.name : "",
+                cal: Number(m.cal) || 0,
+                pro: Number(m.pro) || 0,
+                fat: Number(m.fat) || 0,
+                carb: Number(m.carb) || 0,
+              })),
+            };
+          });
+          setMealRoutines(rows);
+        } catch (e) {
+          console.error("食事ルーティーン読み込み失敗:", e);
+        }
       };
       loadData();
     }, [])
@@ -134,65 +194,310 @@ export default function FoodTabScreen() {
   const totalFat = meals.reduce((sum, item) => sum + item.fat, 0);
   const totalCarb = meals.reduce((sum, item) => sum + item.carb, 0);
 
+  const reloadMealRoutines = async () => {
+    const user = auth.currentUser;
+    if (!user) return;
+    try {
+      const rq = query(collection(db, "users", user.uid, "meal_routines"));
+      const rsnap = await getDocs(rq);
+      const rows: MealRoutineRow[] = rsnap.docs.map((d) => {
+        const x = d.data() as {
+          name?: string;
+          meals?: { name?: string; cal?: number; pro?: number; fat?: number; carb?: number }[];
+        };
+        const rawMeals = Array.isArray(x.meals) ? x.meals : [];
+        return {
+          id: d.id,
+          name: typeof x.name === "string" ? x.name : "ルーティーン",
+          meals: rawMeals.map((m) => ({
+            name: typeof m.name === "string" ? m.name : "",
+            cal: Number(m.cal) || 0,
+            pro: Number(m.pro) || 0,
+            fat: Number(m.fat) || 0,
+            carb: Number(m.carb) || 0,
+          })),
+        };
+      });
+      setMealRoutines(rows);
+    } catch {
+      /* ignore */
+    }
+  };
+
+  const promptRoutineUpgrade = () => {
+    Alert.alert(
+      "プレミアムで追加",
+      `無料プランでは食事ルーティーンは最大${FREE_MEAL_ROUTINE_LIMIT}件までです。`,
+      [
+        { text: "キャンセル", style: "cancel" },
+        { text: "プランを見る", onPress: () => router.push("/settings/monetization") },
+      ],
+    );
+  };
+
+  const applyMealRoutine = async (routine: MealRoutineRow) => {
+    if (routine.meals.length === 0) return;
+    const base = Date.now();
+    const add: Meal[] = routine.meals.map((m, i) => ({
+      id: `${base}_${i}`,
+      name: m.name,
+      cal: m.cal,
+      pro: m.pro,
+      fat: m.fat,
+      carb: m.carb,
+    }));
+    await saveMealsToAll([...meals, ...add]);
+  };
+
+  const closeRoutineEditor = () => {
+    setRoutineEditorMode("closed");
+    setNewRoutineName("");
+    setRoutineSelectedIds({});
+    setScratchMealDrafts([]);
+    setScratchAiInput("");
+  };
+
+  const openRoutineFromToday = () => {
+    if (meals.length === 0) {
+      Alert.alert("エラー", "今日の食事リストにまだ品目がありません。先に食事を追加してください。");
+      return;
+    }
+    const nextSel: Record<string, boolean> = {};
+    for (const m of meals) nextSel[m.id] = true;
+    setRoutineSelectedIds(nextSel);
+    setNewRoutineName("");
+    setRoutineEditorMode("fromToday");
+  };
+
+  const openRoutineFromScratch = () => {
+    setScratchMealDrafts([
+      { key: `s_${Date.now()}`, name: "", cal: "", pro: "", fat: "", carb: "" },
+    ]);
+    setNewRoutineName("");
+    setRoutineEditorMode("fromScratch");
+  };
+
+  const toggleRoutineMealSelect = (id: string) => {
+    setRoutineSelectedIds((prev) => ({ ...prev, [id]: !prev[id] }));
+  };
+
+  const addScratchRow = () => {
+    setScratchMealDrafts((prev) => [
+      ...prev,
+      { key: `s_${Date.now()}_${prev.length}`, name: "", cal: "", pro: "", fat: "", carb: "" },
+    ]);
+  };
+
+  const removeScratchRow = (key: string) => {
+    setScratchMealDrafts((prev) => (prev.length <= 1 ? prev : prev.filter((r) => r.key !== key)));
+  };
+
+  const updateScratchRow = (key: string, patch: Partial<ScratchMealDraft>) => {
+    setScratchMealDrafts((prev) => prev.map((r) => (r.key === key ? { ...r, ...patch } : r)));
+  };
+
+  const confirmSaveMealRoutine = async () => {
+    const name = newRoutineName.trim();
+    if (!name) {
+      Alert.alert("エラー", "ルーティーン名を入力してください。");
+      return;
+    }
+
+    let payload: { name: string; cal: number; pro: number; fat: number; carb: number }[] = [];
+
+    if (routineEditorMode === "fromToday") {
+      payload = meals
+        .filter((m) => routineSelectedIds[m.id])
+        .map((m) => ({
+          name: m.name,
+          cal: m.cal,
+          pro: m.pro,
+          fat: m.fat,
+          carb: m.carb,
+        }));
+      if (payload.length === 0) {
+        Alert.alert("エラー", "ルーティーンに含める食事を1品以上選んでください。");
+        return;
+      }
+    } else if (routineEditorMode === "fromScratch") {
+      for (const row of scratchMealDrafts) {
+        const n = row.name.trim();
+        if (!n) continue;
+        payload.push({
+          name: n,
+          cal: Math.max(0, Math.floor(Number(row.cal) || 0)),
+          pro: Math.max(0, Math.floor(Number(row.pro) || 0)),
+          fat: Math.max(0, Math.floor(Number(row.fat) || 0)),
+          carb: Math.max(0, Math.floor(Number(row.carb) || 0)),
+        });
+      }
+      if (payload.length === 0) {
+        Alert.alert("エラー", "料理名を1つ以上入力してください。");
+        return;
+      }
+    } else {
+      return;
+    }
+
+    if (!mealRoutineUnlimited && mealRoutines.length >= FREE_MEAL_ROUTINE_LIMIT) {
+      promptRoutineUpgrade();
+      return;
+    }
+    setSavingRoutine(true);
+    try {
+      await callableCreateMealRoutine(name, payload);
+      closeRoutineEditor();
+      await reloadMealRoutines();
+    } catch (e: unknown) {
+      const code = (e as { code?: string })?.code;
+      if (code === "functions/resource-exhausted") {
+        promptRoutineUpgrade();
+      } else {
+        Alert.alert("エラー", (e as Error)?.message ?? "保存に失敗しました。");
+      }
+    } finally {
+      setSavingRoutine(false);
+    }
+  };
+
+  const removeMealRoutine = (id: string) => {
+    Alert.alert("削除", "このルーティーンを削除しますか？", [
+      { text: "キャンセル", style: "cancel" },
+      {
+        text: "削除",
+        style: "destructive",
+        onPress: () => {
+          void (async () => {
+            try {
+              await callableDeleteMealRoutine(id);
+              await reloadMealRoutines();
+            } catch {
+              Alert.alert("エラー", "削除に失敗しました。");
+            }
+          })();
+        },
+      },
+    ]);
+  };
+
+  /** 辞書優先 → なければ analyzeFoodPFC（食事タブ・ルーティーン作成で共通） */
+  const resolveFoodNutritionFromText = async (raw: string) => {
+    const trimmed = raw.trim();
+    if (!trimmed) {
+      throw new Error("料理名や食事内容を入力してくれ");
+    }
+    const user = auth.currentUser;
+    if (!user) {
+      throw new Error("AI解析を使うにはログインが必要です");
+    }
+
+    const dictRef = doc(db, "users", user.uid, "food_dictionary", trimmed);
+    const dictSnap = await getDoc(dictRef);
+    if (dictSnap.exists()) {
+      const data = dictSnap.data();
+      return {
+        name: trimmed,
+        cal: Math.round(Number(data.cal) || 0),
+        pro: Math.round(Number(data.pro) || 0),
+        fat: Math.round(Number(data.fat) || 0),
+        carb: Math.round(Number(data.carb) || 0),
+      };
+    }
+
+    const app = getApp();
+    const functions = getFunctions(app, "asia-northeast1");
+    const callable = httpsCallable(functions, "analyzeFoodPFC");
+    const res = await callable({ text: trimmed });
+    const data = res.data as { total?: { name?: string; cal?: unknown; pro?: unknown; fat?: unknown; carb?: unknown } };
+    const total = data?.total;
+    if (!total) {
+      throw new Error("AI解析結果の形式が不正です");
+    }
+    const totalName = typeof total.name === "string" && total.name.length > 0 ? total.name : trimmed;
+    const safeCal = Number.isFinite(Number(total.cal)) ? Number(total.cal) : 0;
+    const safePro = Number.isFinite(Number(total.pro)) ? Number(total.pro) : 0;
+    const safeFat = Number.isFinite(Number(total.fat)) ? Number(total.fat) : 0;
+    const safeCarb = Number.isFinite(Number(total.carb)) ? Number(total.carb) : 0;
+    return {
+      name: totalName,
+      cal: Math.round(safeCal),
+      pro: Math.round(safePro),
+      fat: Math.round(safeFat),
+      carb: Math.round(safeCarb),
+    };
+  };
+
+  const handleScratchAiAppendMeal = async () => {
+    if (!scratchAiInput.trim()) {
+      Alert.alert("エラー", "料理名や食事内容を入力してください。");
+      return;
+    }
+    setIsScratchAiLoading(true);
+    try {
+      const r = await resolveFoodNutritionFromText(scratchAiInput);
+      setScratchMealDrafts((prev) => {
+        const last = prev[prev.length - 1];
+        const lastEmpty =
+          last &&
+          !last.name.trim() &&
+          !String(last.cal).trim() &&
+          !String(last.pro).trim() &&
+          !String(last.fat).trim() &&
+          !String(last.carb).trim();
+        if (lastEmpty) {
+          return prev.map((row, i) =>
+            i === prev.length - 1
+              ? {
+                  ...row,
+                  name: r.name,
+                  cal: String(r.cal),
+                  pro: String(r.pro),
+                  fat: String(r.fat),
+                  carb: String(r.carb),
+                }
+              : row,
+          );
+        }
+        return [
+          ...prev,
+          {
+            key: `s_${Date.now()}`,
+            name: r.name,
+            cal: String(r.cal),
+            pro: String(r.pro),
+            fat: String(r.fat),
+            carb: String(r.carb),
+          },
+        ];
+      });
+      setScratchAiInput("");
+    } catch (error: unknown) {
+      console.error("ルーティーンAI追加エラー:", error);
+      const err = error as { message?: string; code?: string };
+      Alert.alert("エラー", err?.message || err?.code || "AIでの解析に失敗しました。");
+    } finally {
+      setIsScratchAiLoading(false);
+    }
+  };
+
   const handleAIGenerate = async () => {
     if (!aiInput.trim()) {
       Alert.alert("エラー", "料理名や食事内容を入力してくれ");
       return;
     }
-
-    const user = auth.currentUser;
-    if (!user) {
-      Alert.alert("エラー", "AI解析を使うにはログインが必要です");
-      return;
-    }
-
     setIsAiLoading(true);
-
     try {
-      const dictRef = doc(db, "users", user.uid, "food_dictionary", aiInput.trim());
-      const dictSnap = await getDoc(dictRef);
-
-      if (dictSnap.exists()) {
-        const data = dictSnap.data();
-        setFoodName(aiInput);
-        setCal(String(data.cal ?? 0));
-        setPro(String(data.pro ?? 0));
-        setFat(String(data.fat ?? 0));
-        setCarb(String(data.carb ?? 0));
-        setIsAiLoading(false);
-        setAiInput('');
-        return;
-      }
-
-      const app = getApp();
-      const functions = getFunctions(app, "asia-northeast1");
-      const callable = httpsCallable(functions, "analyzeFoodPFC");
-
-      const res = await callable({ text: aiInput.trim() });
-      const data = res.data as any;
-      const total = data?.total;
-
-      if (!total) {
-        throw new Error("AI解析結果の形式が不正です");
-      }
-
-      const totalName = typeof total.name === "string" && total.name.length > 0 ? total.name : aiInput.trim();
-      const safeCal = Number.isFinite(Number(total.cal)) ? Number(total.cal) : 0;
-      const safePro = Number.isFinite(Number(total.pro)) ? Number(total.pro) : 0;
-      const safeFat = Number.isFinite(Number(total.fat)) ? Number(total.fat) : 0;
-      const safeCarb = Number.isFinite(Number(total.carb)) ? Number(total.carb) : 0;
-
-      setFoodName(totalName);
-      setCal(String(Math.round(safeCal)));
-      setPro(String(Math.round(safePro)));
-      setFat(String(Math.round(safeFat)));
-      setCarb(String(Math.round(safeCarb)));
-
+      const r = await resolveFoodNutritionFromText(aiInput);
+      setFoodName(r.name);
+      setCal(String(r.cal));
+      setPro(String(r.pro));
+      setFat(String(r.fat));
+      setCarb(String(r.carb));
       setAiInput("");
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("AI解析エラー:", error);
-      const message = error?.message || error?.code || "AIでの解析に失敗しました。";
-      Alert.alert("エラー", message);
+      const err = error as { message?: string; code?: string };
+      Alert.alert("エラー", err?.message || err?.code || "AIでの解析に失敗しました。");
     } finally {
       setIsAiLoading(false);
     }
@@ -305,6 +610,82 @@ export default function FoodTabScreen() {
               <Text style={{ color: "#ff0844", fontSize: 20, fontWeight: "bold" }}>{totalCarb}g</Text>
             </View>
           </View>
+        </View>
+
+        <View style={{ backgroundColor: "#252525", padding: 16, borderRadius: 14, marginBottom: 20, borderWidth: 1, borderColor: "#333" }}>
+          <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 10 }}>
+            <ClipboardList color="#f1c40f" size={20} style={{ marginRight: 8 }} />
+            <Text style={{ color: "#fff", fontSize: 16, fontWeight: "bold", flex: 1 }}>食事ルーティーン</Text>
+            <Text style={{ color: "#888", fontSize: 12 }}>
+              {mealRoutineUnlimited
+                ? "無制限"
+                : `${mealRoutines.length} / ${FREE_MEAL_ROUTINE_LIMIT}`}
+            </Text>
+          </View>
+          <Text style={{ color: "#888", fontSize: 12, marginBottom: 12, lineHeight: 18 }}>
+            定番の組み合わせをワンタップで今日のリストに追加できます。無料は {FREE_MEAL_ROUTINE_LIMIT} 件まで保存可能です。
+          </Text>
+          <View style={{ gap: 10, marginBottom: 12 }}>
+            <TouchableOpacity
+              style={{ backgroundColor: "#333", paddingVertical: 12, borderRadius: 10, alignItems: "center" }}
+              onPress={() => {
+                if (!mealRoutineUnlimited && mealRoutines.length >= FREE_MEAL_ROUTINE_LIMIT) {
+                  promptRoutineUpgrade();
+                  return;
+                }
+                openRoutineFromToday();
+              }}
+            >
+              <Text style={{ color: "#4facfe", fontWeight: "700" }}>今日の食事から作成</Text>
+              <Text style={{ color: "#666", fontSize: 11, marginTop: 4 }}>一覧から品目を選んで保存</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={{ backgroundColor: "#333", paddingVertical: 12, borderRadius: 10, alignItems: "center" }}
+              onPress={() => {
+                if (!mealRoutineUnlimited && mealRoutines.length >= FREE_MEAL_ROUTINE_LIMIT) {
+                  promptRoutineUpgrade();
+                  return;
+                }
+                openRoutineFromScratch();
+              }}
+            >
+              <Text style={{ color: "#f1c40f", fontWeight: "700" }}>ゼロから作成</Text>
+              <Text style={{ color: "#666", fontSize: 11, marginTop: 4 }}>品目を自由に入力してルーティーン化</Text>
+            </TouchableOpacity>
+          </View>
+          {mealRoutines.length === 0 ? (
+            <Text style={{ color: "#666", fontSize: 13 }}>まだルーティーンがありません</Text>
+          ) : (
+            mealRoutines.map((r) => (
+              <View
+                key={r.id}
+                style={{
+                  backgroundColor: "#1a1a1a",
+                  borderRadius: 10,
+                  padding: 12,
+                  marginBottom: 10,
+                  flexDirection: "row",
+                  alignItems: "center",
+                }}
+              >
+                <View style={{ flex: 1 }}>
+                  <Text style={{ color: "#fff", fontWeight: "700", marginBottom: 4 }}>{r.name}</Text>
+                  <Text style={{ color: "#888", fontSize: 11 }}>
+                    {r.meals.length} 品（計 {r.meals.reduce((s, m) => s + m.cal, 0)} kcal）
+                  </Text>
+                </View>
+                <TouchableOpacity
+                  style={{ backgroundColor: "#2ecc71", paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8, marginRight: 8 }}
+                  onPress={() => void applyMealRoutine(r)}
+                >
+                  <Text style={{ color: "#000", fontWeight: "800", fontSize: 12 }}>追加</Text>
+                </TouchableOpacity>
+                <TouchableOpacity onPress={() => removeMealRoutine(r.id)} style={{ padding: 8 }}>
+                  <Trash2 color="#ff4444" size={20} />
+                </TouchableOpacity>
+              </View>
+            ))
+          )}
         </View>
 
         {/* AI自動入力 兼 辞書検索エリア */}
@@ -470,6 +851,305 @@ export default function FoodTabScreen() {
                 <Text style={{ color: '#666', textAlign: 'center', marginTop: 20 }}>該当する履歴がありません</Text>
               )}
             </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal visible={routineEditorMode !== "closed"} transparent animationType="fade">
+        <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.85)", justifyContent: "center", padding: 16 }}>
+          <View
+            style={{
+              backgroundColor: "#2a2a2a",
+              borderRadius: 16,
+              padding: 16,
+              maxHeight: "90%",
+            }}
+          >
+            <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+              <Text style={{ color: "#fff", fontSize: 17, fontWeight: "bold", flex: 1 }}>
+                {routineEditorMode === "fromToday" ? "今日の食事から作成" : routineEditorMode === "fromScratch" ? "ゼロから作成" : ""}
+              </Text>
+              <TouchableOpacity onPress={closeRoutineEditor} style={{ padding: 8 }}>
+                <X color="#fff" size={22} />
+              </TouchableOpacity>
+            </View>
+            <Text style={{ color: "#888", fontSize: 12, marginBottom: 12, lineHeight: 18 }}>
+              {routineEditorMode === "fromToday"
+                ? "ルーティーンに含める品目にチェックを付けてください（初期はすべて選択済みです）。"
+                : routineEditorMode === "fromScratch"
+                  ? "手入力のほか、下のAIで品目を追加できます（辞書にあるものはそちらを優先）。品目名は保存時に必須です。"
+                  : ""}
+            </Text>
+
+            {routineEditorMode === "fromToday" && (
+              <ScrollView style={{ maxHeight: 280, marginBottom: 12 }} keyboardShouldPersistTaps="handled">
+                {meals.map((m) => {
+                  const on = !!routineSelectedIds[m.id];
+                  return (
+                    <TouchableOpacity
+                      key={m.id}
+                      onPress={() => toggleRoutineMealSelect(m.id)}
+                      style={{
+                        flexDirection: "row",
+                        alignItems: "center",
+                        backgroundColor: "#1a1a1a",
+                        borderRadius: 10,
+                        padding: 12,
+                        marginBottom: 8,
+                        borderWidth: 2,
+                        borderColor: on ? "#2ecc71" : "transparent",
+                      }}
+                    >
+                      <View
+                        style={{
+                          width: 24,
+                          height: 24,
+                          borderRadius: 6,
+                          borderWidth: 2,
+                          borderColor: on ? "#2ecc71" : "#666",
+                          backgroundColor: on ? "#2ecc71" : "transparent",
+                          marginRight: 12,
+                          alignItems: "center",
+                          justifyContent: "center",
+                        }}
+                      >
+                        {on ? <Check color="#000" size={16} strokeWidth={3} /> : null}
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={{ color: "#fff", fontWeight: "700" }}>{m.name}</Text>
+                        <Text style={{ color: "#888", fontSize: 11 }}>
+                          {m.cal}kcal | P {m.pro}g | F {m.fat}g | C {m.carb}g
+                        </Text>
+                      </View>
+                    </TouchableOpacity>
+                  );
+                })}
+              </ScrollView>
+            )}
+
+            {routineEditorMode === "fromScratch" && (
+              <ScrollView style={{ maxHeight: 320, marginBottom: 12 }} keyboardShouldPersistTaps="handled">
+                <View
+                  style={{
+                    backgroundColor: "#252525",
+                    borderRadius: 10,
+                    padding: 12,
+                    marginBottom: 14,
+                    borderWidth: 1,
+                    borderColor: "#444",
+                  }}
+                >
+                  <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 6 }}>
+                    <Sparkles color="#4facfe" size={18} style={{ marginRight: 6 }} />
+                    <Text style={{ color: "#fff", fontWeight: "700", fontSize: 14 }}>AIで品目を追加</Text>
+                  </View>
+                  <Text style={{ color: "#888", fontSize: 11, marginBottom: 10, lineHeight: 16 }}>
+                    メニューや料理名を入力して「追加」で、推定PFCが入った品目を1件足します（先頭行が空ならそこを埋めます）。
+                  </Text>
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                    <TextInput
+                      style={{
+                        flex: 1,
+                        backgroundColor: "#1a1a1a",
+                        color: "#fff",
+                        borderRadius: 8,
+                        paddingHorizontal: 12,
+                        paddingVertical: 10,
+                        borderWidth: 1,
+                        borderColor: "#444",
+                      }}
+                      placeholder="例: コンビニのサラダチキン"
+                      placeholderTextColor="#666"
+                      value={scratchAiInput}
+                      onChangeText={setScratchAiInput}
+                      editable={!isScratchAiLoading && !savingRoutine}
+                    />
+                    <TouchableOpacity
+                      style={{
+                        backgroundColor: "#4facfe",
+                        paddingHorizontal: 14,
+                        paddingVertical: 10,
+                        borderRadius: 8,
+                        opacity: isScratchAiLoading || savingRoutine ? 0.55 : 1,
+                        minWidth: 72,
+                        alignItems: "center",
+                        justifyContent: "center",
+                      }}
+                      onPress={() => void handleScratchAiAppendMeal()}
+                      disabled={isScratchAiLoading || savingRoutine}
+                    >
+                      {isScratchAiLoading ? (
+                        <ActivityIndicator color="#000" size="small" />
+                      ) : (
+                        <Text style={{ color: "#000", fontWeight: "800" }}>追加</Text>
+                      )}
+                    </TouchableOpacity>
+                  </View>
+                </View>
+                {scratchMealDrafts.map((row, idx) => (
+                  <View
+                    key={row.key}
+                    style={{
+                      backgroundColor: "#1a1a1a",
+                      borderRadius: 10,
+                      padding: 12,
+                      marginBottom: 10,
+                    }}
+                  >
+                    <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                      <Text style={{ color: "#888", fontSize: 12 }}>品目 {idx + 1}</Text>
+                      {scratchMealDrafts.length > 1 ? (
+                        <TouchableOpacity onPress={() => removeScratchRow(row.key)} style={{ padding: 4 }}>
+                          <Trash2 color="#ff4444" size={18} />
+                        </TouchableOpacity>
+                      ) : null}
+                    </View>
+                    <Text style={{ color: "#888", fontSize: 11, marginBottom: 4 }}>名前</Text>
+                    <TextInput
+                      style={{
+                        backgroundColor: "#252525",
+                        color: "#fff",
+                        borderRadius: 8,
+                        padding: 10,
+                        marginBottom: 8,
+                        borderWidth: 1,
+                        borderColor: "#444",
+                      }}
+                      placeholder="例: オートミール"
+                      placeholderTextColor="#666"
+                      value={row.name}
+                      onChangeText={(t) => updateScratchRow(row.key, { name: t })}
+                    />
+                    <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
+                      <View style={{ width: "48%" }}>
+                        <Text style={{ color: "#888", fontSize: 10, marginBottom: 4 }}>kcal</Text>
+                        <TextInput
+                          style={{
+                            backgroundColor: "#252525",
+                            color: "#fff",
+                            borderRadius: 8,
+                            padding: 10,
+                            borderWidth: 1,
+                            borderColor: "#444",
+                          }}
+                          keyboardType="numeric"
+                          placeholder="0"
+                          placeholderTextColor="#666"
+                          value={row.cal}
+                          onChangeText={(t) => updateScratchRow(row.key, { cal: t })}
+                        />
+                      </View>
+                      <View style={{ width: "48%" }}>
+                        <Text style={{ color: "#4facfe", fontSize: 10, marginBottom: 4 }}>P (g)</Text>
+                        <TextInput
+                          style={{
+                            backgroundColor: "#252525",
+                            color: "#fff",
+                            borderRadius: 8,
+                            padding: 10,
+                            borderWidth: 1,
+                            borderColor: "#444",
+                          }}
+                          keyboardType="numeric"
+                          placeholder="0"
+                          placeholderTextColor="#666"
+                          value={row.pro}
+                          onChangeText={(t) => updateScratchRow(row.key, { pro: t })}
+                        />
+                      </View>
+                      <View style={{ width: "48%" }}>
+                        <Text style={{ color: "#f6d365", fontSize: 10, marginBottom: 4 }}>F (g)</Text>
+                        <TextInput
+                          style={{
+                            backgroundColor: "#252525",
+                            color: "#fff",
+                            borderRadius: 8,
+                            padding: 10,
+                            borderWidth: 1,
+                            borderColor: "#444",
+                          }}
+                          keyboardType="numeric"
+                          placeholder="0"
+                          placeholderTextColor="#666"
+                          value={row.fat}
+                          onChangeText={(t) => updateScratchRow(row.key, { fat: t })}
+                        />
+                      </View>
+                      <View style={{ width: "48%" }}>
+                        <Text style={{ color: "#ff0844", fontSize: 10, marginBottom: 4 }}>C (g)</Text>
+                        <TextInput
+                          style={{
+                            backgroundColor: "#252525",
+                            color: "#fff",
+                            borderRadius: 8,
+                            padding: 10,
+                            borderWidth: 1,
+                            borderColor: "#444",
+                          }}
+                          keyboardType="numeric"
+                          placeholder="0"
+                          placeholderTextColor="#666"
+                          value={row.carb}
+                          onChangeText={(t) => updateScratchRow(row.key, { carb: t })}
+                        />
+                      </View>
+                    </View>
+                  </View>
+                ))}
+                <TouchableOpacity
+                  onPress={addScratchRow}
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    paddingVertical: 12,
+                    borderRadius: 10,
+                    borderWidth: 1,
+                    borderColor: "#555",
+                    borderStyle: "dashed",
+                    gap: 8,
+                  }}
+                >
+                  <Plus color="#4facfe" size={20} />
+                  <Text style={{ color: "#4facfe", fontWeight: "700" }}>品目を追加</Text>
+                </TouchableOpacity>
+              </ScrollView>
+            )}
+
+            <Text style={{ color: "#fff", fontSize: 14, fontWeight: "600", marginBottom: 6 }}>ルーティーン名</Text>
+            <TextInput
+              style={{
+                backgroundColor: "#1a1a1a",
+                color: "#fff",
+                borderRadius: 10,
+                padding: 12,
+                marginBottom: 14,
+                borderWidth: 1,
+                borderColor: "#444",
+              }}
+              placeholder="例: 平日ランチ"
+              placeholderTextColor="#666"
+              value={newRoutineName}
+              onChangeText={setNewRoutineName}
+            />
+            <View style={{ flexDirection: "row", justifyContent: "flex-end", gap: 12, alignItems: "center" }}>
+              <TouchableOpacity onPress={closeRoutineEditor}>
+                <Text style={{ color: "#888", padding: 10 }}>キャンセル</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={{
+                  backgroundColor: "#2ecc71",
+                  paddingHorizontal: 18,
+                  paddingVertical: 10,
+                  borderRadius: 10,
+                  opacity: savingRoutine ? 0.6 : 1,
+                }}
+                disabled={savingRoutine}
+                onPress={() => void confirmSaveMealRoutine()}
+              >
+                {savingRoutine ? <ActivityIndicator color="#000" /> : <Text style={{ color: "#000", fontWeight: "800" }}>保存</Text>}
+              </TouchableOpacity>
+            </View>
           </View>
         </View>
       </Modal>

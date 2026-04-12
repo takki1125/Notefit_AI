@@ -1,3 +1,4 @@
+import { createHash } from "crypto";
 import * as admin from "firebase-admin";
 import { FieldValue, Timestamp } from "firebase-admin/firestore";
 import { HttpsError } from "firebase-functions/v2/https";
@@ -13,10 +14,21 @@ const db = admin.firestore();
 const RC_KEYS = {
   aiConsultCoinsPerTurn: "ai_consult_coins_per_turn",
   registrationBonusCoins: "registration_bonus_coins",
+  subscriptionInitialPurchaseCoins: "subscription_initial_purchase_coins",
+  subscriptionRenewalCoins: "subscription_renewal_coins",
+  aiModelDefault: "ai_model_default",
+  aiModelPremium: "ai_model_premium",
 } as const;
+
+const DEFAULT_AI_MODEL_FREE = "gpt-4o-mini";
+const DEFAULT_AI_MODEL_PREMIUM = "gpt-4o";
 
 const DEFAULT_AI_CHAT_COST = 10;
 const DEFAULT_REGISTRATION_BONUS = 300;
+/** 初回サブスク付与のフォールバック（Remote Config 未設定時） */
+const DEFAULT_SUBSCRIPTION_INITIAL_COINS = 200;
+/** 更新時付与のフォールバック */
+const DEFAULT_SUBSCRIPTION_RENEWAL_COINS = 100;
 
 export const COIN_EXPIRY_DAYS = 179;
 
@@ -30,6 +42,22 @@ function expiryTimestamp(): Timestamp {
   const d = new Date();
   d.setDate(d.getDate() + COIN_EXPIRY_DAYS);
   return Timestamp.fromDate(d);
+}
+
+function parseRcString(
+  template: admin.remoteConfig.RemoteConfigTemplate,
+  key: string,
+  fallback: string,
+): string {
+  try {
+    const param = template.parameters[key];
+    const dv = param?.defaultValue as { value?: string } | undefined;
+    const str = typeof dv?.value === "string" ? dv.value.trim() : "";
+    if (str.length > 0) return str;
+  } catch {
+    /* fallback */
+  }
+  return fallback;
 }
 
 function parseRcInt(template: admin.remoteConfig.RemoteConfigTemplate, key: string, fallback: number): number {
@@ -66,6 +94,100 @@ export async function getRegistrationBonusAmount(): Promise<number> {
   } catch (e) {
     logger.warn("getRegistrationBonusAmount: Remote Config fallback", e);
     return DEFAULT_REGISTRATION_BONUS;
+  }
+}
+
+/** AI 相談チャット用モデル（サブスクは Webhook 同期済みプレミアム期限で判定） */
+export async function resolveAiCoachChatModel(isPremium: boolean): Promise<string> {
+  try {
+    const rc = admin.remoteConfig();
+    const template = await rc.getTemplate();
+    const key = isPremium ? RC_KEYS.aiModelPremium : RC_KEYS.aiModelDefault;
+    const fallback = isPremium ? DEFAULT_AI_MODEL_PREMIUM : DEFAULT_AI_MODEL_FREE;
+    const id = parseRcString(template, key, fallback);
+    return id.length > 0 ? id : fallback;
+  } catch (e) {
+    logger.warn("resolveAiCoachChatModel: Remote Config fallback", e);
+    return isPremium ? DEFAULT_AI_MODEL_PREMIUM : DEFAULT_AI_MODEL_FREE;
+  }
+}
+
+export async function getSubscriptionInitialPurchaseCoins(): Promise<number> {
+  try {
+    const rc = admin.remoteConfig();
+    const template = await rc.getTemplate();
+    const n = parseRcInt(
+      template,
+      RC_KEYS.subscriptionInitialPurchaseCoins,
+      DEFAULT_SUBSCRIPTION_INITIAL_COINS,
+    );
+    return Math.max(0, n);
+  } catch (e) {
+    logger.warn("getSubscriptionInitialPurchaseCoins: Remote Config fallback", e);
+    return DEFAULT_SUBSCRIPTION_INITIAL_COINS;
+  }
+}
+
+export async function getSubscriptionRenewalCoins(): Promise<number> {
+  try {
+    const rc = admin.remoteConfig();
+    const template = await rc.getTemplate();
+    const n = parseRcInt(template, RC_KEYS.subscriptionRenewalCoins, DEFAULT_SUBSCRIPTION_RENEWAL_COINS);
+    return Math.max(0, n);
+  } catch (e) {
+    logger.warn("getSubscriptionRenewalCoins: Remote Config fallback", e);
+    return DEFAULT_SUBSCRIPTION_RENEWAL_COINS;
+  }
+}
+
+/** RevenueCat の event.type 用文字列（必要に応じて拡張） */
+export type RevenueCatBillableEventType = "INITIAL_PURCHASE" | "RENEWAL";
+
+async function subscriptionCoinAmountForEventType(eventType: RevenueCatBillableEventType): Promise<number> {
+  if (eventType === "INITIAL_PURCHASE") {
+    return getSubscriptionInitialPurchaseCoins();
+  }
+  return getSubscriptionRenewalCoins();
+}
+
+/**
+ * RevenueCat Webhook からのサブスクコイン付与。
+ * Firestore のドキュメント ID をイベント ID ハッシュで固定し create で二重付与を防ぐ。
+ */
+export async function grantSubscriptionCoinsFromRevenueCatWebhook(
+  uid: string,
+  revenueCatEventId: string,
+  eventType: RevenueCatBillableEventType,
+): Promise<{ granted: boolean; amount?: number; duplicate: boolean }> {
+  if (!uid || !revenueCatEventId) {
+    throw new HttpsError("invalid-argument", "uid と revenueCatEventId が必要です。");
+  }
+
+  const amount = await subscriptionCoinAmountForEventType(eventType);
+  if (amount <= 0) {
+    logger.info("grantSubscriptionCoinsFromRevenueCatWebhook: skip zero amount", { uid, eventType });
+    return { granted: false, duplicate: false };
+  }
+
+  const docId = `sub_rc_${createHash("sha256").update(revenueCatEventId, "utf8").digest("hex")}`;
+  const markerRef = db.collection("users").doc(uid).collection("coin_transactions").doc(docId);
+
+  try {
+    await markerRef.create({
+      amount,
+      type: "subscription_grant",
+      expires_at: expiryTimestamp(),
+      created_at: FieldValue.serverTimestamp(),
+      idempotency_key: `revenuecat_webhook_${revenueCatEventId}`,
+      note: `revenuecat:${eventType}`,
+    });
+    return { granted: true, amount, duplicate: false };
+  } catch (e: unknown) {
+    if (isAlreadyExistsError(e)) {
+      return { granted: false, duplicate: true };
+    }
+    logger.error("grantSubscriptionCoinsFromRevenueCatWebhook create error", e);
+    throw new HttpsError("internal", "サブスクリプションコイン付与に失敗しました。");
   }
 }
 
@@ -201,6 +323,60 @@ function isAlreadyExistsError(e: unknown): boolean {
   if (anyErr?.code === "already-exists") return true;
   if (typeof anyErr?.message === "string" && /already exists/i.test(anyErr.message)) return true;
   return false;
+}
+
+export type MissionGrantMeta = {
+  missionId: string;
+  bucket: "daily" | "weekly";
+  periodKey: string;
+};
+
+/**
+ * ミッション報酬: coin_transactions と mission_events を同一 docId で atomically create（冪等）。
+ */
+export async function grantMissionRewardInTransaction(
+  uid: string,
+  stableDocId: string,
+  amount: number,
+  meta: MissionGrantMeta,
+): Promise<{ granted: boolean; duplicate: boolean; amount?: number }> {
+  if (!stableDocId || amount <= 0) {
+    throw new HttpsError("invalid-argument", "ミッション付与パラメータが不正です。");
+  }
+  const coinRef = db.collection("users").doc(uid).collection("coin_transactions").doc(stableDocId);
+  const missionRef = db.collection("users").doc(uid).collection("mission_events").doc(stableDocId);
+
+  try {
+    return await db.runTransaction(async (tx) => {
+      const [cSnap, mSnap] = await Promise.all([tx.get(coinRef), tx.get(missionRef)]);
+      if (cSnap.exists || mSnap.exists) {
+        return { granted: false, duplicate: true };
+      }
+      tx.create(coinRef, {
+        amount,
+        type: "daily_mission",
+        expires_at: expiryTimestamp(),
+        created_at: FieldValue.serverTimestamp(),
+        idempotency_key: stableDocId,
+        note: `mission:${meta.bucket}:${meta.missionId}`,
+      });
+      tx.create(missionRef, {
+        kind: "daily_mission_complete",
+        mission_id: meta.missionId,
+        coins_granted: amount,
+        local_date: meta.periodKey,
+        bucket: meta.bucket,
+        created_at: FieldValue.serverTimestamp(),
+      });
+      return { granted: true, duplicate: false, amount };
+    });
+  } catch (e: unknown) {
+    if (isAlreadyExistsError(e)) {
+      return { granted: false, duplicate: true };
+    }
+    logger.error("grantMissionRewardInTransaction", e);
+    throw new HttpsError("internal", "ミッション報酬の付与に失敗しました。");
+  }
 }
 
 /**

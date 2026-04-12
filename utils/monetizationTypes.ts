@@ -25,6 +25,10 @@ export const REMOTE_CONFIG_KEYS = {
   rewardAdCoins: "reward_ad_coins",
   /** ログインボーナス基礎コイン */
   loginBonusBaseCoins: "login_bonus_base_coins",
+  /** サブスク初回購入（RevenueCat Webhook INITIAL_PURCHASE 等）で付与するコイン */
+  subscriptionInitialPurchaseCoins: "subscription_initial_purchase_coins",
+  /** サブスク自動更新（RENEWAL）ごとに付与するコイン */
+  subscriptionRenewalCoins: "subscription_renewal_coins",
 } as const;
 
 export const USER_SUBCOLLECTIONS = {
@@ -39,6 +43,41 @@ export const SUBSCRIPTION_ENTITLEMENTS = {
   tier1: "tier1",
   tier2: "tier2",
 } as const;
+
+/**
+ * RevenueCat ダッシュボードの Entitlement identifier と一致させる。
+ * 単一の「プレミアム」ID だけでも可（下位互換で tier1/tier2 もプレミアム扱い）。
+ */
+export const REVENUECAT_ENTITLEMENTS = {
+  /** 広告非表示（単体エンタイトルメント運用時） */
+  noAds: "no_ads",
+  /** 追加種目など機能拡張（単体エンタイトルメント運用時） */
+  extraExercises: "extra_exercises",
+  /** まとめてプレミアムを付与する場合の推奨 ID */
+  premium: "premium",
+} as const;
+
+export type SubscriptionFeatureFlags = {
+  /** バナー・インタースティシャル等（リワード広告は除く）を出さない */
+  hideAds: boolean;
+  /** マイ種目・食事ルーティーンなどのプレミアム上限解放（Entitlement と同期） */
+  unlockExtraExercises: boolean;
+};
+
+/** CustomerInfo.entitlements.active を解決して UI 制御に使う */
+export function resolveSubscriptionFeatureFlags(activeEntitlementIds: Set<string>): SubscriptionFeatureFlags {
+  const hasTier =
+    activeEntitlementIds.has(SUBSCRIPTION_ENTITLEMENTS.tier1) ||
+    activeEntitlementIds.has(SUBSCRIPTION_ENTITLEMENTS.tier2);
+  const premium = hasTier || activeEntitlementIds.has(REVENUECAT_ENTITLEMENTS.premium);
+  const noAds =
+    premium ||
+    activeEntitlementIds.has(REVENUECAT_ENTITLEMENTS.noAds);
+  const unlockExtraExercises =
+    premium ||
+    activeEntitlementIds.has(REVENUECAT_ENTITLEMENTS.extraExercises);
+  return { hideAds: noAds, unlockExtraExercises };
+}
 
 /** 1 日のデイリーミッション枠（要件: 無料 3 / 有料 5） */
 export function dailyMissionSlotCount(tier: SubscriptionTier): number {
@@ -81,5 +120,6 @@ export type MissionEventDoc = {
   coins_granted?: number;
   mission_id?: string;
   local_date?: string;
+  bucket?: "daily" | "weekly";
   created_at?: Timestamp;
 };
