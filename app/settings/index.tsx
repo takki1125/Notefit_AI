@@ -2,12 +2,13 @@ import React, { useEffect, useState } from 'react';
 import { useRouter } from 'expo-router';
 import { Alert, ScrollView, Switch, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { LogOut, Trash2, X, User, ChevronRight, Target, Bell, Sparkles, CheckSquare, Coins } from 'lucide-react-native';
+import { LogOut, Trash2, X, User, ChevronRight, Target, Bell, Sparkles, CheckSquare, Coins, BookOpen } from 'lucide-react-native';
 import { deleteUser, signOut } from 'firebase/auth';
 import { auth } from '../../firebaseConfig';
 import { styles } from '../../theme/styles';
 import { getUserProfile, setDetailedTrackingEnabled } from '../../utils/firestoreProfile';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { clearHomeTutorialSeen, TUTORIAL_REPLAY_PENDING_KEY } from '../../utils/homeTutorialStorage';
 
 export default function SettingsScreen() {
   const router = useRouter();
@@ -39,6 +40,18 @@ export default function SettingsScreen() {
       { text: 'キャンセル', style: 'cancel' },
       { text: 'ログアウト', style: 'destructive', onPress: () => signOut(auth) },
     ]);
+  };
+
+  const handleReplayHomeTutorial = async () => {
+    const user = auth.currentUser;
+    if (!user) return;
+    try {
+      await clearHomeTutorialSeen(user.uid);
+      await AsyncStorage.setItem(TUTORIAL_REPLAY_PENDING_KEY, user.uid);
+      router.back();
+    } catch {
+      Alert.alert('エラー', '操作に失敗しました。');
+    }
   };
 
   const handleDeleteAccount = () => {
@@ -105,6 +118,26 @@ export default function SettingsScreen() {
               <View style={{ flex: 1 }}>
                 <Text style={styles.routineNameText}>AIコーチのスタイル</Text>
                 <Text style={styles.routineDescText}>トーン・口調・追加の希望</Text>
+              </View>
+              <ChevronRight color="#444" size={20} />
+            </View>
+          </TouchableOpacity>
+        </View>
+
+        {/* セクション：ガイド */}
+        <View style={{ marginTop: 20 }}>
+          <Text style={[styles.sectionHeaderText, { marginBottom: 10 }]}>ガイド</Text>
+          <TouchableOpacity
+            style={[styles.routineItem, { marginBottom: 10 }]}
+            onPress={handleReplayHomeTutorial}
+          >
+            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+              <View style={{ backgroundColor: '#333', padding: 8, borderRadius: 10, marginRight: 15 }}>
+                <BookOpen color="#2ecc71" size={20} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.routineNameText}>ホームのチュートリアルを再表示</Text>
+                <Text style={styles.routineDescText}>画面の案内をもう一度見る</Text>
               </View>
               <ChevronRight color="#444" size={20} />
             </View>

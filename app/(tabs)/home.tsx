@@ -1,5 +1,5 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { useFocusEffect } from "@react-navigation/native";
+import { useFocusEffect, useIsFocused } from "@react-navigation/native";
 import {
   collection,
   deleteDoc,
@@ -22,11 +22,12 @@ import {
   ChevronLeft,
   ChevronRight,
 } from "lucide-react-native";
-import React, { useCallback, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
   FlatList,
+  InteractionManager,
   Modal,
   Platform,
   Pressable,
@@ -39,7 +40,7 @@ import DraggableFlatList, { RenderItemParams, ScaleDecorator } from "react-nativ
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaView } from "react-native-safe-area-context";
 import * as Haptics from "expo-haptics";
-import { useRouter } from "expo-router";
+import { usePathname, useRouter } from "expo-router";
 
 // ★ 追加: Copilotのインポート
 import { CopilotProvider, CopilotStep, walkthroughable, useCopilot } from "react-native-copilot";
@@ -58,6 +59,12 @@ import { useCoinBalance } from "../../hooks/useCoinBalance";
 import { useHomeWidgetOrder } from "../../hooks/useHomeWidgetOrder";
 import { styles } from "../../theme/styles";
 import { requestRegistrationBonus } from "../../utils/coinBalance";
+import {
+  hasSeenHomeTutorial,
+  markHomeTutorialSeen,
+  TUTORIAL_REPLAY_PENDING_KEY,
+  tutorialHomeKeyForUser,
+} from "../../utils/homeTutorialStorage";
 
 // --- 型定義 ---
 type WorkoutSet = { weight: number | string; reps: number | string; done: boolean; };
@@ -252,12 +259,18 @@ const CalendarSection: React.FC<{
 // ★ メインコンポーネントの中身を分離
 function HomeTabContent() {
   const router = useRouter();
+  const pathname = usePathname();
+  const isFocused = useIsFocused();
   const uid = auth.currentUser?.uid;
   const coinBalance = useCoinBalance();
   const { order, persistOrder, addWidget, hydrated } = useHomeWidgetOrder(uid);
 
   // ★ Copilotのフックを使用
-  const { start } = useCopilot();
+  const { start, stop, copilotEvents } = useCopilot();
+  const startTutorialRef = useRef(start);
+  const stopTutorialRef = useRef(stop);
+  startTutorialRef.current = start;
+  stopTutorialRef.current = stop;
 
   const [isEditMode, setIsEditMode] = useState(false);
   const [addWidgetModalVisible, setAddWidgetModalVisible] = useState(false);
@@ -313,33 +326,112 @@ function HomeTabContent() {
     }
   }, []);
 
-  // ★ チュートリアル発火のロジックを追加
+  const tutorialStorageKey = uid ? tutorialHomeKeyForUser(uid) : null;
+  const skipTutorialPersistOnNextStopRef = useRef(false);
+  const replayBusyRef = useRef(false);
+
+  // チュートリアル完了時のみ「見た」を保存（replay 用の stop では保存しない）
+  useEffect(() => {
+    if (!tutorialStorageKey || !uid) return;
+    const onStop = () => {
+      if (skipTutorialPersistOnNextStopRef.current) {
+        skipTutorialPersistOnNextStopRef.current = false;
+        return;
+      }
+      void markHomeTutorialSeen(uid).catch(() => {});
+    };
+    copilotEvents.on("stop", onStop);
+    return () => {
+      copilotEvents.off("stop", onStop);
+    };
+  }, [copilotEvents, tutorialStorageKey, uid]);
+
+  // 設定「再表示」: pending があるときだけスケジュール（start/stop を依存に含めない）
+  useEffect(() => {
+    if (!uid || !hydrated || !isFocused) return;
+    if ((pathname ?? "").includes("settings")) return;
+
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+
+    void (async () => {
+      try {
+        const pending = await AsyncStorage.getItem(TUTORIAL_REPLAY_PENDING_KEY);
+        if (cancelled || pending !== uid) return;
+
+        timer = setTimeout(() => {
+          if (cancelled || replayBusyRef.current) return;
+          void (async () => {
+            replayBusyRef.current = true;
+            if (__DEV__) {
+              console.warn("[HomeTutorial] replay run", { pathname, uid: uid.slice(0, 6) });
+            }
+            try {
+              skipTutorialPersistOnNextStopRef.current = true;
+              try {
+                await stopTutorialRef.current();
+              } catch {
+                /* noop */
+              }
+              await new Promise<void>((resolve) => {
+                InteractionManager.runAfterInteractions(() => {
+                  setTimeout(resolve, 550);
+                });
+              });
+              await startTutorialRef.current();
+              await AsyncStorage.removeItem(TUTORIAL_REPLAY_PENDING_KEY);
+            } catch (e) {
+              if (__DEV__) console.warn("[HomeTutorial] replay failed", e);
+              await AsyncStorage.removeItem(TUTORIAL_REPLAY_PENDING_KEY).catch(() => {});
+            } finally {
+              replayBusyRef.current = false;
+            }
+          })();
+        }, 750);
+      } catch {
+        /* noop */
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+      if (timer) clearTimeout(timer);
+    };
+  }, [uid, hydrated, isFocused, pathname]);
+
+  // 初回のみ: start を依存に入れない（毎レンダーで再実行されタイマーが巻き戻るのを防ぐ）
+  useEffect(() => {
+    if (!hydrated || !uid) return;
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+
+    void (async () => {
+      try {
+        const hasSeen = await hasSeenHomeTutorial(uid);
+        if (cancelled || hasSeen) return;
+        timer = setTimeout(() => {
+          if (!cancelled) void startTutorialRef.current();
+        }, 1500);
+      } catch (error) {
+        console.error("Tutorial check failed:", error);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+      if (timer) clearTimeout(timer);
+    };
+  }, [hydrated, uid]);
+
   useFocusEffect(
     useCallback(() => {
-      const checkTutorial = async () => {
-        try {
-          const hasSeen = await AsyncStorage.getItem("@tutorial_home");
-          if (!hasSeen) {
-            // 画面遷移のアニメーションが終わるのを少し待ってからチュートリアル開始
-            setTimeout(() => {
-              console.log("チュートリアル発火の合図！"); // ★ついでにログも仕込む
-              start();
-            }, 1500);
-            await AsyncStorage.setItem("@tutorial_home", "true");
-          }
-        } catch (error) {
-          console.error("Tutorial check failed:", error);
-        }
-      };
-
-      checkTutorial();
       fetchHistory();
       fetchTodayMeals();
       const u = auth.currentUser;
       if (u) {
         void requestRegistrationBonus().catch(() => { });
       }
-    }, [fetchHistory, fetchTodayMeals, start]),
+    }, [fetchHistory, fetchTodayMeals]),
   );
 
   useFocusEffect(
