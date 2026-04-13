@@ -3,7 +3,7 @@
     "name": "fitness-app",
     "slug": "notefit-ai",
     "scheme": "fitness-app",
-    "version": "1.0.1",
+    "version": "1.0.2",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "userInterfaceStyle": "light",
@@ -19,9 +19,7 @@
     "android": {
       "package": "com.takimoto.shoa.notefitai",
       "versionCode": 1,
-      "permissions": [
-        "com.android.vending.BILLING"
-      ],
+      "permissions": ["com.android.vending.BILLING"],
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#ffffff"
