@@ -117,6 +117,8 @@ function AiAdviceTabContent() {
 
   // ★ 追加：Copilotのフック
   const { start, copilotEvents } = useCopilot();
+  const startTutorialRef = useRef(start);
+  startTutorialRef.current = start;
 
   const activeSession = useMemo(
     () => sessions.find((s) => s.id === activeId) ?? null,
@@ -138,20 +140,25 @@ function AiAdviceTabContent() {
     if (!user) return;
 
     let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | undefined; // ← タイマーを記憶する
+
     const checkTutorial = async () => {
       try {
         const hasSeen = await AsyncStorage.getItem(`@tutorial_ai_${user.uid}`);
         if (!hasSeen && !cancelled) {
-          setTimeout(() => {
-            if (!cancelled) void start();
+          timer = setTimeout(() => {
+            if (!cancelled) void startTutorialRef.current();
           }, 500);
         }
       } catch (e) {}
     };
     checkTutorial();
 
-    return () => { cancelled = true; };
-  }, [hydrated, start]);
+    return () => {
+      cancelled = true;
+      if (timer) clearTimeout(timer); // ← 古いタイマーを確実に殺す！
+    };
+  }, [hydrated]); // ← 依存配列から start を外す！
 
   // ★ 追加：チュートリアル完了時にフラグを保存
   useEffect(() => {
@@ -577,120 +584,121 @@ function AiAdviceTabContent() {
         behavior={Platform.OS === "ios" ? "padding" : undefined}
         keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 0}
       >
-        {/* ★ 追加：ここで全体をサンドイッチ */}
+        {/* ★ ヘッダーだけをターゲットにする */}
         <CopilotStep
           text="ここはAIコーチの相談部屋です！トレーニングメニューの作成や食事の悩みなど、何でも気軽に聞いてみましょう。"
           order={1}
           name="aiIntro"
         >
-          <WalkthroughableView style={local.flex}>
-            <View style={local.header}>
-              <TouchableOpacity
-                onPress={openDrawer}
-                hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-                accessibilityLabel="会話履歴を開く"
-                style={local.headerIconBtn}
-              >
-                <Menu color="#fff" size={26} />
-              </TouchableOpacity>
-              <View style={local.headerCenter}>
-                <Sparkles color="#4facfe" size={18} />
-                <View style={local.headerTitleBlock}>
-                  <Text style={local.headerTitle} numberOfLines={1}>
-                    {activeSession?.title ?? "AIアドバイス"}
-                  </Text>
-                  {coinBalance !== null ? (
-                    <Text style={local.headerCoinSub} numberOfLines={1}>
-                      コイン {coinBalance}
-                    </Text>
-                  ) : null}
-                </View>
-              </View>
-              <TouchableOpacity
-                onPress={createSession}
-                hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-                accessibilityLabel="新しい会話"
-                style={local.headerIconBtn}
-              >
-                <Plus color="#2ecc71" size={26} />
-              </TouchableOpacity>
-            </View>
-
-            <ScrollView
-              ref={scrollRef}
-              style={local.scroll}
-              contentContainerStyle={local.scrollContent}
-              keyboardShouldPersistTaps="handled"
-              keyboardDismissMode="interactive"
+          <WalkthroughableView style={local.header}>
+            <TouchableOpacity
+              onPress={openDrawer}
+              hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+              accessibilityLabel="会話履歴を開く"
+              style={local.headerIconBtn}
             >
-              {messages.length === 0 ? (
-                <View style={local.emptyWrap}>
-                  <Text style={local.emptyTitle}>気になることを自由に相談</Text>
-                  <Text style={local.emptyBody}>
-                    1 回の送信で約 {DISPLAY_FALLBACK_AI_CHAT_COIN_COST} コインを消費します（サーバー設定）。残高は上部に表示されます。
+              <Menu color="#fff" size={26} />
+            </TouchableOpacity>
+            
+            <View style={local.headerCenter}>
+              <Sparkles color="#4facfe" size={18} />
+              <View style={local.headerTitleBlock}>
+                <Text style={local.headerTitle} numberOfLines={1}>
+                  {activeSession?.title ?? "AIアドバイス"}
+                </Text>
+                {coinBalance !== null ? (
+                  <Text style={local.headerCoinSub} numberOfLines={1}>
+                    コイン {coinBalance}
                   </Text>
-                  <Text style={local.emptyBody}>
-                    左上のメニューから過去の会話を開けます。長押しでピン留め・名前変更・削除。履歴はこの端末に保存されます。
-                  </Text>
-                  <TouchableOpacity
-                    style={local.emptyLink}
-                    onPress={() => router.push("/settings/monetization")}
-                    activeOpacity={0.85}
-                  >
-                    <Text style={local.emptyLinkText}>コイン・プラン・今後の機能を見る →</Text>
-                  </TouchableOpacity>
-                </View>
-              ) : (
-                messages.map((m) => (
-                  <View
-                    key={m.id}
-                    style={[
-                      local.bubbleWrap,
-                      m.role === "user" ? local.bubbleWrapUser : local.bubbleWrapAssistant,
-                    ]}
-                  >
-                    <View
-                      style={[
-                        local.bubble,
-                        m.role === "user" ? local.bubbleUser : local.bubbleAssistant,
-                      ]}
-                    >
-                      <Text style={m.role === "user" ? local.bubbleTextUser : local.bubbleTextAssistant}>
-                        {m.content}
-                      </Text>
-                    </View>
-                  </View>
-                ))
-              )}
-            </ScrollView>
-
-            <View style={local.inputRow}>
-              <TextInput
-                style={local.input}
-                placeholder="メッセージを入力…"
-                placeholderTextColor="#666"
-                value={input}
-                onChangeText={setInput}
-                multiline
-                maxLength={4000}
-                editable={!sending}
-                textAlignVertical="top"
-              />
-              <TouchableOpacity
-                style={[local.sendBtn, (!input.trim() || sending) && local.sendBtnDisabled]}
-                onPress={onSend}
-                disabled={!input.trim() || sending}
-                accessibilityLabel="送信"
-              >
-                {sending ? (
-                  <ActivityIndicator color="#000" size="small" />
-                ) : (
-                  <Send color="#000" size={22} />
-                )}
-              </TouchableOpacity>
+                ) : null}
+              </View>
             </View>
+
+            <TouchableOpacity
+              onPress={createSession}
+              hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+              accessibilityLabel="新しい会話"
+              style={local.headerIconBtn}
+            >
+              <Plus color="#2ecc71" size={26} />
+            </TouchableOpacity>
           </WalkthroughableView>
         </CopilotStep>
+
+        {/* ↓↓↓ ここから下はそのまま ↓↓↓ */}
+        <ScrollView
+          ref={scrollRef}
+          style={local.scroll}
+          contentContainerStyle={local.scrollContent}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="interactive"
+        >
+          {messages.length === 0 ? (
+            <View style={local.emptyWrap}>
+              <Text style={local.emptyTitle}>気になることを自由に相談</Text>
+              <Text style={local.emptyBody}>
+                1 回の送信で約 {DISPLAY_FALLBACK_AI_CHAT_COIN_COST} コインを消費します（サーバー設定）。残高は上部に表示されます。
+              </Text>
+              <Text style={local.emptyBody}>
+                左上のメニューから過去の会話を開けます。長押しでピン留め・名前変更・削除。履歴はこの端末に保存されます。
+              </Text>
+              <TouchableOpacity
+                style={local.emptyLink}
+                onPress={() => router.push("/settings/monetization")}
+                activeOpacity={0.85}
+              >
+                <Text style={local.emptyLinkText}>コイン・プラン・今後の機能を見る →</Text>
+              </TouchableOpacity>
+            </View>
+          ) : (
+            messages.map((m) => (
+              <View
+                key={m.id}
+                style={[
+                  local.bubbleWrap,
+                  m.role === "user" ? local.bubbleWrapUser : local.bubbleWrapAssistant,
+                ]}
+              >
+                <View
+                  style={[
+                    local.bubble,
+                    m.role === "user" ? local.bubbleUser : local.bubbleAssistant,
+                  ]}
+                >
+                  <Text style={m.role === "user" ? local.bubbleTextUser : local.bubbleTextAssistant}>
+                    {m.content}
+                  </Text>
+                </View>
+              </View>
+            ))
+          )}
+        </ScrollView>
+
+        <View style={local.inputRow}>
+          <TextInput
+            style={local.input}
+            placeholder="メッセージを入力…"
+            placeholderTextColor="#666"
+            value={input}
+            onChangeText={setInput}
+            multiline
+            maxLength={4000}
+            editable={!sending}
+            textAlignVertical="top"
+          />
+          <TouchableOpacity
+            style={[local.sendBtn, (!input.trim() || sending) && local.sendBtnDisabled]}
+            onPress={onSend}
+            disabled={!input.trim() || sending}
+            accessibilityLabel="送信"
+          >
+            {sending ? (
+              <ActivityIndicator color="#000" size="small" />
+            ) : (
+              <Send color="#000" size={22} />
+            )}
+          </TouchableOpacity>
+        </View>
       </KeyboardAvoidingView>
 
       <Modal visible={drawerOpen} transparent animationType="none" onRequestClose={closeDrawer}>
