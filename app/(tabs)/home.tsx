@@ -338,7 +338,7 @@ function HomeTabContent() {
         skipTutorialPersistOnNextStopRef.current = false;
         return;
       }
-      void markHomeTutorialSeen(uid).catch(() => {});
+      void markHomeTutorialSeen(uid).catch(() => { });
     };
     copilotEvents.on("stop", onStop);
     return () => {
@@ -382,7 +382,7 @@ function HomeTabContent() {
               await AsyncStorage.removeItem(TUTORIAL_REPLAY_PENDING_KEY);
             } catch (e) {
               if (__DEV__) console.warn("[HomeTutorial] replay failed", e);
-              await AsyncStorage.removeItem(TUTORIAL_REPLAY_PENDING_KEY).catch(() => {});
+              await AsyncStorage.removeItem(TUTORIAL_REPLAY_PENDING_KEY).catch(() => { });
             } finally {
               replayBusyRef.current = false;
             }
@@ -411,7 +411,7 @@ function HomeTabContent() {
         if (cancelled || hasSeen) return;
         timer = setTimeout(() => {
           if (!cancelled) void startTutorialRef.current();
-        }, 1500);
+        }, 500);
       } catch (error) {
         console.error("Tutorial check failed:", error);
       }
@@ -529,63 +529,84 @@ function HomeTabContent() {
       case "ai": return wrapIfEditEntry(<View pointerEvents={blockPointer}><DailyAIAdviceCard /></View>);
       case "calendar":
         return (
-          <CalendarSection
-            viewedDate={viewedDate} trainedDays={trainedDays} onDayPress={handleDayPress}
-            onPrevMonth={() => setViewedDate(new Date(viewedDate.getFullYear(), viewedDate.getMonth() - 1, 1))}
-            onNextMonth={() => setViewedDate(new Date(viewedDate.getFullYear(), viewedDate.getMonth() + 1, 1))}
-            editMode={editMode} onLongPressEdit={!editMode ? onLongPressEdit : undefined}
-          />
+          // ★ 1. CopilotStepで囲み、順番(order)を2にする
+          <CopilotStep
+            text="カレンダーの日付をタップすると、その日のトレーニングや食事の記録を詳しく確認できます。"
+            order={2}
+            name="calendarTutorial"
+          >
+            {/* ★ 2. 光らせる実体をWalkthroughableViewで囲む */}
+            <WalkthroughableView>
+              <CalendarSection
+                viewedDate={viewedDate}
+                trainedDays={trainedDays}
+                onDayPress={handleDayPress}
+                onPrevMonth={() => setViewedDate(new Date(viewedDate.getFullYear(), viewedDate.getMonth() - 1, 1))}
+                onNextMonth={() => setViewedDate(new Date(viewedDate.getFullYear(), viewedDate.getMonth() + 1, 1))}
+                editMode={editMode}
+                onLongPressEdit={!editMode ? onLongPressEdit : undefined}
+              />
+            </WalkthroughableView>
+          </CopilotStep>
         );
       case "workout":
         return (
-          <TouchableOpacity
-            style={styles.card} activeOpacity={0.8} disabled={editMode}
-            onPress={() => router.push("/training")} onLongPress={!editMode && onLongPressEdit ? onLongPressEdit : undefined} delayLongPress={450}
+          <CopilotStep
+            text="ホーム画面の各ウィジェットは、詳細タブへのショートカットになっています。例えばこれをタップすると、トレーニング画面へ直接移動できます。（長押しで並べ替えも可能です）"
+            order={3}
+            name="shortcutTutorial"
           >
-            <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 15 }}>
-              <View>
-                <Text style={{ color: "#2ecc71", fontSize: 14, fontWeight: "bold", letterSpacing: 1, marginBottom: 4 }}>WORKOUT</Text>
-                <View style={{ flexDirection: 'row', alignItems: 'baseline' }}>
-                  <Text style={{ color: "#fff", fontSize: 16, fontWeight: "bold" }}>{todaysWorkouts.length > 0 ? "TODAY" : "START WORKOUT"}</Text>
-                  {todaysWorkouts[0]?.durationSeconds && (
-                    <Text style={{ color: '#888', fontSize: 12, marginLeft: 10 }}>({formatTime(todaysWorkouts[0].durationSeconds)})</Text>
-                  )}
-                </View>
-              </View>
-              <View style={{ backgroundColor: "#2ecc71", borderRadius: 20, width: 40, height: 40, justifyContent: "center", alignItems: "center" }}>
-                <Dumbbell color="#000" size={20} />
-              </View>
-            </View>
-            <View style={{ marginTop: 5, borderTopWidth: 1, borderTopColor: '#333', paddingTop: 12 }}>
-              {todaysWorkouts.length > 0 ? (
-                todaysWorkouts.map((workout, index) => (
-                  <View key={workout.id} style={{ marginBottom: index === todaysWorkouts.length - 1 ? 4 : 16 }}>
-                    {todaysWorkouts.length > 1 && <Text style={{ color: "#666", fontSize: 9, fontWeight: 'bold', marginBottom: 8, textAlign: 'right' }}>SESSION {todaysWorkouts.length - index}</Text>}
-                    <View style={{ gap: 10 }}>
-                      {workout.exercises.map((ex, i) => {
-                        const doneSets = ex.sets.filter(s => s.done || (s.weight !== "" && s.reps !== ""));
-                        return (
-                          <View key={i} style={{ marginBottom: 10 }}>
-                            <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 4 }}>
-                              <View style={{ width: 4, height: 4, borderRadius: 2, backgroundColor: "#2ecc71", marginRight: 10 }} />
-                              <Text style={{ color: "#fff", fontSize: 15, fontWeight: 'bold' }}>{ex.name}</Text>
-                            </View>
-                            {doneSets.length > 0 ? (
-                              <Text style={{ color: '#888', fontSize: 12, paddingLeft: 14 }}>{doneSets.map(s => `${s.weight}kg×${s.reps}`).join('  |  ')}</Text>
-                            ) : (
-                              <Text style={{ color: '#555', fontSize: 12, paddingLeft: 14 }}>未完了</Text>
-                            )}
-                          </View>
-                        );
-                      })}
+            <WalkthroughableView>
+              <TouchableOpacity
+                style={styles.card} activeOpacity={0.8} disabled={editMode}
+                onPress={() => router.push("/training")} onLongPress={!editMode && onLongPressEdit ? onLongPressEdit : undefined} delayLongPress={450}
+              >
+                <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 15 }}>
+                  <View>
+                    <Text style={{ color: "#2ecc71", fontSize: 14, fontWeight: "bold", letterSpacing: 1, marginBottom: 4 }}>WORKOUT</Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'baseline' }}>
+                      <Text style={{ color: "#fff", fontSize: 16, fontWeight: "bold" }}>{todaysWorkouts.length > 0 ? "TODAY" : "START WORKOUT"}</Text>
+                      {todaysWorkouts[0]?.durationSeconds && (
+                        <Text style={{ color: '#888', fontSize: 12, marginLeft: 10 }}>({formatTime(todaysWorkouts[0].durationSeconds)})</Text>
+                      )}
                     </View>
                   </View>
-                ))
-              ) : (
-                <Text style={{ color: "#666", textAlign: 'center', paddingVertical: 10 }}>タップして今日のトレーニングを開始</Text>
-              )}
-            </View>
-          </TouchableOpacity>
+                  <View style={{ backgroundColor: "#2ecc71", borderRadius: 20, width: 40, height: 40, justifyContent: "center", alignItems: "center" }}>
+                    <Dumbbell color="#000" size={20} />
+                  </View>
+                </View>
+                <View style={{ marginTop: 5, borderTopWidth: 1, borderTopColor: '#333', paddingTop: 12 }}>
+                  {todaysWorkouts.length > 0 ? (
+                    todaysWorkouts.map((workout, index) => (
+                      <View key={workout.id} style={{ marginBottom: index === todaysWorkouts.length - 1 ? 4 : 16 }}>
+                        {todaysWorkouts.length > 1 && <Text style={{ color: "#666", fontSize: 9, fontWeight: 'bold', marginBottom: 8, textAlign: 'right' }}>SESSION {todaysWorkouts.length - index}</Text>}
+                        <View style={{ gap: 10 }}>
+                          {workout.exercises.map((ex, i) => {
+                            const doneSets = ex.sets.filter(s => s.done || (s.weight !== "" && s.reps !== ""));
+                            return (
+                              <View key={i} style={{ marginBottom: 10 }}>
+                                <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 4 }}>
+                                  <View style={{ width: 4, height: 4, borderRadius: 2, backgroundColor: "#2ecc71", marginRight: 10 }} />
+                                  <Text style={{ color: "#fff", fontSize: 15, fontWeight: 'bold' }}>{ex.name}</Text>
+                                </View>
+                                {doneSets.length > 0 ? (
+                                  <Text style={{ color: '#888', fontSize: 12, paddingLeft: 14 }}>{doneSets.map(s => `${s.weight}kg×${s.reps}`).join('  |  ')}</Text>
+                                ) : (
+                                  <Text style={{ color: '#555', fontSize: 12, paddingLeft: 14 }}>未完了</Text>
+                                )}
+                              </View>
+                            );
+                          })}
+                        </View>
+                      </View>
+                    ))
+                  ) : (
+                    <Text style={{ color: "#666", textAlign: 'center', paddingVertical: 10 }}>タップして今日のトレーニングを開始</Text>
+                  )}
+                </View>
+              </TouchableOpacity>
+            </WalkthroughableView>
+          </CopilotStep>
         );
       case "nutrition":
         return (
@@ -786,14 +807,16 @@ function HomeTabContent() {
 }
 
 // ★ 最後に全体をラップしてエクスポート
+// 修正後：一番下の export default function HomeTabScreen の部分
 export default function HomeTabScreen() {
   return (
     <CopilotProvider
-      stopOnOutsideClick={true} // 外側タップでチュートリアルを閉じられるようにする
-      androidStatusBarVisible={true} // Androidのステータスバー周りのバグ回避
-      tooltipStyle={{ backgroundColor: "#262626", borderRadius: 12 }} // ダークモードに馴染む色に設定
-      stepNumberComponent={() => null} // 1/1 みたいなステップの丸い数字アイコンを非表示にしてスッキリさせる
-      labels={{ skip: "スキップ", previous: "前へ", next: "次へ", finish: "OK" }} // ボタンの日本語化
+      stopOnOutsideClick={true}
+      androidStatusBarVisible={true}
+      // ★ ここを修正！背景を白にして、文字（黒）をはっきり読ませる
+      tooltipStyle={{ backgroundColor: "#ffffff", borderRadius: 12 }}
+      stepNumberComponent={() => null}
+      labels={{ skip: "スキップ", previous: "前へ", next: "次へ", finish: "OK" }}
     >
       <HomeTabContent />
     </CopilotProvider>

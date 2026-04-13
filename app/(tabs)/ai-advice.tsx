@@ -25,6 +25,9 @@ import { getApp } from "firebase/app";
 import { getFunctions, httpsCallable } from "firebase/functions";
 import { ChevronLeft, Menu, Pin, Plus, Send, Sparkles } from "lucide-react-native";
 
+// ★ 追加：Copilotのインポート
+import { CopilotProvider, CopilotStep, walkthroughable, useCopilot } from "react-native-copilot";
+
 import { auth } from "../../firebaseConfig";
 import { useCoinBalance } from "../../hooks/useCoinBalance";
 import { styles as themeStyles } from "../../theme/styles";
@@ -39,6 +42,9 @@ const STORAGE_KEY_BASE = "@ai_chats_v1_";
 const MAX_SESSIONS = 40;
 const DRAWER_WIDTH = Math.min(Dimensions.get("window").width * 0.88, 360);
 
+// ★ 追加：光らせるためのラップコンポーネント
+const WalkthroughableView = walkthroughable(View);
+
 type ChatMessage = {
   id: string;
   role: "user" | "assistant";
@@ -51,7 +57,6 @@ type ChatSession = {
   updatedAt: number;
   messages: ChatMessage[];
   pinned?: boolean;
-  /** true のときはメッセージ更新でタイトルを自動上書きしない */
   userEditedTitle?: boolean;
 };
 
@@ -93,7 +98,8 @@ function formatRelativeTime(ts: number): string {
   return new Date(ts).toLocaleDateString("ja-JP", { month: "short", day: "numeric" });
 }
 
-export default function AiAdviceTabScreen() {
+// ★ 変更：メインの関数名を AiAdviceTabContent に変更
+function AiAdviceTabContent() {
   const router = useRouter();
   const scrollRef = useRef<ScrollView>(null);
   const slideAnim = useRef(new Animated.Value(-DRAWER_WIDTH)).current;
@@ -109,6 +115,11 @@ export default function AiAdviceTabScreen() {
   const [renameDraft, setRenameDraft] = useState("");
   const coinBalance = useCoinBalance();
 
+  // ★ 追加：Copilotのフック
+  const { start, copilotEvents } = useCopilot();
+  const startTutorialRef = useRef(start);
+  startTutorialRef.current = start;
+
   const activeSession = useMemo(
     () => sessions.find((s) => s.id === activeId) ?? null,
     [sessions, activeId],
@@ -121,6 +132,47 @@ export default function AiAdviceTabScreen() {
       return b.updatedAt - a.updatedAt;
     });
   }, [sessions]);
+
+  // ★ 追加：チュートリアル発火ロジック（0.5秒後に1回だけ）
+  useEffect(() => {
+    if (!hydrated) return;
+    const user = auth.currentUser;
+    if (!user) return;
+
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | undefined; // ← タイマーを記憶する
+
+    const checkTutorial = async () => {
+      try {
+        const hasSeen = await AsyncStorage.getItem(`@tutorial_ai_${user.uid}`);
+        if (!hasSeen && !cancelled) {
+          timer = setTimeout(() => {
+            if (!cancelled) void startTutorialRef.current();
+          }, 500);
+        }
+      } catch (e) {}
+    };
+    checkTutorial();
+
+    return () => {
+      cancelled = true;
+      if (timer) clearTimeout(timer); // ← 古いタイマーを確実に殺す！
+    };
+  }, [hydrated]); // ← 依存配列から start を外す！
+
+  // ★ 追加：チュートリアル完了時にフラグを保存
+  useEffect(() => {
+    const onStop = async () => {
+      const user = auth.currentUser;
+      if (user) {
+        await AsyncStorage.setItem(`@tutorial_ai_${user.uid}`, "true");
+      }
+    };
+    copilotEvents.on("stop", onStop);
+    return () => {
+      copilotEvents.off("stop", onStop);
+    };
+  }, [copilotEvents]);
 
   const closeDrawer = useCallback(() => {
     Animated.timing(slideAnim, {
@@ -532,38 +584,48 @@ export default function AiAdviceTabScreen() {
         behavior={Platform.OS === "ios" ? "padding" : undefined}
         keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 0}
       >
-        <View style={local.header}>
-          <TouchableOpacity
-            onPress={openDrawer}
-            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-            accessibilityLabel="会話履歴を開く"
-            style={local.headerIconBtn}
-          >
-            <Menu color="#fff" size={26} />
-          </TouchableOpacity>
-          <View style={local.headerCenter}>
-            <Sparkles color="#4facfe" size={18} />
-            <View style={local.headerTitleBlock}>
-              <Text style={local.headerTitle} numberOfLines={1}>
-                {activeSession?.title ?? "AIアドバイス"}
-              </Text>
-              {coinBalance !== null ? (
-                <Text style={local.headerCoinSub} numberOfLines={1}>
-                  コイン {coinBalance}
+        {/* ★ ヘッダーだけをターゲットにする */}
+        <CopilotStep
+          text="ここはAIコーチの相談部屋です！トレーニングメニューの作成や食事の悩みなど、何でも気軽に聞いてみましょう。"
+          order={1}
+          name="aiIntro"
+        >
+          <WalkthroughableView style={local.header}>
+            <TouchableOpacity
+              onPress={openDrawer}
+              hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+              accessibilityLabel="会話履歴を開く"
+              style={local.headerIconBtn}
+            >
+              <Menu color="#fff" size={26} />
+            </TouchableOpacity>
+            
+            <View style={local.headerCenter}>
+              <Sparkles color="#4facfe" size={18} />
+              <View style={local.headerTitleBlock}>
+                <Text style={local.headerTitle} numberOfLines={1}>
+                  {activeSession?.title ?? "AIアドバイス"}
                 </Text>
-              ) : null}
+                {coinBalance !== null ? (
+                  <Text style={local.headerCoinSub} numberOfLines={1}>
+                    コイン {coinBalance}
+                  </Text>
+                ) : null}
+              </View>
             </View>
-          </View>
-          <TouchableOpacity
-            onPress={createSession}
-            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-            accessibilityLabel="新しい会話"
-            style={local.headerIconBtn}
-          >
-            <Plus color="#2ecc71" size={26} />
-          </TouchableOpacity>
-        </View>
 
+            <TouchableOpacity
+              onPress={createSession}
+              hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+              accessibilityLabel="新しい会話"
+              style={local.headerIconBtn}
+            >
+              <Plus color="#2ecc71" size={26} />
+            </TouchableOpacity>
+          </WalkthroughableView>
+        </CopilotStep>
+
+        {/* ↓↓↓ ここから下はそのまま ↓↓↓ */}
         <ScrollView
           ref={scrollRef}
           style={local.scroll}
@@ -749,6 +811,26 @@ export default function AiAdviceTabScreen() {
         </SafeAreaView>
       </Modal>
     </SafeAreaView>
+  );
+}
+
+// ★ 追加：ファイルの一番下にエクスポート用プロバイダーを配置
+export default function AiAdviceTabScreen() {
+  return (
+    <CopilotProvider
+      stopOnOutsideClick={true}
+      androidStatusBarVisible={true}
+      // ★ マージン（margin）を追加して、画面端から少し離す
+      tooltipStyle={{ 
+        backgroundColor: "#ffffff", 
+        borderRadius: 12,
+        margin: 16 // ←これを追加（左右に16pxの余白ができる）
+      }} 
+      stepNumberComponent={() => null}
+      labels={{ skip: "スキップ", previous: "前へ", next: "次へ", finish: "OK" }}
+    >
+      <AiAdviceTabContent />
+    </CopilotProvider>
   );
 }
 

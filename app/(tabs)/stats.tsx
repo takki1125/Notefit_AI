@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import {
   ScrollView,
   View,
@@ -15,15 +15,23 @@ import { useFocusEffect } from '@react-navigation/native';
 import { collection, query, orderBy, limit, getDocs } from 'firebase/firestore';
 import { Flame, Activity, ChevronDown, Check } from 'lucide-react-native';
 import { LineChart, BarChart } from 'react-native-chart-kit';
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
 import { auth, db } from '../../firebaseConfig';
 import { styles } from '../../theme/styles';
 import GoalProgressCard from '../../components/goal/GoalProgressCard';
 import WeightTrendCard from '../../components/metrics/WeightTrendCard';
 
+// ★追加：Copilotのインポート
+import { CopilotProvider, CopilotStep, walkthroughable, useCopilot } from "react-native-copilot";
+
 const screenWidth = Dimensions.get("window").width;
 
-export default function StatsTabScreen() {
+// ★追加：ラップ用コンポーネントの定義
+const WalkthroughableView = walkthroughable(View);
+
+// ★変更：関数名を StatsTabContent に変更（一番下でProviderでラップするため）
+function StatsTabContent() {
   const [loading, setLoading] = useState(true);
   const [workoutCount, setWorkoutCount] = useState(0);
   const [recentFoods, setRecentFoods] = useState<any[]>([]);
@@ -38,6 +46,50 @@ export default function StatsTabScreen() {
   const [selectedExercise, setSelectedExercise] = useState<string>("");
   const [exerciseProgress, setExerciseProgress] = useState<{ labels: string[], values: number[] }>({ labels: [], values: [] });
   const [isDropdownVisible, setDropdownVisible] = useState(false);
+
+  // ★追加：CopilotのHooksとタイマー管理
+  const { start, copilotEvents } = useCopilot();
+  const startTutorialRef = useRef(start);
+  startTutorialRef.current = start;
+
+  useFocusEffect(
+    useCallback(() => {
+      let cancelled = false;
+      let timer: ReturnType<typeof setTimeout> | undefined;
+
+      const checkTutorial = async () => {
+        const user = auth.currentUser;
+        if (!user) return;
+        try {
+          const hasSeen = await AsyncStorage.getItem(`@tutorial_stats_${user.uid}`);
+          if (!hasSeen && !cancelled) {
+            timer = setTimeout(() => {
+              if (!cancelled) void startTutorialRef.current();
+            }, 500);
+          }
+        } catch (e) {}
+      };
+      checkTutorial();
+
+      return () => {
+        cancelled = true;
+        if (timer) clearTimeout(timer);
+      };
+    }, [])
+  );
+
+  useEffect(() => {
+    const onStop = async () => {
+      const user = auth.currentUser;
+      if (user) {
+        await AsyncStorage.setItem(`@tutorial_stats_${user.uid}`, "true");
+      }
+    };
+    copilotEvents.on("stop", onStop);
+    return () => {
+      copilotEvents.off("stop", onStop);
+    };
+  }, [copilotEvents]);
 
   const fetchStatsData = useCallback(async () => {
     const user = auth.currentUser;
@@ -154,13 +206,24 @@ export default function StatsTabScreen() {
 
   return (
     <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
-      <View style={styles.headerRow}>
-        <View style={styles.headerContent}>
-          <Text style={styles.headerLabel}>Analytics</Text>
-        </View>
-      </View>
+      
+      {/* ★STEP 1: ヘッダーを光らせて画面全体を説明 */}
+      <CopilotStep
+        text="ここでは過去のトレーニングや体重、食事の記録を振り返ることができます。日々の成長をチェックしましょう！"
+        order={1}
+        name="statsIntro"
+      >
+        <WalkthroughableView style={styles.headerRow}>
+          <View style={styles.headerContent}>
+            <Text style={styles.headerLabel}>Analytics</Text>
+          </View>
+        </WalkthroughableView>
+      </CopilotStep>
 
-      <ScrollView contentContainerStyle={{ paddingVertical: 20 }}>
+      <ScrollView 
+        contentContainerStyle={{ paddingVertical: 20 }}
+        // {...scrollViewProps}
+      >
         
         {loading ? (
           <ActivityIndicator size="large" color="#2ecc71" style={{ marginTop: 50 }} />
@@ -169,9 +232,6 @@ export default function StatsTabScreen() {
             <GoalProgressCard />
             <WeightTrendCard />
 
-            {/* ━━━━━━━━━━━━━━━━━━━━━━
-                1. 部位ごとのグラフ
-                ━━━━━━━━━━━━━━━━━━━━━━ */}
             <View style={{ marginBottom: 15 }}>
               <ScrollView horizontal showsHorizontalScrollIndicator={false}>
                 {parts.map((part) => (
@@ -197,16 +257,12 @@ export default function StatsTabScreen() {
               {partProgress.values.length > 1 ? (
                 <LineChart data={{ labels: partProgress.labels, datasets: [{ data: partProgress.values }] }} width={screenWidth - 40} height={220} chartConfig={chartConfig} bezier style={{ borderRadius: 16 }} />
               ) : partProgress.values.length === 1 ? (
-                // ★ 1回だけの時は棒グラフ
                 <BarChart data={{ labels: partProgress.labels, datasets: [{ data: partProgress.values }] }} width={screenWidth - 40} height={220} chartConfig={chartConfig} yAxisLabel="" yAxisSuffix="kg" fromZero showValuesOnTopOfBars style={{ borderRadius: 16 }} />
               ) : (
                 <Text style={{ color: '#666' }}>まだ記録がありません</Text>
               )}
             </View>
 
-            {/* ━━━━━━━━━━━━━━━━━━━━━━
-                2. 種目ごとのグラフ
-                ━━━━━━━━━━━━━━━━━━━━━━ */}
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
               <Text style={{ color: '#fff', fontSize: 18, fontWeight: 'bold' }}>種目別の成長記録</Text>
               
@@ -225,22 +281,17 @@ export default function StatsTabScreen() {
               {exerciseProgress.values.length > 1 ? (
                 <LineChart data={{ labels: exerciseProgress.labels, datasets: [{ data: exerciseProgress.values }] }} width={screenWidth - 40} height={220} chartConfig={chartConfigPink} bezier style={{ borderRadius: 16 }} />
               ) : exerciseProgress.values.length === 1 ? (
-                // ★ 1回だけの時は棒グラフ (ピンク色)
                 <BarChart data={{ labels: exerciseProgress.labels, datasets: [{ data: exerciseProgress.values }] }} width={screenWidth - 40} height={220} chartConfig={chartConfigPink} yAxisLabel="" yAxisSuffix="kg" fromZero showValuesOnTopOfBars style={{ borderRadius: 16 }} />
               ) : (
                 <Text style={{ color: '#666' }}>まだ記録がありません</Text>
               )}
             </View>
 
-            {/* ━━━━━━━━━━━━━━━━━━━━━━
-                3. カロリー推移 ＆ 合計
-                ━━━━━━━━━━━━━━━━━━━━━━ */}
             <Text style={{ color: '#fff', fontSize: 18, fontWeight: 'bold', marginBottom: 10 }}>摂取カロリー推移</Text>
             <View style={{ backgroundColor: '#1a1a1a', borderRadius: 16, paddingVertical: 15, alignItems: 'center', marginBottom: 25, minHeight: 180, justifyContent: 'center' }}>
               {recentFoods.length > 1 ? (
                 <LineChart data={{ labels: recentFoods.map(f => f.dateStr), datasets: [{ data: recentFoods.map(f => f.totalCal) }] }} width={screenWidth - 40} height={180} chartConfig={{ ...chartConfig, color: (opacity = 1) => `rgba(46, 204, 113, ${opacity})` }} bezier style={{ borderRadius: 16 }} />
               ) : recentFoods.length === 1 ? (
-                // ★ 1回だけの時は棒グラフ (緑色)
                 <BarChart data={{ labels: recentFoods.map(f => f.dateStr), datasets: [{ data: recentFoods.map(f => f.totalCal) }] }} width={screenWidth - 40} height={180} chartConfig={{ ...chartConfig, color: (opacity = 1) => `rgba(46, 204, 113, ${opacity})` }} yAxisLabel="" yAxisSuffix="kcal" fromZero showValuesOnTopOfBars style={{ borderRadius: 16 }} />
               ) : (
                 <Text style={{ color: '#666' }}>食事データを入力してください</Text>
@@ -296,5 +347,20 @@ export default function StatsTabScreen() {
       </Modal>
 
     </SafeAreaView>
+  );
+}
+
+// ★追加：チュートリアル全体をプロバイダーで包む
+export default function StatsTabScreen() {
+  return (
+    <CopilotProvider
+      stopOnOutsideClick={true}
+      androidStatusBarVisible={true}
+      tooltipStyle={{ backgroundColor: "#ffffff", borderRadius: 12, margin: 16 }}
+      stepNumberComponent={() => null}
+      labels={{ skip: "スキップ", previous: "前へ", next: "次へ", finish: "OK" }}
+    >
+      <StatsTabContent />
+    </CopilotProvider>
   );
 }
