@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback} from "react";
+import React, { useEffect, useState, useCallback } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -37,6 +37,8 @@ import {
   callableDeleteCustomExercise,
   callableUpdateCustomExercise,
 } from "../../utils/aiUserContentCallables";
+import { CopilotProvider, CopilotStep, walkthroughable, useCopilot } from "react-native-copilot";
+
 
 type ExerciseSectionRow = { title: string; data: (string | CustomExerciseListItem)[] };
 type ExerciseCategoryRow = { id: string; label: string; sections: ExerciseSectionRow[] };
@@ -73,6 +75,8 @@ type RoutineModalProps = {
   currentMenu: Exercise[];
   onLoadRoutine: (routine: Routine) => void;
 };
+
+const WalkthroughableView = walkthroughable(TouchableOpacity); // 今回はボタン(TouchableOpacity)を包むので合わせる
 
 const ExerciseSelectorModal: React.FC<ExerciseSelectorModalProps> = ({
   visible,
@@ -285,228 +289,228 @@ const ExerciseSelectorModal: React.FC<ExerciseSelectorModalProps> = ({
 
   return (
     <>
-    <Modal
-      visible={visible}
-      animationType="slide"
-      presentationStyle="pageSheet"
-    >
-      <SafeAreaView style={styles.modalContainer}>
-        <View style={styles.modalHeader}>
-          <Text style={styles.modalTitle}>種目を選択</Text>
-          <TouchableOpacity onPress={onClose}>
-            <X color="#fff" size={24} />
-          </TouchableOpacity>
-        </View>
+      <Modal
+        visible={visible}
+        animationType="slide"
+        presentationStyle="pageSheet"
+      >
+        <SafeAreaView style={styles.modalContainer}>
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>種目を選択</Text>
+            <TouchableOpacity onPress={onClose}>
+              <X color="#fff" size={24} />
+            </TouchableOpacity>
+          </View>
 
-        {loading ? (
-          <ActivityIndicator
-            size="large"
-            color="#2ecc71"
-            style={{ marginTop: 50 }}
-          />
-        ) : (
-          <View style={{ flex: 1 }}>
-            <View style={styles.modalCategoryContainer}>
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                contentContainerStyle={{ paddingHorizontal: 16 }}
-              >
-                {categories.map((cat) => (
-                  <TouchableOpacity
-                    key={cat.id}
-                    style={[
-                      styles.tabBtn,
-                      selectedCategory?.id === cat.id && styles.activeTabBtn,
-                      cat.sections.length === 0 && { opacity: 0.5 },
-                    ]}
-                    onPress={() => setSelectedCategory(cat)}
-                  >
-                    <Text
+          {loading ? (
+            <ActivityIndicator
+              size="large"
+              color="#2ecc71"
+              style={{ marginTop: 50 }}
+            />
+          ) : (
+            <View style={{ flex: 1 }}>
+              <View style={styles.modalCategoryContainer}>
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={{ paddingHorizontal: 16 }}
+                >
+                  {categories.map((cat) => (
+                    <TouchableOpacity
+                      key={cat.id}
                       style={[
-                        styles.tabText,
-                        selectedCategory?.id === cat.id && styles.activeTabText,
+                        styles.tabBtn,
+                        selectedCategory?.id === cat.id && styles.activeTabBtn,
+                        cat.sections.length === 0 && { opacity: 0.5 },
                       ]}
-                    >
-                      {cat.label}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </ScrollView>
-            </View>
-
-            <SectionList
-              sections={selectedCategory?.sections || []}
-              keyExtractor={(item, index) =>
-                typeof item === "string" ? `${item}_${index}` : item.id
-              }
-              stickySectionHeadersEnabled={false}
-              renderSectionHeader={({ section: { title } }) => (
-                <View style={styles.sectionHeader}>
-                  <Text style={[styles.sectionHeaderText, title === "オリジナル" && { color: "#f1c40f" }]}>{title}</Text>
-                </View>
-              )}
-              renderItem={({ item, section }) => {
-                if (typeof item === "string") {
-                  return (
-                    <TouchableOpacity
-                      style={styles.exerciseListItem}
-                      onPress={() => {
-                        onSelect(item, selectedCategory?.label || "他");
-                        onClose();
-                      }}
-                    >
-                      <Text style={styles.exerciseListText}>{item}</Text>
-                      <Plus color="#2ecc71" size={20} />
-                    </TouchableOpacity>
-                  );
-                }
-                const c = item;
-                return (
-                  <View
-                    style={[
-                      styles.exerciseListItem,
-                      { flexDirection: "row", alignItems: "center", paddingRight: 8 },
-                    ]}
-                  >
-                    <TouchableOpacity
-                      style={{ flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}
-                      onPress={() => {
-                        onSelect(c.name, selectedCategory?.label || "他");
-                        onClose();
-                      }}
+                      onPress={() => setSelectedCategory(cat)}
                     >
                       <Text
                         style={[
-                          styles.exerciseListText,
-                          section.title === "オリジナル" && { color: "#f1c40f", fontWeight: "bold" },
-                          { flex: 1 },
+                          styles.tabText,
+                          selectedCategory?.id === cat.id && styles.activeTabText,
                         ]}
                       >
-                        {c.name}
+                        {cat.label}
                       </Text>
-                      <Plus color="#2ecc71" size={20} />
                     </TouchableOpacity>
-                    <TouchableOpacity onPress={() => openEditCustom(c)} style={{ padding: 8 }} accessibilityLabel="編集">
-                      <Pencil color="#4facfe" size={20} />
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      onPress={() => confirmDeleteCustom(c.id, c.name)}
-                      style={{ padding: 8 }}
-                      accessibilityLabel="削除"
+                  ))}
+                </ScrollView>
+              </View>
+
+              <SectionList
+                sections={selectedCategory?.sections || []}
+                keyExtractor={(item, index) =>
+                  typeof item === "string" ? `${item}_${index}` : item.id
+                }
+                stickySectionHeadersEnabled={false}
+                renderSectionHeader={({ section: { title } }) => (
+                  <View style={styles.sectionHeader}>
+                    <Text style={[styles.sectionHeaderText, title === "オリジナル" && { color: "#f1c40f" }]}>{title}</Text>
+                  </View>
+                )}
+                renderItem={({ item, section }) => {
+                  if (typeof item === "string") {
+                    return (
+                      <TouchableOpacity
+                        style={styles.exerciseListItem}
+                        onPress={() => {
+                          onSelect(item, selectedCategory?.label || "他");
+                          onClose();
+                        }}
+                      >
+                        <Text style={styles.exerciseListText}>{item}</Text>
+                        <Plus color="#2ecc71" size={20} />
+                      </TouchableOpacity>
+                    );
+                  }
+                  const c = item;
+                  return (
+                    <View
+                      style={[
+                        styles.exerciseListItem,
+                        { flexDirection: "row", alignItems: "center", paddingRight: 8 },
+                      ]}
                     >
-                      <Trash2 color="#ff4444" size={20} />
+                      <TouchableOpacity
+                        style={{ flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}
+                        onPress={() => {
+                          onSelect(c.name, selectedCategory?.label || "他");
+                          onClose();
+                        }}
+                      >
+                        <Text
+                          style={[
+                            styles.exerciseListText,
+                            section.title === "オリジナル" && { color: "#f1c40f", fontWeight: "bold" },
+                            { flex: 1 },
+                          ]}
+                        >
+                          {c.name}
+                        </Text>
+                        <Plus color="#2ecc71" size={20} />
+                      </TouchableOpacity>
+                      <TouchableOpacity onPress={() => openEditCustom(c)} style={{ padding: 8 }} accessibilityLabel="編集">
+                        <Pencil color="#4facfe" size={20} />
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        onPress={() => confirmDeleteCustom(c.id, c.name)}
+                        style={{ padding: 8 }}
+                        accessibilityLabel="削除"
+                      >
+                        <Trash2 color="#ff4444" size={20} />
+                      </TouchableOpacity>
+                    </View>
+                  );
+                }}
+                // ★進化：リストの一番下に入力フォームを常時表示！
+                ListFooterComponent={
+                  <View style={{ marginTop: 20, marginBottom: 40, padding: 15, backgroundColor: "#1a1a1a", borderRadius: 12, marginHorizontal: 16 }}>
+                    <Text style={{ color: "#2ecc71", fontWeight: "bold", marginBottom: 10 }}>＋ オリジナル種目を追加</Text>
+                    <TextInput
+                      style={[styles.inputField, { marginBottom: 10, backgroundColor: "#2a2a2a", borderWidth: 0 }]}
+                      placeholder={`「${selectedCategory?.label || "この部位"}」の新しい種目名`}
+                      placeholderTextColor="#666"
+                      value={newExerciseName}
+                      onChangeText={setNewExerciseName}
+                    />
+                    <TouchableOpacity
+                      style={[styles.loginButton, { marginTop: 0, paddingVertical: 12 }, isSaving && { opacity: 0.7 }]}
+                      onPress={handleSaveCustomExercise}
+                      disabled={isSaving}
+                    >
+                      {isSaving ? (
+                        <ActivityIndicator color="#000" />
+                      ) : (
+                        <Text style={{ color: "#000", fontWeight: "bold", textAlign: "center" }}>リストに追加</Text>
+                      )}
                     </TouchableOpacity>
                   </View>
-                );
-              }}
-              // ★進化：リストの一番下に入力フォームを常時表示！
-              ListFooterComponent={
-                <View style={{ marginTop: 20, marginBottom: 40, padding: 15, backgroundColor: "#1a1a1a", borderRadius: 12, marginHorizontal: 16 }}>
-                  <Text style={{ color: "#2ecc71", fontWeight: "bold", marginBottom: 10 }}>＋ オリジナル種目を追加</Text>
-                  <TextInput
-                    style={[styles.inputField, { marginBottom: 10, backgroundColor: "#2a2a2a", borderWidth: 0 }]}
-                    placeholder={`「${selectedCategory?.label || "この部位"}」の新しい種目名`}
-                    placeholderTextColor="#666"
-                    value={newExerciseName}
-                    onChangeText={setNewExerciseName}
-                  />
-                  <TouchableOpacity
-                    style={[styles.loginButton, { marginTop: 0, paddingVertical: 12 }, isSaving && { opacity: 0.7 }]}
-                    onPress={handleSaveCustomExercise}
-                    disabled={isSaving}
-                  >
-                    {isSaving ? (
-                      <ActivityIndicator color="#000" />
-                    ) : (
-                      <Text style={{ color: "#000", fontWeight: "bold", textAlign: "center" }}>リストに追加</Text>
-                    )}
-                  </TouchableOpacity>
-                </View>
-              }
-            />
-          </View>
-        )}
-      </SafeAreaView>
-    </Modal>
-
-    <Modal visible={editTarget !== null} transparent animationType="fade">
-      <View
-        style={{
-          flex: 1,
-          backgroundColor: "rgba(0,0,0,0.85)",
-          justifyContent: "center",
-          padding: 20,
-        }}
-      >
-        <View style={{ backgroundColor: "#2a2a2a", borderRadius: 16, padding: 16 }}>
-          <Text style={{ color: "#fff", fontSize: 17, fontWeight: "bold", marginBottom: 12 }}>オリジナル種目を編集</Text>
-          <Text style={{ color: "#888", fontSize: 12, marginBottom: 6 }}>種目名</Text>
-          <TextInput
-            style={{
-              backgroundColor: "#1a1a1a",
-              color: "#fff",
-              borderRadius: 10,
-              padding: 12,
-              marginBottom: 14,
-              borderWidth: 1,
-              borderColor: "#444",
-            }}
-            placeholder="種目名"
-            placeholderTextColor="#666"
-            value={editName}
-            onChangeText={setEditName}
-            editable={!savingEdit}
-          />
-          <Text style={{ color: "#888", fontSize: 12, marginBottom: 8 }}>部位（タブ）</Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 16 }}>
-            <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
-              {categories.map((cat) => {
-                const on = editCategoryLabel === cat.label;
-                return (
-                  <TouchableOpacity
-                    key={cat.id}
-                    onPress={() => setEditCategoryLabel(cat.label)}
-                    style={{
-                      backgroundColor: on ? "#2ecc71" : "#1a1a1a",
-                      paddingHorizontal: 14,
-                      paddingVertical: 8,
-                      borderRadius: 20,
-                      borderWidth: 1,
-                      borderColor: on ? "#2ecc71" : "#444",
-                    }}
-                  >
-                    <Text style={{ color: on ? "#000" : "#ccc", fontWeight: on ? "800" : "500" }}>{cat.label}</Text>
-                  </TouchableOpacity>
-                );
-              })}
+                }
+              />
             </View>
-          </ScrollView>
-          <View style={{ flexDirection: "row", justifyContent: "flex-end", gap: 12 }}>
-            <TouchableOpacity onPress={closeEditCustom} disabled={savingEdit}>
-              <Text style={{ color: "#888", padding: 10 }}>キャンセル</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
+          )}
+        </SafeAreaView>
+      </Modal>
+
+      <Modal visible={editTarget !== null} transparent animationType="fade">
+        <View
+          style={{
+            flex: 1,
+            backgroundColor: "rgba(0,0,0,0.85)",
+            justifyContent: "center",
+            padding: 20,
+          }}
+        >
+          <View style={{ backgroundColor: "#2a2a2a", borderRadius: 16, padding: 16 }}>
+            <Text style={{ color: "#fff", fontSize: 17, fontWeight: "bold", marginBottom: 12 }}>オリジナル種目を編集</Text>
+            <Text style={{ color: "#888", fontSize: 12, marginBottom: 6 }}>種目名</Text>
+            <TextInput
               style={{
-                backgroundColor: "#2ecc71",
-                paddingHorizontal: 18,
-                paddingVertical: 10,
+                backgroundColor: "#1a1a1a",
+                color: "#fff",
                 borderRadius: 10,
-                opacity: savingEdit ? 0.6 : 1,
+                padding: 12,
+                marginBottom: 14,
+                borderWidth: 1,
+                borderColor: "#444",
               }}
-              onPress={() => void handleSaveEditCustom()}
-              disabled={savingEdit}
-            >
-              {savingEdit ? (
-                <ActivityIndicator color="#000" />
-              ) : (
-                <Text style={{ color: "#000", fontWeight: "800" }}>保存</Text>
-              )}
-            </TouchableOpacity>
+              placeholder="種目名"
+              placeholderTextColor="#666"
+              value={editName}
+              onChangeText={setEditName}
+              editable={!savingEdit}
+            />
+            <Text style={{ color: "#888", fontSize: 12, marginBottom: 8 }}>部位（タブ）</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 16 }}>
+              <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
+                {categories.map((cat) => {
+                  const on = editCategoryLabel === cat.label;
+                  return (
+                    <TouchableOpacity
+                      key={cat.id}
+                      onPress={() => setEditCategoryLabel(cat.label)}
+                      style={{
+                        backgroundColor: on ? "#2ecc71" : "#1a1a1a",
+                        paddingHorizontal: 14,
+                        paddingVertical: 8,
+                        borderRadius: 20,
+                        borderWidth: 1,
+                        borderColor: on ? "#2ecc71" : "#444",
+                      }}
+                    >
+                      <Text style={{ color: on ? "#000" : "#ccc", fontWeight: on ? "800" : "500" }}>{cat.label}</Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            </ScrollView>
+            <View style={{ flexDirection: "row", justifyContent: "flex-end", gap: 12 }}>
+              <TouchableOpacity onPress={closeEditCustom} disabled={savingEdit}>
+                <Text style={{ color: "#888", padding: 10 }}>キャンセル</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={{
+                  backgroundColor: "#2ecc71",
+                  paddingHorizontal: 18,
+                  paddingVertical: 10,
+                  borderRadius: 10,
+                  opacity: savingEdit ? 0.6 : 1,
+                }}
+                onPress={() => void handleSaveEditCustom()}
+                disabled={savingEdit}
+              >
+                {savingEdit ? (
+                  <ActivityIndicator color="#000" />
+                ) : (
+                  <Text style={{ color: "#000", fontWeight: "800" }}>保存</Text>
+                )}
+              </TouchableOpacity>
+            </View>
           </View>
         </View>
-      </View>
-    </Modal>
+      </Modal>
     </>
   );
 };
@@ -727,7 +731,8 @@ type Props = {
   navigation: any;
 };
 
-const TrainingTabScreen: React.FC<Props> = ({ navigation }) => {
+// ★変更：メインの関数名を TrainingTabContent にする
+const TrainingTabContent: React.FC<Props> = ({ navigation }) => {
   const [modalVisible, setModalVisible] = useState(false);
   const [routineModalVisible, setRoutineModalVisible] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -739,15 +744,58 @@ const TrainingTabScreen: React.FC<Props> = ({ navigation }) => {
   const [isTimerActive, setIsTimerActive] = useState(false);
 
   const [autoCheck, setAutoCheck] = useState(false);
+
+  // ★追加：チュートリアル用のHooks
+  const { start, copilotEvents } = useCopilot();
+  const startTutorialRef = React.useRef(start);
+  startTutorialRef.current = start;
+
   useFocusEffect(
     useCallback(() => {
       const loadSetting = async () => {
         const val = await AsyncStorage.getItem('@auto_check_set');
-        setAutoCheck(val === 'true'); // 設定がtrueなら初期値もtrueになる
+        setAutoCheck(val === 'true');
       };
       loadSetting();
+
+      // ★追加：チュートリアル発火ロジック（画面を開いた時に1回だけ）
+      let cancelled = false;
+      let timer: ReturnType<typeof setTimeout> | undefined;
+
+      const checkTutorial = async () => {
+        const user = auth.currentUser;
+        if (!user) return;
+        try {
+          const hasSeen = await AsyncStorage.getItem(`@tutorial_training_${user.uid}`);
+          if (!hasSeen && !cancelled) {
+            timer = setTimeout(() => {
+              if (!cancelled) void startTutorialRef.current();
+            }, 500);
+          }
+        } catch (e) { }
+      };
+      checkTutorial();
+
+      return () => {
+        cancelled = true;
+        if (timer) clearTimeout(timer);
+      };
     }, [])
   );
+
+  // ★追加：チュートリアル完了時に「見た」という記録を保存
+  useEffect(() => {
+    const onStop = async () => {
+      const user = auth.currentUser;
+      if (user) {
+        await AsyncStorage.setItem(`@tutorial_training_${user.uid}`, "true");
+      }
+    };
+    copilotEvents.on("stop", onStop);
+    return () => {
+      copilotEvents.off("stop", onStop);
+    };
+  }, [copilotEvents]);
 
   useEffect(() => {
     navigation?.setOptions?.({
@@ -764,7 +812,6 @@ const TrainingTabScreen: React.FC<Props> = ({ navigation }) => {
   }, [menu.length, navigation]);
 
   useEffect(() => {
-    // ★ここを any に変更して、型のパニックを黙らせる！
     let interval: any = null;
 
     if (menu.length > 0) {
@@ -1023,7 +1070,6 @@ const TrainingTabScreen: React.FC<Props> = ({ navigation }) => {
           )}
 
           {menu.map((item) => {
-            // ★追加：カテゴリーが「有酸素」かどうかを判定！
             const isCardio = item.category?.includes("有酸素");
 
             return (
@@ -1031,7 +1077,6 @@ const TrainingTabScreen: React.FC<Props> = ({ navigation }) => {
                 <View style={styles.exerciseHeader}>
                   <View>
                     <Text style={styles.exerciseName}>{item.name}</Text>
-                    {/* デバッグ用：部位を表示 */}
                     <Text style={{ color: "#2ecc71", fontSize: 10 }}>{item.category}</Text>
                   </View>
                   <TouchableOpacity
@@ -1042,7 +1087,6 @@ const TrainingTabScreen: React.FC<Props> = ({ navigation }) => {
                   </TouchableOpacity>
                 </View>
 
-                {/* ★変更：有酸素の時はヘッダーを「MIN(分)」と「KM(距離)」に切り替える */}
                 <View style={styles.setRowHeader}>
                   <Text style={[styles.colLabel, { width: "15%" }]}>SET</Text>
                   <Text style={[styles.colLabel, { width: "25%" }]}>{isCardio ? "MIN" : "KG"}</Text>
@@ -1060,7 +1104,7 @@ const TrainingTabScreen: React.FC<Props> = ({ navigation }) => {
                       <TextInput
                         style={styles.inputFieldText}
                         keyboardType="numeric"
-                        placeholder={isCardio ? "分" : "-"} // ★プレースホルダーも切り替え
+                        placeholder={isCardio ? "分" : "-"}
                         placeholderTextColor="#444"
                         value={set.weight.toString()}
                         onChangeText={(val) =>
@@ -1073,7 +1117,7 @@ const TrainingTabScreen: React.FC<Props> = ({ navigation }) => {
                       <TextInput
                         style={styles.inputFieldText}
                         keyboardType="numeric"
-                        placeholder={isCardio ? "km" : "-"} // ★プレースホルダーも切り替え
+                        placeholder={isCardio ? "km" : "-"}
                         placeholderTextColor="#444"
                         value={set.reps.toString()}
                         onChangeText={(val) =>
@@ -1111,13 +1155,20 @@ const TrainingTabScreen: React.FC<Props> = ({ navigation }) => {
             );
           })}
 
-          <TouchableOpacity
-            style={styles.addExerciseBtn}
-            onPress={() => setModalVisible(true)}
+          {/* ★追加：種目追加ボタンをスポットライトで光らせる */}
+          <CopilotStep
+            text="まずはここから種目を追加して、今日のトレーニングを始めましょう！"
+            order={1}
+            name="addExercise"
           >
-            <Plus color="#000" size={20} />
-            <Text style={styles.addExerciseBtnText}>種目を追加する</Text>
-          </TouchableOpacity>
+            <WalkthroughableView
+              style={styles.addExerciseBtn}
+              onPress={() => setModalVisible(true)}
+            >
+              <Plus color="#000" size={20} />
+              <Text style={styles.addExerciseBtnText}>種目を追加する</Text>
+            </WalkthroughableView>
+          </CopilotStep>
 
           {menu.length > 0 && (
             <TouchableOpacity
@@ -1152,4 +1203,17 @@ const TrainingTabScreen: React.FC<Props> = ({ navigation }) => {
   );
 };
 
-export default TrainingTabScreen;
+// ★追加：チュートリアル全体をプロバイダーで包む（これを default export にする）
+export default function TrainingTabScreen(props: Props) {
+  return (
+    <CopilotProvider
+      stopOnOutsideClick={true}
+      androidStatusBarVisible={true}
+      tooltipStyle={{ backgroundColor: "#ffffff", borderRadius: 12, margin: 16 }}
+      stepNumberComponent={() => null}
+      labels={{ skip: "スキップ", previous: "前へ", next: "次へ", finish: "OK" }}
+    >
+      <TrainingTabContent {...props} />
+    </CopilotProvider>
+  );
+}
