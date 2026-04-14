@@ -1,229 +1,130 @@
-## Notefit AI プロジェクト概要（食事記録AI用）
+# 食事AI自動解析機能 — 実装リファレンス
 
-このドキュメントは、**食事記録タブの「AIで自動解析」機能**を実装する別のAIエージェント向けのプロジェクト概要・仕様書です。
-Expo Router / React Native / Firebase を使ったモバイルアプリで、トレーニングと食事を記録するサービスです。
-
----
-
-## 技術スタックと全体構成
-
-- **フロントエンド / アプリ**
-  - フレームワーク: **React Native**
-  - ルーティング: **Expo Router (`app/` ディレクトリ構成)**
-    - 認証グループ: `app/(auth)/...`
-    - 認証後タブ: `app/(tabs)/home.tsx`, `training.tsx`, `food.tsx`, `stats.tsx`, `settings.tsx`
-  - UI:
-    - 共通スタイル: `theme/styles.ts`
-    - アイコン: `lucide-react-native`
-  - ローカルストレージ: `@react-native-async-storage/async-storage`
-
-- **バックエンド / データストア**
-  - Firebase Authentication: `firebaseConfig.ts` 経由で使用
-  - Firebase Firestore:
-    - トレーニング記録: `users/{uid}/workouts`
-    - ルーティンテンプレート: `users/{uid}/routines`
-    - マスターデータ（種目一覧など）: `master_data` コレクション
-    - 食事記録（1日分の確定データ）: `users/{uid}/food_logs`
-
-- **ルートレイアウト**
-  - `app/_layout.tsx`
-    - `useAuthState()` の結果（`user`, `initializing`）と Expo Router の `segments` を見て、
-      - 未ログインの場合: `/(auth)/login` へリダイレクト
-      - メール未認証の場合: `/(auth)/verify` へリダイレクト
-      - ログイン & 認証済みで `(auth)` グループ内にいる場合: `/(tabs)/home` へ遷移
+> **最終更新**: 2026-04-14
+> **ステータス**: 実装済み（Cloud Functions + クライアント連携）
 
 ---
 
-## 主要タブごとの役割
+## 概要
 
-- **Home タブ `app/(tabs)/home.tsx`**
-  - 当月カレンダー表示（トレーニングした日がハイライト）
-  - 直近のワークアウト（`LATEST WORKOUT`）の概要カード
-  - **今日の食事サマリー (`TODAY'S NUTRITION`)**
-    - `Food` タブが `AsyncStorage` に保存した `@food_meals_today` を読み込み
-    - その日の合計カロリーとタンパク質量を表示
-
-- **Training タブ `app/(tabs)/training.tsx`**
-  - マスターデータからトレーニング種目を選択してメニューを作成
-  - セット数 / 重量 / 回数 / 完了フラグを入力してワークアウトを記録
-  - ルーティン保存・読み込み機能
-  - 終了時に Firebase Firestore `users/{uid}/workouts` にドキュメント保存
-
-- **Food タブ `app/(tabs)/food.tsx`（今回のAI実装ターゲット）**
-  - 1 日の食事を複数件 `Meal` として登録し、合計 PFC とカロリーを集計
-  - ローカル保存:
-    - キー: `@food_meals_today`
-    - 値: `Meal[]` を JSON シリアライズ
-  - クラウド保存:
-    - コレクション: `users/{uid}/food_logs`
-    - ドキュメントID: `YYYY-MM-DD_Food`
-    - 内容: `meals`, `totalCal`, `totalPro`, `totalFat`, `totalCarb` など
-  - **AIで自動解析 UI が既に実装されており、中身（API 呼び出し）は未実装**
-
-- **Stats タブ `app/(tabs)/stats.tsx`**
-  - 現状はプレースホルダー画面（「既存 StatsScreen の移行予定」と表示）
-
-- **Settings タブ**
-  - `app/(tabs)/settings.tsx` → `app/settings.tsx` のラッパー
-  - ログアウト、アカウント削除（Firebase Authentication のユーザー削除）など
+ユーザーが Food タブで自然文（例:「吉野家の牛丼 並盛とサラダ」）を入力すると、Cloud Function `analyzeFoodPFC` が OpenAI GPT-4o-mini を呼び出し、PFC（タンパク質・脂質・炭水化物）とカロリーを推定して返す。
 
 ---
 
-## 食事記録機能の現状仕様（Food タブ）
+## アーキテクチャ
 
-- 実装ファイル: `app/(tabs)/food.tsx`
-- 型:
-  - `Meal`:
-    - `id: string`
-    - `name: string`
-    - `cal: number`
-    - `pro: number`
-    - `fat: number`
-    - `carb: number`
-- 状態管理:
-  - `meals: Meal[]`
-  - 入力フォーム用の state:
-    - `foodName`, `cal`, `pro`, `fat`, `carb`（いずれも string）
-  - AI 入力用:
-    - `aiInput: string` … ユーザーが「吉野家の牛丼 並盛」などを入れるテキストボックス
-    - `isAiLoading: boolean` … AI 解析中のローディング表示用
-
-### ローカル保存とクラウド保存
-
-- **ローカル (`AsyncStorage`)**
-  - キー: `@food_meals_today`
-  - 保存タイミング:
-    - 食事追加時（`handleAddFood`）に `Meal[]` 全体を上書き保存
-    - 食事削除時（`handleRemoveFood`）にも同様
-
-- **クラウド (`Firestore`)**
-  - 関数: `handleSaveToFirebase`
-  - フロー:
-    - `meals` が空ならアラートで中断
-    - 日付から `YYYY-MM-DD_Food` 形式の `docId` を組み立て
-    - `users/{uid}/food_logs/{docId}` に以下を保存:
-      - `date`（`serverTimestamp()`）
-      - `dateObj`（`now.toISOString()`）
-      - `meals`（`Meal[]`）
-      - `totalCal`, `totalPro`, `totalFat`, `totalCarb`
-    - 保存成功後、`AsyncStorage.removeItem(STORAGE_KEY)` でローカルクリアし、`meals` state を空にする
+```
+[クライアント]                          [サーバー]
+app/(tabs)/food.tsx                    functions-ai/src/index.ts
+  │                                      │
+  │  httpsCallable("analyzeFoodPFC")     │
+  │ ──────────────────────────────────▶  analyzeFoodPFC (onCall)
+  │    { text: "牛丼 並盛" }             │
+  │                                      │  OpenAI API (gpt-4o-mini)
+  │                                      │  ──▶ JSON レスポンス
+  │  ◀──────────────────────────────────  │
+  │    { total: {...}, items: [...] }     │
+  │                                      │
+  ▼
+  食事辞書に保存 (food_dictionary)
+  今日の食事リストに追加
+```
 
 ---
 
-## AI 自動解析 UI の現状
+## クライアント側（`app/(tabs)/food.tsx`）
 
-- 対象ファイル: `app/(tabs)/food.tsx`
-- 関連する state:
-  - `aiInput`（ユーザー入力のフリーテキスト）
-  - `isAiLoading`（ローディングインジケータの表示制御）
+### 処理フロー（`resolveFoodNutritionFromText`）
 
-### ハンドラ: `handleAIGenerate`
+1. ユーザー入力をトリム
+2. **食事辞書キャッシュ確認**: `users/{uid}/food_dictionary/{safeId}` を参照（`sanitizeDocId` でIDをサニタイズ）
+3. キャッシュヒット → そのまま PFC データを返す
+4. キャッシュミス → Cloud Function `analyzeFoodPFC` を呼び出し
+5. レスポンスの `total` フィールドから PFC を抽出
+6. 結果を今日の食事リストに追加
 
-`handleAIGenerate` が **AI 呼び出しのためのエントリポイント** です。  
-現状は UI テスト用のダミー実装になっています。
+### 関連する状態
 
-- 入力検証:
-  - `aiInput` が空の場合はアラートを出して return
-- ローディング制御:
-  - `setIsAiLoading(true)` でボタンをスピナー表示に変更
-- TODO コメント:
-  - `// TODO: ここに相方がAI APIと通信する処理を書く`
-  - ここを別AIが実装する想定
-- ダミー処理（要削除 or 差し替え）:
-  - `setTimeout` で 1.5 秒後に以下を実行:
-    - `setFoodName(aiInput);`
-    - `setCal('500');`
-    - `setIsAiLoading(false);`
-    - `setAiInput('');`
-    - `Alert.alert('UIテスト', '相方へ：ここにAIのレスポンスを反映させてね！');`
+| state | 用途 |
+|-------|------|
+| `scratchAiInput` | AI 解析用テキスト入力 |
+| `isScratchAiLoading` | AI 解析中のローディング表示 |
+
+### 食事辞書（`food_dictionary`）
+
+- パス: `users/{uid}/food_dictionary/{safeId}`
+- `safeId` は `sanitizeDocId(trimmed)` で生成（`/` → `_` 置換等）
+- フィールド: `name`, `cal`, `pro`, `fat`, `carb`, `updatedAt`, `isFavorite`
+- 手動追加・AI 解析の両方で辞書に保存される
 
 ---
 
-## AI 自動解析機能の要件（ドラフト）
+## サーバー側（`functions-ai/src/index.ts`）
 
-ここから先は「別のAIに相談して一緒に設計するためのたたき台」です。  
-この案をベースに、**外部APIの選定・プロンプト設計・レスポンス形式**などを一緒に詰めてください。
+### `analyzeFoodPFC` 関数
 
-### 1. 入力
+| 項目 | 値 |
+|------|-----|
+| 種類 | `onCall`（Gen2 Callable） |
+| リージョン | `asia-northeast1` |
+| 認証 | 必須（`request.auth` チェック） |
+| シークレット | `OPENAI_API_KEY`（Firebase Secret Manager） |
+| invoker | `public` |
 
-- ソース: `aiInput`（ユーザーの日本語テキスト）
-  - 例:
-    - 「吉野家の牛丼 並盛」
-    - 「朝: プロテイン 1杯, ランチ: サラダチキン 1個と白米200g」
-    - 「コンビニで唐揚げ弁当とおにぎり2個」
-- 条件:
-  - 主に日本語で書かれることを想定
-  - 複数の食事（朝・昼・夜など）が1文に含まれていてもよい
+### 入力バリデーション
 
-### 2. 出力（AI が返してほしい情報のイメージ）
+- `text` が空文字・非文字列 → `invalid-argument`
+- `text` が 500 文字超 → `invalid-argument`
+- 任意: `demographics`（身長・年齢、推定精度向上用）
 
-AI からは、以下の形式の JSON もしくは構造化データを受け取りたい想定です。
+### OpenAI 呼び出し
 
-- 単一 or 複数の `Meal` レコードに変換できること
-- フィールド:
-  - `name: string` … 食事名（「牛丼 並盛」「唐揚げ弁当」など）
-  - `cal: number` … カロリー（kcal）
-  - `pro: number` … タンパク質量（g）
-  - `fat: number` … 脂質量（g）
-  - `carb: number` … 炭水化物量（g）
+- モデル: `gpt-4o-mini`
+- `response_format: { type: "json_object" }`
+- `temperature: 0.2`（低めで安定性重視）
+- システムプロンプトで JSON フォーマットを厳密に指定
 
-※ 精度は 100% でなくてよく、「一般的な栄養価の目安」で構いません。  
-　食品データベース（例: 文部科学省の食品成分データベース）との連携や、LLM による推定など、具体的な実装方法は別途検討します。
+### レスポンス形式
 
-### 3. UI への反映方法（想定）
+```json
+{
+  "total": {
+    "name": "唐揚げ弁当とおにぎり",
+    "cal": 850,
+    "pro": 30,
+    "fat": 25,
+    "carb": 110
+  },
+  "items": [
+    { "name": "唐揚げ弁当", "cal": 700, "pro": 25, "fat": 22, "carb": 85 },
+    { "name": "おにぎり", "cal": 150, "pro": 5, "fat": 3, "carb": 25 }
+  ]
+}
+```
 
-AI からの推論結果を受け取ったあと、以下の 2 パターンがあり得ます。
+- `total`: 全食事の合算値（クライアントが主に使用）
+- `items`: 個別食品の内訳（将来の拡張用）
+- 数値はすべて安全にパースし、`Number.isFinite` で検証
 
-- **パターン A: 入力フォームだけを自動入力する**
-  - `setFoodName(推論された name)`
-  - `setCal(String(cal))`
-  - `setPro(String(pro))`
-  - `setFat(String(fat))`
-  - `setCarb(String(carb))`
-  - ユーザーは値を確認・微調整してから「リストに追加」ボタンを押す
+### エラーハンドリング
 
-- **パターン B: 直接 `meals` に追加する**
-  - `const newMeal: Meal = { ... }` を作り、`saveToLocal([...meals, newMeal])` を呼ぶ
-  - 自動で「食べたもの履歴」に追加される
-
-どちらの UX にするかはまだ厳密に決めていませんが、**現状のUIは A パターン（フォームに入れてユーザーが確認する）を想定したレイアウト**になっています。
-
-### 4. エラーハンドリング / バリデーション
-
-- AI API 呼び出しが失敗した場合
-  - `setIsAiLoading(false)` を必ず呼ぶ
-  - `Alert.alert` でユーザーに失敗を知らせる
-  - 可能なら「ざっくりカロリーだけ」など部分的な fallback を返す
-
-- 推論結果の数値がおかしい場合
-  - 例: 負の値、極端に大きい値（> 5000kcal など）
-  - 範囲チェックを行い、明らかにおかしければ修正するか、警告を出す
-
-### 5. セキュリティ / プライバシー
-
-- 食事内容は一見センシティブではありませんが、**ユーザーID と紐づく健康データ**です。
-- 外部の LLM / API を使う場合は、以下を考慮してください。
-  - 送信する情報を最小限にする（ユーザーのメールアドレスや UID などを送らない）
-  - ベンダーのプライバシーポリシー・利用規約を確認する
+- OpenAI レスポンスが空 → `internal` エラー
+- JSON パース失敗 → `internal` エラー（ログに生レスポンスを記録）
+- その他の未知エラー → `"Failed to analyze food data."` で内部情報を隠蔽
 
 ---
 
-## 別AIへの具体的な依頼イメージ
+## Firestore データモデル（関連部分）
 
-このドキュメントを読んだ別のAIには、例えば次のような依頼を想定しています。
-
-- **タスク例1**
-  - 「`app/(tabs)/food.tsx` の `handleAIGenerate` 内に、LLM または食品データベースAPIを呼び出す処理を書いてください。」
-  - 「入力は `aiInput` の日本語テキストです。出力で `Meal` 型に変換して、フォームに自動入力する or 直接 `meals` に追加する実装を提案してください。」
-
-- **タスク例2**
-  - 「日本のコンビニ・チェーン店メニューに強い食品データベースAPIを検索し、このアプリから呼び出すためのTypeScriptコードを生成してください。」
+| パス | 用途 | クライアント書き込み |
+|------|------|:---:|
+| `users/{uid}/food_dictionary/{safeId}` | 食品辞書（PFC キャッシュ + お気に入り） | 可 |
+| `users/{uid}/food_logs/{docId}` | 日次食事ログ（`YYYY-MM-DD_Food`） | 可 |
 
 ---
 
-## まとめ
+## セキュリティ・プライバシー
 
-- このプロジェクトは、Expo Router + React Native + Firebase を使った**筋トレ & 食事記録アプリ**です。
-- 食事記録タブ (`app/(tabs)/food.tsx`) には、**AIによる自動PFC推定のためのUIとフックポイント**が既に用意されています。
-- 実際の AI 呼び出しロジックは `handleAIGenerate` に実装予定であり、  
-  このドキュメントはその実装を他のAIに依頼するための「仕様書」として利用できます。
+- OpenAI に送信するのは**食事テキストと身体情報（任意）のみ**。UID やメールアドレスは送らない
+- `text` は 500 文字に制限済み（トークン消費・コスト爆発の防止）
+- エラーメッセージに OpenAI のレスポンス詳細やスタックトレースを含めない

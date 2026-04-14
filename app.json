@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "fitness-app",
+    "name": "NoteFit AI",
     "slug": "notefit-ai",
     "scheme": "fitness-app",
     "version": "1.0.2",
@@ -19,6 +19,7 @@
     "android": {
       "package": "com.takimoto.shoa.notefitai",
       "versionCode": 1,
+      "googleServicesFile": "./google-services.json",
       "permissions": ["com.android.vending.BILLING"],
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",

@@ -158,8 +158,26 @@
 ├── firebaseConfig.ts          … Firebase 初期化
 ├── firestore.rules            … Firestore のルール
 ├── functions-ai/              … Cloud Functions（AI系）
-└── functions/                 … Cloud Functions（レガシー/非AI）
+├── functions/                 … Cloud Functions（レガシー/非AI）
+├── google-services.json       … Firebase Android 設定（要ダウンロード）
+└── pc-api-service-account.json … Play Console API キー（EAS Submit 用）
 ```
+
+---
+
+## 9. リリース・ストア公開に関する設定
+
+| やりたいこと | 編集するファイル |
+|--------------|------------------|
+| アプリ表示名を変える | `app.json` → `expo.name` |
+| バージョン番号を上げる | `app.json` → `expo.version` + `package.json` → `version`（`versionCode` は EAS が自動インクリメント） |
+| AdMob App ID をテスト→本番に切り替え | `app.json` → `plugins` → `react-native-google-mobile-ads` の `androidAppId` / `iosAppId` |
+| AdMob 広告ユニット ID を設定 | `.env` → `ADMOB_BANNER_UNIT_ID` 等 |
+| RevenueCat API キーを設定 | `.env` → `REVENUECAT_ANDROID_API_KEY` 等 |
+| Firebase Android 設定 | `google-services.json`（Firebase Console からダウンロード） |
+| EAS Submit の設定 | `eas.json` → `submit.production.android` |
+| プライバシーポリシーを編集 | `docs/PRIVACY_POLICY.md` |
+| リリース手順を確認 | `docs/RELEASE_CHECKLIST.md` |
 
 ---
 
