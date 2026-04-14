@@ -50,7 +50,10 @@ export default function MealRemindersScreen() {
   React.useEffect(() => {
     const run = async () => {
       const user = auth.currentUser;
-      if (!user) return;
+      if (!user) {
+        setLoading(false);
+        return;
+      }
       try {
         const s = await getMealReminderSettings(user.uid);
         setSettings(s);

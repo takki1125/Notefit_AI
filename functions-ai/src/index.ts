@@ -105,6 +105,7 @@ const callableOpts = {
   region: "asia-northeast1" as const,
   secrets: [OPENAI_API_KEY],
   cors: true,
+  invoker: "public" as const,
 };
 
 const publicCallableOpts = {

@@ -42,7 +42,10 @@ export default function ProfileEditScreen() {
   useEffect(() => {
     const fetchProfile = async () => {
       const user = auth.currentUser;
-      if (!user) return;
+      if (!user) {
+        setLoading(false);
+        return;
+      }
       try {
         const docSnap = await getDoc(doc(db, 'users', user.uid));
         if (docSnap.exists()) {

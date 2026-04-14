@@ -36,7 +36,10 @@ export default function AiCoachSettingsScreen() {
 
   const load = useCallback(async () => {
     const user = auth.currentUser;
-    if (!user) return;
+    if (!user) {
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     try {
       const s = await getAiCoachSettings(user.uid);
