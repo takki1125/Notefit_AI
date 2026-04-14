@@ -322,7 +322,11 @@ function HomeTabContent() {
       await AsyncStorage.setItem(dateKey, todayStr);
     } else {
       const stored = await AsyncStorage.getItem(storageKey);
-      setTodayMeals(stored ? JSON.parse(stored) : []);
+      if (stored) {
+        try { setTodayMeals(JSON.parse(stored)); } catch { setTodayMeals([]); }
+      } else {
+        setTodayMeals([]);
+      }
     }
   }, []);
 

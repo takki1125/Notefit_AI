@@ -142,6 +142,10 @@ export const analyzeFoodPFC = onCall(callableOpts, async (request) => {
       throw new HttpsError("invalid-argument", "Parameter 'text' must be a non-empty string.");
     }
 
+    if (text.length > 500) {
+      throw new HttpsError("invalid-argument", "Parameter 'text' must be 500 characters or fewer.");
+    }
+
     const demo = parseDemographicsPayload(request.data);
 
     const openai = createOpenAIClient();
@@ -233,7 +237,7 @@ export const analyzeFoodPFC = onCall(callableOpts, async (request) => {
   } catch (error: any) {
     logger.error("analyzeFoodPFC error", error);
     if (error instanceof HttpsError) throw error;
-    throw new HttpsError("internal", error?.message || "Unknown error in analyzeFoodPFC.");
+    throw new HttpsError("internal", "Failed to analyze food data.");
   }
 });
 

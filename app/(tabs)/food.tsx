@@ -24,6 +24,7 @@ import { auth, db } from "../../firebaseConfig";
 import { useSubscriptionEntitlements } from "../../hooks/useSubscriptionEntitlements";
 import { styles } from "../../theme/styles";
 import { callableCreateMealRoutine, callableDeleteMealRoutine } from "../../utils/aiUserContentCallables";
+import { sanitizeDocId } from "../../utils/firestoreUtils";
 
 // ★追加：Copilotのインポート
 import { CopilotProvider, CopilotStep, walkthroughable, useCopilot } from "react-native-copilot";
@@ -60,7 +61,6 @@ const DATE_KEY_BASE = '@food_last_opened_date_';
 
 // ★追加：チュートリアル用のラップコンポーネント（View用とTouchableOpacity用）
 const WalkthroughableView = walkthroughable(View);
-const WalkthroughableTouchableOpacity = walkthroughable(TouchableOpacity);
 
 // ★変更：関数名を FoodTabContent に変更（一番下でProviderでラップするため）
 function FoodTabContent() {
@@ -157,7 +157,9 @@ function FoodTabContent() {
             await AsyncStorage.setItem(dateKey, todayStr);
           } else {
             const stored = await AsyncStorage.getItem(storageKey);
-            if (stored) setMeals(JSON.parse(stored));
+            if (stored) {
+              try { setMeals(JSON.parse(stored)); } catch { setMeals([]); }
+            }
           }
         } catch (e) {
           console.error("ローカルデータの読み込み失敗:", e);
@@ -441,7 +443,7 @@ function FoodTabContent() {
       throw new Error("AI解析を使うにはログインが必要です");
     }
 
-    const dictRef = doc(db, "users", user.uid, "food_dictionary", trimmed);
+    const dictRef = doc(db, "users", user.uid, "food_dictionary", sanitizeDocId(trimmed));
     const dictSnap = await getDoc(dictRef);
     if (dictSnap.exists()) {
       const data = dictSnap.data();
@@ -572,7 +574,7 @@ function FoodTabContent() {
 
     const user = auth.currentUser;
     if (user) {
-      const dictRef = doc(db, "users", user.uid, "food_dictionary", foodName.trim());
+      const dictRef = doc(db, "users", user.uid, "food_dictionary", sanitizeDocId(foodName.trim()));
       await setDoc(dictRef, {
         name: foodName,
         cal: newFood.cal,
@@ -599,9 +601,13 @@ function FoodTabContent() {
     );
   };
 
-  const handleRemoveFood = (id: string) => {
+  const handleRemoveFood = async (id: string) => {
     const newMeals = meals.filter((item) => item.id !== id);
-    saveMealsToAll(newMeals);
+    try {
+      await saveMealsToAll(newMeals);
+    } catch {
+      Alert.alert("エラー", "食事の削除に失敗しました。");
+    }
   };
 
   const toggleFavorite = async (mealName: string, currentStatus: boolean) => {
@@ -616,7 +622,7 @@ function FoodTabContent() {
     });
 
     try {
-      const dictRef = doc(db, "users", user.uid, "food_dictionary", mealName);
+      const dictRef = doc(db, "users", user.uid, "food_dictionary", sanitizeDocId(mealName));
       await setDoc(dictRef, { isFavorite: newStatus }, { merge: true });
     } catch (e) {
       console.error("お気に入り更新失敗:", e);
@@ -633,7 +639,7 @@ function FoodTabContent() {
     <SafeAreaView style={styles.container}>
       <View style={styles.headerRow}>
         <View style={styles.headerContent}>
-          <Text style={styles.headerLabel}>Today's Nutrition</Text>
+          <Text style={styles.headerLabel}>Today&apos;s Nutrition</Text>
         </View>
       </View>
       <ScrollView 

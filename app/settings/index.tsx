@@ -19,12 +19,14 @@ export default function SettingsScreen() {
   useEffect(() => {
     const run = async () => {
       const user = auth.currentUser;
-      if (!user) return;
+      if (!user) {
+        setLoading(false);
+        return;
+      }
       try {
         const profile = await getUserProfile(user.uid);
         setDetailedEnabled(!!profile?.isDetailedTrackingEnabled);
         
-        // ローカルから自動チェックの設定を読み込む
         const autoCheckVal = await AsyncStorage.getItem('@auto_check_set');
         setAutoCheckEnabled(autoCheckVal === 'true');
 
@@ -67,6 +69,8 @@ export default function SettingsScreen() {
           } catch (error: any) {
             if (error.code === 'auth/requires-recent-login') {
               Alert.alert('エラー', '再ログインしてから実行してください。');
+            } else {
+              Alert.alert('エラー', 'エラーが発生しました。時間をおいて再度お試しください。');
             }
           }
         },

@@ -132,7 +132,7 @@ function StatsTabContent() {
 
             // 部位グラフの集計
             if (ex.category === currentTargetPart) {
-              ex.sets.forEach((set: any) => {
+              (ex.sets ?? []).forEach((set: any) => {
                 if (set.done && set.weight && set.reps) {
                   const estimatedRM = parseFloat(set.weight) * (1 + parseInt(set.reps) / 30);
                   if (estimatedRM > maxPartRmForThisDay) maxPartRmForThisDay = Math.round(estimatedRM);
@@ -142,7 +142,7 @@ function StatsTabContent() {
 
             // 種目グラフの集計
             if (ex.name === selectedExercise) {
-              ex.sets.forEach((set: any) => {
+              (ex.sets ?? []).forEach((set: any) => {
                 if (set.done && set.weight && set.reps) {
                   const estimatedRM = parseFloat(set.weight) * (1 + parseInt(set.reps) / 30);
                   if (estimatedRM > maxExRmForThisDay) maxExRmForThisDay = Math.round(estimatedRM);
