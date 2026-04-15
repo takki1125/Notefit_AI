@@ -8,7 +8,6 @@ import { useFocusEffect } from "@react-navigation/native";
 import {
   ActivityIndicator,
   Alert,
-  SafeAreaView,
   ScrollView,
   Text,
   TextInput,
@@ -16,6 +15,7 @@ import {
   View,
   Modal
 } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 
 import { FREE_MEAL_ROUTINE_LIMIT } from "../../constants/subscriptionLimits";
 import { useRouter } from "expo-router";
@@ -636,7 +636,7 @@ function FoodTabContent() {
   });
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
       <View style={styles.headerRow}>
         <View style={styles.headerContent}>
           <Text style={styles.headerLabel}>Today&apos;s Nutrition</Text>
