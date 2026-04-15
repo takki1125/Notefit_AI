@@ -13,8 +13,8 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { useFocusEffect } from "@react-navigation/native"; // ★ これを追加
-import AsyncStorage from "@react-native-async-storage/async-storage"; // ★ これを追加
+import { useFocusEffect } from "@react-navigation/native";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Check, ChevronDown, Clock, Dumbbell, Pencil, Plus, Trash2, X } from "lucide-react-native";
 import {
   addDoc,
@@ -43,9 +43,12 @@ import { CopilotProvider, CopilotStep, walkthroughable, useCopilot } from "react
 type ExerciseSectionRow = { title: string; data: (string | CustomExerciseListItem)[] };
 type ExerciseCategoryRow = { id: string; label: string; sections: ExerciseSectionRow[] };
 
+// ★ 変更: 有酸素用のフィールドを追加
 type WorkoutSet = {
-  weight: string;
-  reps: string;
+  weight?: string;
+  reps?: string;
+  durationMinutes?: string;
+  distanceKm?: string;
   done: boolean;
 };
 
@@ -76,7 +79,7 @@ type RoutineModalProps = {
   onLoadRoutine: (routine: Routine) => void;
 };
 
-const WalkthroughableView = walkthroughable(TouchableOpacity); // 今回はボタン(TouchableOpacity)を包むので合わせる
+const WalkthroughableView = walkthroughable(TouchableOpacity);
 
 const ExerciseSelectorModal: React.FC<ExerciseSelectorModalProps> = ({
   visible,
@@ -87,7 +90,6 @@ const ExerciseSelectorModal: React.FC<ExerciseSelectorModalProps> = ({
   const [loading, setLoading] = useState(true);
   const [selectedCategory, setSelectedCategory] = useState<ExerciseCategoryRow | null>(null);
 
-  // ★追加：新しい種目名を入力・保存するためのState
   const [newExerciseName, setNewExerciseName] = useState("");
   const [isSaving, setIsSaving] = useState(false);
   const [editTarget, setEditTarget] = useState<{
@@ -112,7 +114,6 @@ const ExerciseSelectorModal: React.FC<ExerciseSelectorModalProps> = ({
 
       const data: ExerciseCategoryRow[] = [];
 
-      // ① マスターデータ処理
       masterSnap.forEach((d) => {
         const docData = d.data() as any;
         let sections: { title: string; data: string[] }[] = [];
@@ -137,7 +138,6 @@ const ExerciseSelectorModal: React.FC<ExerciseSelectorModalProps> = ({
         });
       });
 
-      // ② 個人データを「オリジナル」セクションに挿入
       const customDocs = customSnap.docs.map((d) => {
         const x = d.data() as { name?: string; categoryLabel?: string };
         return {
@@ -192,11 +192,10 @@ const ExerciseSelectorModal: React.FC<ExerciseSelectorModalProps> = ({
   useEffect(() => {
     if (visible) {
       fetchData();
-      setNewExerciseName(""); // モーダルを開くたびに入力欄をリセット
+      setNewExerciseName(""); 
     }
   }, [visible]);
 
-  // ★追加：UIのボタンから呼ばれる保存処理
   const handleSaveCustomExercise = async () => {
     if (!newExerciseName.trim()) {
       Alert.alert("エラー", "種目名を入力してください");
@@ -404,7 +403,6 @@ const ExerciseSelectorModal: React.FC<ExerciseSelectorModalProps> = ({
                     </View>
                   );
                 }}
-                // ★進化：リストの一番下に入力フォームを常時表示！
                 ListFooterComponent={
                   <View style={{ marginTop: 20, marginBottom: 40, padding: 15, backgroundColor: "#1a1a1a", borderRadius: 12, marginHorizontal: 16 }}>
                     <Text style={{ color: "#2ecc71", fontWeight: "bold", marginBottom: 10 }}>＋ オリジナル種目を追加</Text>
@@ -731,7 +729,6 @@ type Props = {
   navigation: any;
 };
 
-// ★変更：メインの関数名を TrainingTabContent にする
 const TrainingTabContent: React.FC<Props> = ({ navigation }) => {
   const [modalVisible, setModalVisible] = useState(false);
   const [routineModalVisible, setRoutineModalVisible] = useState(false);
@@ -745,7 +742,6 @@ const TrainingTabContent: React.FC<Props> = ({ navigation }) => {
 
   const [autoCheck, setAutoCheck] = useState(false);
 
-  // ★追加：チュートリアル用のHooks
   const { start, copilotEvents } = useCopilot();
   const startTutorialRef = React.useRef(start);
   startTutorialRef.current = start;
@@ -758,7 +754,6 @@ const TrainingTabContent: React.FC<Props> = ({ navigation }) => {
       };
       loadSetting();
 
-      // ★追加：チュートリアル発火ロジック（画面を開いた時に1回だけ）
       let cancelled = false;
       let timer: ReturnType<typeof setTimeout> | undefined;
 
@@ -783,7 +778,6 @@ const TrainingTabContent: React.FC<Props> = ({ navigation }) => {
     }, [])
   );
 
-  // ★追加：チュートリアル完了時に「見た」という記録を保存
   useEffect(() => {
     const onStop = async () => {
       const user = auth.currentUser;
@@ -844,12 +838,18 @@ const TrainingTabContent: React.FC<Props> = ({ navigation }) => {
   };
 
   const handleAddExercise = (exerciseName: string, category: string) => {
+    // ★ 変更: 有酸素なら初期値を分・km用のプロパティにする
+    const isCardio = category.includes("有酸素");
     const newExercise: Exercise = {
       id: Date.now(),
       name: exerciseName,
       category: category,
       target: "- kg x -",
-      sets: [{ weight: "", reps: "", done: autoCheck }],
+      sets: [
+        isCardio
+          ? { durationMinutes: "", distanceKm: "", done: autoCheck }
+          : { weight: "", reps: "", done: autoCheck }
+      ],
     };
     setMenu((prev) => [...prev, newExercise]);
   };
@@ -863,12 +863,31 @@ const TrainingTabContent: React.FC<Props> = ({ navigation }) => {
         {
           text: "読み込む",
           onPress: () => {
-            const loadedExercises: Exercise[] = routine.exercises.map((ex) => ({
-              ...ex,
-              category: ex.category || "他",
-              id: Date.now() + Math.random(),
-              sets: ex.sets.map((s) => ({ ...s, done: autoCheck })),
-            }));
+            const loadedExercises: Exercise[] = routine.exercises.map((ex) => {
+              // 古いデータとの互換性を保ちつつ読み込む
+              const isCardio = (ex.category || "").includes("有酸素");
+              return {
+                ...ex,
+                category: ex.category || "他",
+                id: Date.now() + Math.random(),
+                sets: ex.sets.map((s) => {
+                  if (isCardio) {
+                    // もし昔の weight/reps に入ってたら移行する
+                    return {
+                      durationMinutes: s.durationMinutes ?? s.weight ?? "",
+                      distanceKm: s.distanceKm ?? s.reps ?? "",
+                      done: autoCheck
+                    };
+                  } else {
+                    return {
+                      weight: s.weight ?? "",
+                      reps: s.reps ?? "",
+                      done: autoCheck
+                    };
+                  }
+                }),
+              };
+            });
             setMenu(loadedExercises);
             setCurrentRoutineName(routine.name);
             setTimerSeconds(0);
@@ -892,11 +911,16 @@ const TrainingTabContent: React.FC<Props> = ({ navigation }) => {
 
   const handleAddSet = (exerciseId: number) => {
     setMenu((prev) =>
-      prev.map((ex) =>
-        ex.id === exerciseId
-          ? { ...ex, sets: [...ex.sets, { weight: "", reps: "", done: autoCheck }] }
-          : ex
-      )
+      prev.map((ex) => {
+        if (ex.id === exerciseId) {
+          const isCardio = ex.category.includes("有酸素");
+          const newSet = isCardio
+            ? { durationMinutes: "", distanceKm: "", done: autoCheck }
+            : { weight: "", reps: "", done: autoCheck };
+          return { ...ex, sets: [...ex.sets, newSet] };
+        }
+        return ex;
+      })
     );
   };
 
@@ -1101,27 +1125,29 @@ const TrainingTabContent: React.FC<Props> = ({ navigation }) => {
                       <Text style={styles.setText}>{index + 1}</Text>
                     </View>
                     <View style={[styles.inputBox, { width: "25%" }]}>
+                      {/* ★変更: 有酸素なら durationMinutes を扱う */}
                       <TextInput
                         style={styles.inputFieldText}
                         keyboardType="numeric"
                         placeholder={isCardio ? "分" : "-"}
                         placeholderTextColor="#444"
-                        value={set.weight.toString()}
+                        value={isCardio ? (set.durationMinutes || "") : (set.weight || "")}
                         onChangeText={(val) =>
-                          handleUpdateSet(item.id, index, "weight", val)
+                          handleUpdateSet(item.id, index, isCardio ? "durationMinutes" : "weight", val)
                         }
                         returnKeyType="done"
                       />
                     </View>
                     <View style={[styles.inputBox, { width: "25%" }]}>
+                      {/* ★変更: 有酸素なら distanceKm を扱う */}
                       <TextInput
                         style={styles.inputFieldText}
                         keyboardType="numeric"
                         placeholder={isCardio ? "km" : "-"}
                         placeholderTextColor="#444"
-                        value={set.reps.toString()}
+                        value={isCardio ? (set.distanceKm || "") : (set.reps || "")}
                         onChangeText={(val) =>
-                          handleUpdateSet(item.id, index, "reps", val)
+                          handleUpdateSet(item.id, index, isCardio ? "distanceKm" : "reps", val)
                         }
                         returnKeyType="done"
                       />
@@ -1155,7 +1181,6 @@ const TrainingTabContent: React.FC<Props> = ({ navigation }) => {
             );
           })}
 
-          {/* ★追加：種目追加ボタンをスポットライトで光らせる */}
           <CopilotStep
             text="まずはここから種目を追加して、今日のトレーニングを始めましょう！"
             order={1}
@@ -1203,7 +1228,6 @@ const TrainingTabContent: React.FC<Props> = ({ navigation }) => {
   );
 };
 
-// ★追加：チュートリアル全体をプロバイダーで包む（これを default export にする）
 export default function TrainingTabScreen(props: Props) {
   return (
     <CopilotProvider
