@@ -42,7 +42,6 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import * as Haptics from "expo-haptics";
 import { usePathname, useRouter } from "expo-router";
 
-// ★ 追加: Copilotのインポート
 import { CopilotProvider, CopilotStep, walkthroughable, useCopilot } from "react-native-copilot";
 
 import {
@@ -66,14 +65,19 @@ import {
   tutorialHomeKeyForUser,
 } from "../../utils/homeTutorialStorage";
 
-// --- 型定義 ---
-type WorkoutSet = { weight: number | string; reps: number | string; done: boolean; };
-type WorkoutExercise = { name: string; sets: WorkoutSet[]; };
+// ★ 変更: 有酸素用の箱（durationMinutes, distanceKm）を追加で許可する
+type WorkoutSet = {
+  weight?: number | string;
+  reps?: number | string;
+  durationMinutes?: number | string;
+  distanceKm?: number | string;
+  done: boolean;
+};
+type WorkoutExercise = { name: string; sets: WorkoutSet[]; category?: string; };
 type Workout = { id: string; routineName: string; exercises: WorkoutExercise[]; dateObj: Date; dateStr: string; day: number; durationSeconds?: number; };
 type Meal = { name: string; cal: number; pro: number; fat: number; carb: number; };
 type DailyFoodLog = { meals: Meal[]; totalCal: number; totalPro: number; totalFat: number; totalCarb: number; };
 
-// --- 道具：時間を 00:00 形式にする ---
 const formatTime = (totalSeconds: number | undefined) => {
   if (!totalSeconds) return "00:00";
   const h = Math.floor(totalSeconds / 3600);
@@ -82,10 +86,9 @@ const formatTime = (totalSeconds: number | undefined) => {
   return h > 0 ? `${h}:${m}:${s}` : `${m}:${s}`;
 };
 
-// ★ 追加: 光らせるためのラップコンポーネント（再レンダリングを防ぐために外で定義）
 const WalkthroughableView = walkthroughable(View);
 
-// --- 詳細モーダル（省略せずにそのまま） ---
+// --- 詳細モーダル ---
 const WorkoutDetailModal: React.FC<{
   visible: boolean;
   onClose: () => void;
@@ -125,12 +128,21 @@ const WorkoutDetailModal: React.FC<{
                     {workout.exercises.map((ex, i) => (
                       <View key={i} style={{ marginTop: 10, borderLeftWidth: 2, borderColor: '#2ecc71', paddingLeft: 12, marginBottom: 5 }}>
                         <Text style={{ color: '#eee', fontWeight: 'bold', fontSize: 15, marginBottom: 6 }}>{ex.name}</Text>
-                        {ex.sets.filter(s => s.done || (s.weight !== "" && s.reps !== "")).map((set, k) => (
-                          <View key={k} style={{ flexDirection: 'row', justifyContent: 'space-between', paddingRight: 10, marginBottom: 3 }}>
-                            <Text style={{ color: '#888', fontSize: 12 }}>Set {k + 1}</Text>
-                            <Text style={{ color: '#ccc', fontSize: 13 }}>{set.weight}kg × {set.reps}reps</Text>
-                          </View>
-                        ))}
+                        
+                        {/* ★ 変更: 有酸素でも空じゃなければ表示するようにフィルターを調整 */}
+                        {ex.sets.filter(s => s.done || (s.weight !== undefined && s.weight !== "") || (s.durationMinutes !== undefined && s.durationMinutes !== "")).map((set, k) => {
+                          const isCardio = set.durationMinutes !== undefined || set.distanceKm !== undefined;
+                          const displayStr = isCardio 
+                            ? `${set.durationMinutes || 0}分 × ${set.distanceKm || 0}km` 
+                            : `${set.weight || 0}kg × ${set.reps || 0}reps`;
+
+                          return (
+                            <View key={k} style={{ flexDirection: 'row', justifyContent: 'space-between', paddingRight: 10, marginBottom: 3 }}>
+                              <Text style={{ color: '#888', fontSize: 12 }}>Set {k + 1}</Text>
+                              <Text style={{ color: '#ccc', fontSize: 13 }}>{displayStr}</Text>
+                            </View>
+                          );
+                        })}
                       </View>
                     ))}
                   </View>
@@ -256,7 +268,6 @@ const CalendarSection: React.FC<{
   );
 };
 
-// ★ メインコンポーネントの中身を分離
 function HomeTabContent() {
   const router = useRouter();
   const pathname = usePathname();
@@ -265,7 +276,6 @@ function HomeTabContent() {
   const coinBalance = useCoinBalance();
   const { order, persistOrder, addWidget, hydrated } = useHomeWidgetOrder(uid);
 
-  // ★ Copilotのフックを使用
   const { start, stop, copilotEvents } = useCopilot();
   const startTutorialRef = useRef(start);
   const stopTutorialRef = useRef(stop);
@@ -334,7 +344,6 @@ function HomeTabContent() {
   const skipTutorialPersistOnNextStopRef = useRef(false);
   const replayBusyRef = useRef(false);
 
-  // チュートリアル完了時のみ「見た」を保存（replay 用の stop では保存しない）
   useEffect(() => {
     if (!tutorialStorageKey || !uid) return;
     const onStop = () => {
@@ -350,7 +359,6 @@ function HomeTabContent() {
     };
   }, [copilotEvents, tutorialStorageKey, uid]);
 
-  // 設定「再表示」: pending があるときだけスケジュール（start/stop を依存に含めない）
   useEffect(() => {
     if (!uid || !hydrated || !isFocused) return;
     if ((pathname ?? "").includes("settings")) return;
@@ -367,16 +375,9 @@ function HomeTabContent() {
           if (cancelled || replayBusyRef.current) return;
           void (async () => {
             replayBusyRef.current = true;
-            if (__DEV__) {
-              console.warn("[HomeTutorial] replay run", { pathname, uid: uid.slice(0, 6) });
-            }
             try {
               skipTutorialPersistOnNextStopRef.current = true;
-              try {
-                await stopTutorialRef.current();
-              } catch {
-                /* noop */
-              }
+              try { await stopTutorialRef.current(); } catch { }
               await new Promise<void>((resolve) => {
                 InteractionManager.runAfterInteractions(() => {
                   setTimeout(resolve, 550);
@@ -385,16 +386,13 @@ function HomeTabContent() {
               await startTutorialRef.current();
               await AsyncStorage.removeItem(TUTORIAL_REPLAY_PENDING_KEY);
             } catch (e) {
-              if (__DEV__) console.warn("[HomeTutorial] replay failed", e);
               await AsyncStorage.removeItem(TUTORIAL_REPLAY_PENDING_KEY).catch(() => { });
             } finally {
               replayBusyRef.current = false;
             }
           })();
         }, 750);
-      } catch {
-        /* noop */
-      }
+      } catch { }
     })();
 
     return () => {
@@ -403,7 +401,6 @@ function HomeTabContent() {
     };
   }, [uid, hydrated, isFocused, pathname]);
 
-  // 初回のみ: start を依存に入れない（毎レンダーで再実行されタイマーが巻き戻るのを防ぐ）
   useEffect(() => {
     if (!hydrated || !uid) return;
     let cancelled = false;
@@ -416,9 +413,7 @@ function HomeTabContent() {
         timer = setTimeout(() => {
           if (!cancelled) void startTutorialRef.current();
         }, 500);
-      } catch (error) {
-        console.error("Tutorial check failed:", error);
-      }
+      } catch (error) { }
     })();
 
     return () => {
@@ -488,7 +483,6 @@ function HomeTabContent() {
               setModalVisible(false);
               fetchHistory();
             } catch (e) {
-              console.error(e);
               Alert.alert("エラー", "削除に失敗しました。");
             }
           },
@@ -533,13 +527,11 @@ function HomeTabContent() {
       case "ai": return wrapIfEditEntry(<View pointerEvents={blockPointer}><DailyAIAdviceCard /></View>);
       case "calendar":
         return (
-          // ★ 1. CopilotStepで囲み、順番(order)を2にする
           <CopilotStep
             text="カレンダーの日付をタップすると、その日のトレーニングや食事の記録を詳しく確認できます。"
             order={2}
             name="calendarTutorial"
           >
-            {/* ★ 2. 光らせる実体をWalkthroughableViewで囲む */}
             <WalkthroughableView>
               <CalendarSection
                 viewedDate={viewedDate}
@@ -586,7 +578,9 @@ function HomeTabContent() {
                         {todaysWorkouts.length > 1 && <Text style={{ color: "#666", fontSize: 9, fontWeight: 'bold', marginBottom: 8, textAlign: 'right' }}>SESSION {todaysWorkouts.length - index}</Text>}
                         <View style={{ gap: 10 }}>
                           {workout.exercises.map((ex, i) => {
-                            const doneSets = ex.sets.filter(s => s.done || (s.weight !== "" && s.reps !== ""));
+                            // ★ 変更: 有酸素対応のフィルターロジック
+                            const doneSets = ex.sets.filter(s => s.done || (s.weight !== undefined && s.weight !== "") || (s.durationMinutes !== undefined && s.durationMinutes !== ""));
+                            
                             return (
                               <View key={i} style={{ marginBottom: 10 }}>
                                 <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 4 }}>
@@ -594,7 +588,15 @@ function HomeTabContent() {
                                   <Text style={{ color: "#fff", fontSize: 15, fontWeight: 'bold' }}>{ex.name}</Text>
                                 </View>
                                 {doneSets.length > 0 ? (
-                                  <Text style={{ color: '#888', fontSize: 12, paddingLeft: 14 }}>{doneSets.map(s => `${s.weight}kg×${s.reps}`).join('  |  ')}</Text>
+                                  <Text style={{ color: '#888', fontSize: 12, paddingLeft: 14 }}>
+                                    {/* ★ 変更: 有酸素対応の表示ロジック */}
+                                    {doneSets.map(s => {
+                                      const isCardio = s.durationMinutes !== undefined || s.distanceKm !== undefined;
+                                      return isCardio 
+                                        ? `${s.durationMinutes || 0}分×${s.distanceKm || 0}km` 
+                                        : `${s.weight || 0}kg×${s.reps || 0}`;
+                                    }).join('  |  ')}
+                                  </Text>
                                 ) : (
                                   <Text style={{ color: '#555', fontSize: 12, paddingLeft: 14 }}>未完了</Text>
                                 )}
@@ -683,7 +685,6 @@ function HomeTabContent() {
   const listHeader = useMemo(
     () => (
       <>
-        {/* ★ ここをCopilotStepで囲む！ */}
         <CopilotStep
           text="こちらはホーム画面です。本日のトレーニング記録や摂取カロリー、現在のコイン残高などをひと目でご確認いただけます。"
           order={1}
@@ -781,7 +782,6 @@ function HomeTabContent() {
           <FlatList {...listCommon} renderItem={renderStaticRow} />
         )}
 
-        {/* --- 省略せずにウィジェット追加モーダルを配置 --- */}
         <Modal visible={addWidgetModalVisible} transparent animationType="slide" onRequestClose={() => setAddWidgetModalVisible(false)}>
           <View style={{ flex: 1, justifyContent: "flex-end" }}>
             <Pressable style={{ flex: 1 }} onPress={() => setAddWidgetModalVisible(false)} />
@@ -810,14 +810,11 @@ function HomeTabContent() {
   );
 }
 
-// ★ 最後に全体をラップしてエクスポート
-// 修正後：一番下の export default function HomeTabScreen の部分
 export default function HomeTabScreen() {
   return (
     <CopilotProvider
       stopOnOutsideClick={true}
       androidStatusBarVisible={true}
-      // ★ ここを修正！背景を白にして、文字（黒）をはっきり読ませる
       tooltipStyle={{ backgroundColor: "#ffffff", borderRadius: 12 }}
       stepNumberComponent={() => null}
       labels={{ skip: "スキップ", previous: "前へ", next: "次へ", finish: "OK" }}
