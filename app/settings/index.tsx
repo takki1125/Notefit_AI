@@ -2,8 +2,10 @@ import React, { useEffect, useState } from 'react';
 import { useRouter } from 'expo-router';
 import { Alert, ScrollView, Switch, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { LogOut, Trash2, X, User, ChevronRight, Target, Bell, Sparkles, CheckSquare, Coins, BookOpen } from 'lucide-react-native';
-import { signOut } from 'firebase/auth';
+// ★ 追加: Lock アイコン（パスワード用）
+import { LogOut, Trash2, X, User, ChevronRight, Target, Bell, Sparkles, CheckSquare, Coins, BookOpen, Lock } from 'lucide-react-native';
+// ★ 追加: sendPasswordResetEmail
+import { signOut, sendPasswordResetEmail } from 'firebase/auth';
 import { getApp } from 'firebase/app';
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import { auth } from '../../firebaseConfig';
@@ -79,16 +81,10 @@ export default function SettingsScreen() {
             const user = auth.currentUser;
             if (!user) return;
 
-            /**
-             * 審査要件対応:
-             * クライアント権限では削除できないサブコレクション（coin_transactions など）があるため、
-             * サーバー側 callable（deleteMyAccount）で Firestore + Auth を一括削除する。
-             */
             const functions = getFunctions(getApp(), 'asia-northeast1');
             const callable = httpsCallable<unknown, { ok?: boolean }>(functions, 'deleteMyAccount');
             await callable({});
 
-            // トークン無効化後のUI残りを防ぐため明示的にサインアウト
             await signOut(auth);
           } catch (error: any) {
             const code = typeof error?.code === 'string' ? error.code : '';
@@ -106,6 +102,38 @@ export default function SettingsScreen() {
         },
       },
     ]);
+  };
+
+  // ★ 追加: パスワード再設定メールを送信する関数
+  const handlePasswordReset = async () => {
+    const user = auth.currentUser;
+    if (!user || !user.email) {
+      Alert.alert('エラー', 'ユーザー情報が取得できません。');
+      return;
+    }
+
+    Alert.alert(
+      'パスワードの変更',
+      `${user.email}\n宛にパスワード再設定メールを送信しますか？`,
+      [
+        { text: 'キャンセル', style: 'cancel' },
+        {
+          text: '送信する',
+          onPress: async () => {
+            try {
+              await sendPasswordResetEmail(auth, user.email!);
+              Alert.alert(
+                '送信完了', 
+                'パスワード再設定メールを送信しました。メール内のリンクから新しいパスワードを設定してください。'
+              );
+            } catch (error) {
+              console.error(error);
+              Alert.alert('エラー', 'メールの送信に失敗しました。時間をおいて再度お試しください。');
+            }
+          }
+        }
+      ]
+    );
   };
 
   return (
@@ -288,6 +316,19 @@ export default function SettingsScreen() {
         {/* セクション：アカウント */}
         <View style={{ marginTop: 30 }}>
           <Text style={[styles.sectionHeaderText, { marginBottom: 10 }]}>ACCOUNT</Text>
+          
+          {/* ★ 追加: パスワード変更ボタン */}
+          <TouchableOpacity style={[styles.routineItem, { marginBottom: 10 }]} onPress={handlePasswordReset}>
+            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+              <View style={{ backgroundColor: '#333', padding: 8, borderRadius: 10, marginRight: 15 }}>
+                <Lock color="#4facfe" size={20} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.routineNameText}>パスワードを変更</Text>
+                <Text style={styles.routineDescText}>再設定用のメールを送信します</Text>
+              </View>
+            </View>
+          </TouchableOpacity>
           
           <TouchableOpacity style={styles.routineItem} onPress={handleSignOut}>
             <View style={{ flexDirection: 'row', alignItems: 'center' }}>
