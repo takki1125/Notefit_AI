@@ -40,7 +40,17 @@ export default function SettingsScreen() {
   const handleSignOut = () => {
     Alert.alert('ログアウト', 'ログアウトしますか？', [
       { text: 'キャンセル', style: 'cancel' },
-      { text: 'ログアウト', style: 'destructive', onPress: () => signOut(auth) },
+      {
+        text: 'ログアウト',
+        style: 'destructive',
+        onPress: async () => {
+          try {
+            await signOut(auth);
+          } catch {
+            Alert.alert('エラー', 'ログアウトに失敗しました。時間をおいて再度お試しください。');
+          }
+        },
+      },
     ]);
   };
 

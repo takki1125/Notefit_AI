@@ -23,6 +23,7 @@ import {
   deleteDoc,
   doc,
   getDocs,
+  limit,
   orderBy,
   query,
   serverTimestamp,
@@ -65,6 +66,16 @@ type Routine = {
   name: string;
   exercises: Exercise[];
 };
+
+type PreviousExerciseHints = Record<string, WorkoutSet[]>;
+type TrainingDraft = {
+  savedDate: string;
+  currentRoutineName: string;
+  timerSeconds: number;
+  menu: Exercise[];
+};
+
+const TRAINING_DRAFT_KEY_PREFIX = "@training_draft_v1_";
 
 type ExerciseSelectorModalProps = {
   visible: boolean;
@@ -736,6 +747,8 @@ const TrainingTabContent: React.FC<Props> = ({ navigation }) => {
 
   const [menu, setMenu] = useState<Exercise[]>([]);
   const [currentRoutineName, setCurrentRoutineName] = useState("自由メニュー");
+  const [previousExerciseHints, setPreviousExerciseHints] = useState<PreviousExerciseHints>({});
+  const [draftRestored, setDraftRestored] = useState(false);
 
   const [timerSeconds, setTimerSeconds] = useState(0);
   const [isTimerActive, setIsTimerActive] = useState(false);
@@ -746,13 +759,86 @@ const TrainingTabContent: React.FC<Props> = ({ navigation }) => {
   const startTutorialRef = React.useRef(start);
   startTutorialRef.current = start;
 
+  const getTodayDateString = () => {
+    const now = new Date();
+    const yyyy = now.getFullYear();
+    const mm = String(now.getMonth() + 1).padStart(2, "0");
+    const dd = String(now.getDate()).padStart(2, "0");
+    return `${yyyy}-${mm}-${dd}`;
+  };
+
+  const getTrainingDraftKey = () => {
+    const uid = auth.currentUser?.uid;
+    return uid ? `${TRAINING_DRAFT_KEY_PREFIX}${uid}` : null;
+  };
+
+  const clearTrainingDraft = useCallback(async () => {
+    const key = getTrainingDraftKey();
+    if (!key) return;
+    await AsyncStorage.removeItem(key);
+  }, []);
+
+  const persistTrainingDraft = useCallback(
+    async (nextDraft: TrainingDraft) => {
+      const key = getTrainingDraftKey();
+      if (!key) return;
+      await AsyncStorage.setItem(key, JSON.stringify(nextDraft));
+    },
+    []
+  );
+
+  const restoreTrainingDraft = useCallback(async () => {
+    if (draftRestored) return;
+
+    const key = getTrainingDraftKey();
+    if (!key) {
+      setDraftRestored(true);
+      return;
+    }
+
+    try {
+      const raw = await AsyncStorage.getItem(key);
+      if (!raw) {
+        setDraftRestored(true);
+        return;
+      }
+
+      const parsed = JSON.parse(raw) as Partial<TrainingDraft>;
+      const today = getTodayDateString();
+
+      if (parsed.savedDate !== today) {
+        await AsyncStorage.removeItem(key);
+        setDraftRestored(true);
+        return;
+      }
+
+      if (!Array.isArray(parsed.menu) || parsed.menu.length === 0) {
+        await AsyncStorage.removeItem(key);
+        setDraftRestored(true);
+        return;
+      }
+
+      setMenu(parsed.menu as Exercise[]);
+      setCurrentRoutineName(
+        typeof parsed.currentRoutineName === "string" && parsed.currentRoutineName.trim()
+          ? parsed.currentRoutineName
+          : "自由メニュー"
+      );
+      setTimerSeconds(typeof parsed.timerSeconds === "number" ? parsed.timerSeconds : 0);
+    } catch (error) {
+      console.error("トレーニング下書きの復元に失敗:", error);
+    } finally {
+      setDraftRestored(true);
+    }
+  }, [draftRestored]);
+
   useFocusEffect(
     useCallback(() => {
       const loadSetting = async () => {
         const val = await AsyncStorage.getItem('@auto_check_set');
         setAutoCheck(val === 'true');
       };
-      loadSetting();
+      void Promise.all([loadSetting(), fetchPreviousExerciseHints(), restoreTrainingDraft()]);
 
       let cancelled = false;
       let timer: ReturnType<typeof setTimeout> | undefined;
@@ -775,7 +861,7 @@ const TrainingTabContent: React.FC<Props> = ({ navigation }) => {
         cancelled = true;
         if (timer) clearTimeout(timer);
       };
-    }, [])
+    }, [fetchPreviousExerciseHints, restoreTrainingDraft])
   );
 
   useEffect(() => {
@@ -828,6 +914,36 @@ const TrainingTabContent: React.FC<Props> = ({ navigation }) => {
     };
   }, [isTimerActive, menu.length]);
 
+  useEffect(() => {
+    if (!draftRestored) return;
+
+    if (menu.length === 0) {
+      void clearTrainingDraft();
+      return;
+    }
+
+    const draft: TrainingDraft = {
+      savedDate: getTodayDateString(),
+      currentRoutineName,
+      timerSeconds,
+      menu,
+    };
+    void persistTrainingDraft(draft);
+  }, [draftRestored, menu, currentRoutineName, clearTrainingDraft, persistTrainingDraft]);
+
+  useEffect(() => {
+    if (!draftRestored || menu.length === 0) return;
+    if (timerSeconds === 0 || timerSeconds % 10 !== 0) return;
+
+    const draft: TrainingDraft = {
+      savedDate: getTodayDateString(),
+      currentRoutineName,
+      timerSeconds,
+      menu,
+    };
+    void persistTrainingDraft(draft);
+  }, [draftRestored, timerSeconds, menu, currentRoutineName, persistTrainingDraft]);
+
   const formatTime = (totalSeconds: number) => {
     const h = Math.floor(totalSeconds / 3600);
     const m = Math.floor((totalSeconds % 3600) / 60)
@@ -837,19 +953,133 @@ const TrainingTabContent: React.FC<Props> = ({ navigation }) => {
     return h > 0 ? `${h}:${m}:${s}` : `${m}:${s}`;
   };
 
+  const fetchPreviousExerciseHints = useCallback(async () => {
+    const user = auth.currentUser;
+    if (!user) return;
+
+    const hasInputValue = (value: unknown) => {
+      if (value === null || value === undefined) return false;
+      return String(value).trim().length > 0;
+    };
+
+    const hasSetValue = (set: WorkoutSet, isCardio: boolean) => {
+      if (isCardio) {
+        return hasInputValue(set.durationMinutes) || hasInputValue(set.distanceKm);
+      }
+      return hasInputValue(set.weight) || hasInputValue(set.reps);
+    };
+
+    const trimTrailingEmptySets = (sets: WorkoutSet[], isCardio: boolean) => {
+      let lastFilledIndex = -1;
+      sets.forEach((set, index) => {
+        if (hasSetValue(set, isCardio)) lastFilledIndex = index;
+      });
+      if (lastFilledIndex < 0) return [];
+      return sets.slice(0, lastFilledIndex + 1);
+    };
+
+    try {
+      const q = query(
+        collection(db, "users", user.uid, "workouts"),
+        orderBy("dateObj", "desc"),
+        limit(50),
+      );
+      const snapshot = await getDocs(q);
+
+      const hints: PreviousExerciseHints = {};
+      snapshot.forEach((workoutDoc) => {
+        const workoutData = workoutDoc.data() as {
+          exercises?: Array<{ name?: string; category?: string; sets?: WorkoutSet[] }>;
+        };
+        const exercises = workoutData.exercises ?? [];
+
+        exercises.forEach((exercise) => {
+          const exerciseName = exercise.name?.trim();
+          if (!exerciseName) return;
+
+          const isCardio = (exercise.category ?? "").includes("有酸素");
+          const mappedSets = (exercise.sets ?? []).map((set) =>
+            isCardio
+              ? {
+                durationMinutes: set.durationMinutes ?? set.weight ?? "",
+                distanceKm: set.distanceKm ?? set.reps ?? "",
+                done: false,
+              }
+              : {
+                weight: set.weight ?? "",
+                reps: set.reps ?? "",
+                done: false,
+              }
+          );
+
+          const existingSets = hints[exerciseName] ?? [];
+          const maxLength = Math.max(existingSets.length, mappedSets.length);
+          const mergedSets: WorkoutSet[] = Array.from({ length: maxLength }, (_, index) => {
+            const existing = existingSets[index];
+            const candidate = mappedSets[index];
+
+            if (!existing && candidate) return candidate;
+            if (existing && !candidate) return existing;
+            if (!existing && !candidate) return { done: false };
+
+            if (isCardio) {
+              return {
+                durationMinutes: hasInputValue(existing?.durationMinutes)
+                  ? existing?.durationMinutes
+                  : candidate?.durationMinutes ?? "",
+                distanceKm: hasInputValue(existing?.distanceKm)
+                  ? existing?.distanceKm
+                  : candidate?.distanceKm ?? "",
+                done: false,
+              };
+            }
+
+            return {
+              weight: hasInputValue(existing?.weight) ? existing?.weight : candidate?.weight ?? "",
+              reps: hasInputValue(existing?.reps) ? existing?.reps : candidate?.reps ?? "",
+              done: false,
+            };
+          });
+
+          const cleanedSets = trimTrailingEmptySets(mergedSets, isCardio);
+          if (cleanedSets.length > 0) {
+            hints[exerciseName] = cleanedSets;
+          }
+        });
+      });
+
+      setPreviousExerciseHints(hints);
+    } catch (error) {
+      console.error("前回セットの取得に失敗:", error);
+    }
+  }, []);
+
+  const getPreviousSetPlaceholder = (
+    exerciseName: string,
+    setIndex: number,
+    field: "weight" | "reps" | "durationMinutes" | "distanceKm"
+  ) => {
+    const previousSet = previousExerciseHints[exerciseName]?.[setIndex];
+    if (!previousSet) return "";
+    const value = previousSet[field];
+    return value && value.toString().trim() ? value.toString() : "";
+  };
+
   const handleAddExercise = (exerciseName: string, category: string) => {
     // ★ 変更: 有酸素なら初期値を分・km用のプロパティにする
     const isCardio = category.includes("有酸素");
+    const previousSets = previousExerciseHints[exerciseName] ?? [];
+    const initialSetCount = Math.max(previousSets.length, 1);
     const newExercise: Exercise = {
       id: Date.now(),
       name: exerciseName,
       category: category,
       target: "- kg x -",
-      sets: [
+      sets: Array.from({ length: initialSetCount }, () =>
         isCardio
           ? { durationMinutes: "", distanceKm: "", done: autoCheck }
           : { weight: "", reps: "", done: autoCheck }
-      ],
+      ),
     };
     setMenu((prev) => [...prev, newExercise]);
   };
@@ -1019,6 +1249,7 @@ const TrainingTabContent: React.FC<Props> = ({ navigation }) => {
               exercises: menu,
               durationSeconds: timerSeconds,
             });
+            await clearTrainingDraft();
 
             Alert.alert("Good Job!", "保存しました", [
               {
@@ -1129,7 +1360,13 @@ const TrainingTabContent: React.FC<Props> = ({ navigation }) => {
                       <TextInput
                         style={styles.inputFieldText}
                         keyboardType="numeric"
-                        placeholder={isCardio ? "分" : "-"}
+                        placeholder={
+                          getPreviousSetPlaceholder(
+                            item.name,
+                            index,
+                            isCardio ? "durationMinutes" : "weight"
+                          ) || (isCardio ? "分" : "-")
+                        }
                         placeholderTextColor="#444"
                         value={isCardio ? (set.durationMinutes || "") : (set.weight || "")}
                         onChangeText={(val) =>
@@ -1143,7 +1380,13 @@ const TrainingTabContent: React.FC<Props> = ({ navigation }) => {
                       <TextInput
                         style={styles.inputFieldText}
                         keyboardType="numeric"
-                        placeholder={isCardio ? "km" : "-"}
+                        placeholder={
+                          getPreviousSetPlaceholder(
+                            item.name,
+                            index,
+                            isCardio ? "distanceKm" : "reps"
+                          ) || (isCardio ? "km" : "-")
+                        }
                         placeholderTextColor="#444"
                         value={isCardio ? (set.distanceKm || "") : (set.reps || "")}
                         onChangeText={(val) =>
