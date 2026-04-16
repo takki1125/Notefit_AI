@@ -87,6 +87,7 @@ type RoutineModalProps = {
   visible: boolean;
   onClose: () => void;
   currentMenu: Exercise[];
+  autoCheck: boolean;
   onLoadRoutine: (routine: Routine) => void;
 };
 
@@ -528,12 +529,15 @@ const RoutineModal: React.FC<RoutineModalProps> = ({
   visible,
   onClose,
   currentMenu,
+  autoCheck,
   onLoadRoutine,
 }) => {
   const [routines, setRoutines] = useState<Routine[]>([]);
   const [loading, setLoading] = useState(false);
   const [newRoutineName, setNewRoutineName] = useState("");
-  const [mode, setMode] = useState<"list" | "save">("list");
+  const [mode, setMode] = useState<"list" | "save" | "scratch">("list");
+  const [scratchSelectorVisible, setScratchSelectorVisible] = useState(false);
+  const [scratchExercises, setScratchExercises] = useState<Exercise[]>([]);
 
   const fetchRoutines = async () => {
     const user = auth.currentUser;
@@ -563,15 +567,40 @@ const RoutineModal: React.FC<RoutineModalProps> = ({
       fetchRoutines();
       setMode("list");
       setNewRoutineName("");
+      setScratchExercises([]);
     }
   }, [visible]);
 
-  const handleSaveRoutine = async () => {
+  const buildScratchExercise = (exerciseName: string, category: string): Exercise => {
+    const isCardio = category.includes("有酸素");
+    return {
+      id: Date.now() + Math.random(),
+      name: exerciseName,
+      category,
+      target: "- kg x -",
+      sets: [
+        isCardio
+          ? { durationMinutes: "", distanceKm: "", done: autoCheck }
+          : { weight: "", reps: "", done: autoCheck },
+      ],
+    };
+  };
+
+  const handleAddScratchExercise = (exerciseName: string, category: string) => {
+    const created = buildScratchExercise(exerciseName, category);
+    setScratchExercises((prev) => [...prev, created]);
+  };
+
+  const handleRemoveScratchExercise = (exerciseId: number) => {
+    setScratchExercises((prev) => prev.filter((item) => item.id !== exerciseId));
+  };
+
+  const handleSaveRoutine = async (exercisesToSave: Exercise[]) => {
     if (!newRoutineName.trim()) {
       Alert.alert("エラー", "ルーティン名を入力してください");
       return;
     }
-    if (currentMenu.length === 0) {
+    if (exercisesToSave.length === 0) {
       Alert.alert("エラー", "種目が追加されていません");
       return;
     }
@@ -583,13 +612,14 @@ const RoutineModal: React.FC<RoutineModalProps> = ({
 
       const routineData = {
         name: newRoutineName,
-        exercises: currentMenu,
+        exercises: exercisesToSave,
         createdAt: serverTimestamp(),
       };
 
       await addDoc(collection(db, "users", user.uid, "routines"), routineData);
       Alert.alert("保存完了", `「${newRoutineName}」を保存しました`);
       setMode("list");
+      setScratchExercises([]);
       fetchRoutines();
     } catch (e) {
       console.error(e);
@@ -646,6 +676,15 @@ const RoutineModal: React.FC<RoutineModalProps> = ({
                 現在のメニューを保存する
               </Text>
             </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.createRoutineBtn, { marginTop: 10, backgroundColor: "#333" }]}
+              onPress={() => setMode("scratch")}
+            >
+              <Plus color="#2ecc71" size={20} />
+              <Text style={[styles.createRoutineText, { color: "#2ecc71" }]}>
+                ゼロから作成する
+              </Text>
+            </TouchableOpacity>
 
             <Text style={{ color: "#666", marginTop: 20, marginBottom: 10 }}>
               SAVED ROUTINES
@@ -692,7 +731,7 @@ const RoutineModal: React.FC<RoutineModalProps> = ({
               </ScrollView>
             )}
           </View>
-        ) : (
+        ) : mode === "save" ? (
           <View style={{ flex: 1, padding: 20 }}>
             <Text style={{ color: "#ccc", marginBottom: 10 }}>
               現在のメニュー内容をルーティンとして保存します。
@@ -724,7 +763,75 @@ const RoutineModal: React.FC<RoutineModalProps> = ({
               </TouchableOpacity>
               <TouchableOpacity
                 style={[styles.loginButton, { flex: 1 }]}
-                onPress={handleSaveRoutine}
+                onPress={() => void handleSaveRoutine(currentMenu)}
+              >
+                <Text style={{ fontWeight: "bold" }}>保存</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        ) : (
+          <View style={{ flex: 1, padding: 20 }}>
+            <Text style={{ color: "#ccc", marginBottom: 10 }}>
+              種目を自由に選んで、新しいルーティンを作成できます。
+            </Text>
+            <TouchableOpacity
+              style={[styles.createRoutineBtn, { marginBottom: 12 }]}
+              onPress={() => setScratchSelectorVisible(true)}
+            >
+              <Plus color="#000" size={20} />
+              <Text style={styles.createRoutineText}>種目を追加する</Text>
+            </TouchableOpacity>
+            <Text style={{ color: "#666", marginBottom: 10 }}>SELECTED EXERCISES</Text>
+            <ScrollView style={{ flex: 1 }}>
+              {scratchExercises.length === 0 ? (
+                <Text style={{ color: "#444", textAlign: "center", marginTop: 12 }}>
+                  種目を追加してください
+                </Text>
+              ) : (
+                scratchExercises.map((item) => (
+                  <View
+                    key={item.id}
+                    style={[
+                      styles.routineItem,
+                      { alignItems: "center", justifyContent: "space-between", marginBottom: 10 },
+                    ]}
+                  >
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.routineNameText}>{item.name}</Text>
+                      <Text style={styles.routineDescText}>{item.category}</Text>
+                    </View>
+                    <TouchableOpacity
+                      onPress={() => handleRemoveScratchExercise(item.id)}
+                      style={{ padding: 10 }}
+                    >
+                      <Trash2 color="#444" size={20} />
+                    </TouchableOpacity>
+                  </View>
+                ))
+              )}
+            </ScrollView>
+
+            <TextInput
+              style={styles.inputField}
+              placeholder="ルーティン名 (例: 朝トレ 20分)"
+              placeholderTextColor="#666"
+              value={newRoutineName}
+              onChangeText={setNewRoutineName}
+              autoFocus
+            />
+            <View style={{ flexDirection: "row", gap: 10, marginTop: 20 }}>
+              <TouchableOpacity
+                style={[
+                  styles.loginButton,
+                  { backgroundColor: "#444", flex: 1 },
+                ]}
+                onPress={() => setMode("list")}
+              >
+                <Text style={{ color: "#fff" }}>キャンセル</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.loginButton, { flex: 1 }]}
+                onPress={() => void handleSaveRoutine(scratchExercises)}
               >
                 <Text style={{ fontWeight: "bold" }}>保存</Text>
               </TouchableOpacity>
@@ -732,6 +839,11 @@ const RoutineModal: React.FC<RoutineModalProps> = ({
           </View>
         )}
       </SafeAreaView>
+      <ExerciseSelectorModal
+        visible={scratchSelectorVisible}
+        onClose={() => setScratchSelectorVisible(false)}
+        onSelect={handleAddScratchExercise}
+      />
     </Modal>
   );
 };
@@ -1465,6 +1577,7 @@ const TrainingTabContent: React.FC<Props> = ({ navigation }) => {
         visible={routineModalVisible}
         onClose={() => setRoutineModalVisible(false)}
         currentMenu={menu}
+        autoCheck={autoCheck}
         onLoadRoutine={handleLoadRoutine}
       />
     </SafeAreaView>

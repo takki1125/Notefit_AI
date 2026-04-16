@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import {
   Alert,
   KeyboardAvoidingView,
@@ -19,7 +19,7 @@ import { auth, db } from '../../firebaseConfig';
 import { styles } from '../../theme/styles';
 import type { TrainingLevel } from '../../utils/models';
 
-const TRAINING_LEVEL_OPTIONS: Array<{ label: string; value: TrainingLevel }> = [
+const TRAINING_LEVEL_OPTIONS: { label: string; value: TrainingLevel }[] = [
   { label: '初めて', value: 'first_time' },
   { label: '初心者', value: 'beginner' },
   { label: '中級者', value: 'intermediate' },
@@ -43,8 +43,12 @@ function isValidBirthDate(s: string): boolean {
   return true;
 }
 
+const DECIMAL_NUMBER_PATTERN = /^\d+(?:[.,]\d+)?$/;
+
 export default function ProfileEditScreen() {
   const router = useRouter();
+  const { required } = useLocalSearchParams<{ required?: string | string[] }>();
+  const requiredProfileFlow = (Array.isArray(required) ? required[0] : required) === '1';
   const [username, setUsername] = useState('');
   const [heightCm, setHeightCm] = useState('');
   const [birthDate, setBirthDate] = useState('');
@@ -89,7 +93,8 @@ export default function ProfileEditScreen() {
 
   const handleSave = async () => {
     const user = auth.currentUser;
-    if (!user || !username.trim()) {
+    const trimmedUsername = username.trim();
+    if (!user || !trimmedUsername) {
       Alert.alert('確認', 'ユーザーネームを入力してください');
       return;
     }
@@ -99,6 +104,10 @@ export default function ProfileEditScreen() {
     if (heightTrim.length === 0) {
       heightPayload = { heightCm: deleteField() };
     } else {
+      if (!DECIMAL_NUMBER_PATTERN.test(heightTrim)) {
+        Alert.alert('確認', '身長は半角数字で入力してください（例: 172 または 172.5）');
+        return;
+      }
       const h = Number(heightTrim.replace(',', '.'));
       if (!Number.isFinite(h) || h < 80 || h > 250) {
         Alert.alert('確認', '身長は 80〜250 cm の数値で入力するか、空にしてください');
@@ -129,7 +138,7 @@ export default function ProfileEditScreen() {
       await setDoc(
         doc(db, 'users', user.uid),
         {
-          username: username.trim(),
+          username: trimmedUsername,
           ...heightPayload,
           ...birthPayload,
           ...trainingPayload,
@@ -138,8 +147,19 @@ export default function ProfileEditScreen() {
         },
         { merge: true },
       );
-      Alert.alert('完了', 'プロフィールを更新しました', [{ text: 'OK', onPress: () => router.back() }]);
-    } catch (e) {
+      Alert.alert('完了', 'プロフィールを更新しました', [
+        {
+          text: 'OK',
+          onPress: () => {
+            if (requiredProfileFlow) {
+              router.replace('/onboarding');
+              return;
+            }
+            router.back();
+          },
+        },
+      ]);
+    } catch {
       Alert.alert('エラー', '保存に失敗しました');
     } finally {
       setSaving(false);
@@ -150,16 +170,20 @@ export default function ProfileEditScreen() {
     <SafeAreaView style={[styles.container, { backgroundColor: '#1a1a1a' }]} edges={['top', 'left', 'right']}>
       <StatusBar style="light" />
       <View style={styles.modalHeader}>
-        <TouchableOpacity
-          onPress={() => router.back()}
-          style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 8, paddingHorizontal: 4 }}
-          hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-          accessibilityRole="button"
-          accessibilityLabel="戻る"
-        >
-          <ChevronLeft color="#fff" size={26} />
-          <Text style={{ color: '#4facfe', fontSize: 17, fontWeight: '600' }}>戻る</Text>
-        </TouchableOpacity>
+        {requiredProfileFlow ? (
+          <View style={{ width: 92 }} />
+        ) : (
+          <TouchableOpacity
+            onPress={() => router.back()}
+            style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 8, paddingHorizontal: 4 }}
+            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+            accessibilityRole="button"
+            accessibilityLabel="戻る"
+          >
+            <ChevronLeft color="#fff" size={26} />
+            <Text style={{ color: '#4facfe', fontSize: 17, fontWeight: '600' }}>戻る</Text>
+          </TouchableOpacity>
+        )}
         <Text style={[styles.modalTitle, { flex: 1, textAlign: 'center' }]}>プロフィール編集</Text>
         <View style={{ width: 92 }} />
       </View>
@@ -176,6 +200,11 @@ export default function ProfileEditScreen() {
             <ActivityIndicator color="#2ecc71" size="large" style={{ marginTop: 50 }} />
           ) : (
             <>
+              {requiredProfileFlow ? (
+                <Text style={{ color: '#bbb', marginBottom: 14, lineHeight: 20 }}>
+                  利用開始の前にプロフィールの入力が必要です。
+                </Text>
+              ) : null}
               <Text style={{ color: '#888', marginBottom: 8, fontSize: 12 }}>ユーザーネーム</Text>
               <TextInput
                 style={styles.inputField}

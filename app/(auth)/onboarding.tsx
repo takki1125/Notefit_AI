@@ -21,11 +21,14 @@ import { styles as shared } from '../../theme/styles';
 import type { Phase } from '../../utils/models';
 import { setUserProfile } from '../../utils/firestoreProfile';
 
-const phaseOptions: Array<{ label: string; value: Phase }> = [
+const phaseOptions: { label: string; value: Phase }[] = [
   { label: '減量', value: 'cut' },
   { label: '維持', value: 'maintain' },
   { label: '増量', value: 'bulk' },
 ];
+
+const DECIMAL_NUMBER_PATTERN = /^\d+(?:[.,]\d+)?$/;
+const INTEGER_NUMBER_PATTERN = /^\d+$/;
 
 export default function OnboardingScreen() {
   const router = useRouter();
@@ -39,9 +42,13 @@ export default function OnboardingScreen() {
   const [autoCalOpen, setAutoCalOpen] = useState(false);
 
   const canSubmit = useMemo(() => {
-    const w = Number(targetWeight);
-    const c = Number(targetCal);
-    return Number.isFinite(w) && w > 0 && Number.isFinite(c) && c > 0 && goesToGym !== null;
+    const weight = targetWeight.trim();
+    const cal = targetCal.trim();
+    if (!DECIMAL_NUMBER_PATTERN.test(weight)) return false;
+    if (!INTEGER_NUMBER_PATTERN.test(cal)) return false;
+    const w = Number(weight.replace(',', '.'));
+    const c = Number(cal);
+    return Number.isFinite(w) && w > 0 && w <= 400 && Number.isFinite(c) && c >= 500 && c <= 10000 && goesToGym !== null;
   }, [goesToGym, targetWeight, targetCal]);
 
   const handleSave = async () => {
@@ -49,8 +56,26 @@ export default function OnboardingScreen() {
       Alert.alert('エラー', 'ログイン状態が無効です。');
       return;
     }
-    if (!canSubmit) {
+    if (targetWeight.trim().length === 0 || targetCal.trim().length === 0 || goesToGym === null) {
       Alert.alert('入力確認', '目標体重・目標カロリー・ジム通いの有無を入力してください。');
+      return;
+    }
+    if (!DECIMAL_NUMBER_PATTERN.test(targetWeight.trim())) {
+      Alert.alert('入力確認', '目標体重は半角数字で入力してください（例: 65 または 65.5）');
+      return;
+    }
+    if (!INTEGER_NUMBER_PATTERN.test(targetCal.trim())) {
+      Alert.alert('入力確認', '目標カロリーは半角数字で入力してください（例: 2000）');
+      return;
+    }
+    const parsedWeight = Number(targetWeight.trim().replace(',', '.'));
+    if (!Number.isFinite(parsedWeight) || parsedWeight <= 0 || parsedWeight > 400) {
+      Alert.alert('入力確認', '目標体重は 1〜400kg の範囲で入力してください。');
+      return;
+    }
+    const parsedCal = Number(targetCal.trim());
+    if (!Number.isFinite(parsedCal) || parsedCal < 500 || parsedCal > 10000) {
+      Alert.alert('入力確認', '目標カロリーは 500〜10000 kcal の範囲で入力してください。');
       return;
     }
 
@@ -58,8 +83,8 @@ export default function OnboardingScreen() {
     try {
       await setUserProfile(user.uid, {
         phase,
-        targetWeight: Number(targetWeight),
-        targetCal: Number(targetCal),
+        targetWeight: parsedWeight,
+        targetCal: parsedCal,
         isDetailedTrackingEnabled: false,
       });
       await setDoc(
@@ -71,7 +96,7 @@ export default function OnboardingScreen() {
         { merge: true },
       );
       router.replace('/home');
-    } catch (e) {
+    } catch {
       Alert.alert('エラー', '保存に失敗しました。時間をおいて再度お試しください。');
     } finally {
       setSaving(false);

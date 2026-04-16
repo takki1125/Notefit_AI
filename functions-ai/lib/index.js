@@ -484,6 +484,116 @@ ${workoutBlock}
         throw new https_1.HttpsError("internal", error?.message || "Unknown error in generateDailyAIAdvice.");
     }
 });
+function normalizeText(s) {
+    return s.toLowerCase().replace(/\s+/g, " ").trim();
+}
+function includesAny(text, keywords) {
+    return keywords.some((kw) => text.includes(kw));
+}
+function inferTrainingStyle(recentWorkouts) {
+    if (recentWorkouts.length === 0) {
+        return {
+            key: "unknown",
+            label: "不明",
+            confidence: "low",
+            rationale: "直近ワークアウト記録がないため判定不可",
+        };
+    }
+    const pushKeywords = ["push", "プッシュ", "胸肩三頭", "胸・肩・三頭", "胸肩腕"];
+    const pullKeywords = ["pull", "プル", "背中二頭", "背中・二頭", "背中腕"];
+    const legsKeywords = ["legs", "leg day", "脚", "下半身", "脚トレ"];
+    const fullBodyKeywords = ["full body", "fullbody", "full-body", "全身", "全身法"];
+    const upperKeywords = ["upper", "上半身"];
+    const lowerKeywords = ["lower", "下半身", "脚"];
+    const chestKeywords = ["chest", "胸"];
+    const backKeywords = ["back", "背中"];
+    const shoulderKeywords = ["shoulder", "肩"];
+    const armsKeywords = ["arms", "arm", "腕", "二頭", "三頭", "biceps", "triceps"];
+    let pushDays = 0;
+    let pullDays = 0;
+    let legsDays = 0;
+    let fullBodyDays = 0;
+    let upperDays = 0;
+    let lowerDays = 0;
+    let chestDays = 0;
+    let backDays = 0;
+    let shoulderDays = 0;
+    let armsDays = 0;
+    for (const workout of recentWorkouts) {
+        const merged = normalizeText([workout.routineName, ...workout.exerciseLines].join(" "));
+        if (includesAny(merged, pushKeywords))
+            pushDays += 1;
+        if (includesAny(merged, pullKeywords))
+            pullDays += 1;
+        if (includesAny(merged, legsKeywords))
+            legsDays += 1;
+        if (includesAny(merged, fullBodyKeywords))
+            fullBodyDays += 1;
+        if (includesAny(merged, upperKeywords))
+            upperDays += 1;
+        if (includesAny(merged, lowerKeywords))
+            lowerDays += 1;
+        if (includesAny(merged, chestKeywords))
+            chestDays += 1;
+        if (includesAny(merged, backKeywords))
+            backDays += 1;
+        if (includesAny(merged, shoulderKeywords))
+            shoulderDays += 1;
+        if (includesAny(merged, armsKeywords))
+            armsDays += 1;
+    }
+    const n = recentWorkouts.length;
+    const bodyPartHits = [chestDays > 0, backDays > 0, shoulderDays > 0, legsDays > 0, armsDays > 0].filter(Boolean).length;
+    const pplDetected = pushDays > 0 && pullDays > 0 && legsDays > 0;
+    const fullBodyRatio = fullBodyDays / n;
+    const upperLowerDetected = upperDays > 0 && lowerDays > 0;
+    if (pplDetected && pushDays + pullDays + legsDays >= Math.max(3, Math.floor(n * 1.2))) {
+        return {
+            key: "ppl",
+            label: "PPL法",
+            confidence: n >= 5 ? "high" : "medium",
+            rationale: `Push/Pull/Legs に対応する記録が揃っている（push:${pushDays}, pull:${pullDays}, legs:${legsDays}）`,
+        };
+    }
+    if (fullBodyRatio >= 0.5) {
+        return {
+            key: "full_body",
+            label: "全身法",
+            confidence: fullBodyRatio >= 0.7 ? "high" : "medium",
+            rationale: `全身系キーワードを含む日が多い（${fullBodyDays}/${n}日）`,
+        };
+    }
+    if (upperLowerDetected && upperDays + lowerDays >= Math.max(3, Math.floor(n * 0.8))) {
+        return {
+            key: "upper_lower",
+            label: "上半身/下半身分割",
+            confidence: n >= 5 ? "high" : "medium",
+            rationale: `上半身・下半身を示す記録がある（upper:${upperDays}, lower:${lowerDays}）`,
+        };
+    }
+    if (bodyPartHits >= 3) {
+        return {
+            key: "body_part_split",
+            label: "部位分割法",
+            confidence: bodyPartHits >= 4 ? "medium" : "low",
+            rationale: `部位別の傾向が見える（胸/背中/肩/脚/腕のうち ${bodyPartHits}部位）`,
+        };
+    }
+    if (n >= 3) {
+        return {
+            key: "mixed",
+            label: "混合スタイル",
+            confidence: "low",
+            rationale: "記録はあるが特定の分割法に収束していない",
+        };
+    }
+    return {
+        key: "unknown",
+        label: "不明",
+        confidence: "low",
+        rationale: "記録件数が少なく傾向判定が難しい",
+    };
+}
 /**
  * クライアントが generateDailyAIAdvice と同形のフィールドを渡したとき、
  * ホームの「今日のAIアドバイス」と同種の事実ブロックを組み立てる（推測防止用）。
@@ -537,7 +647,7 @@ function buildChatAdviceContextBlock(data) {
             : [],
     }))
         .filter((s) => s.dateId.length > 0)
-        .slice(0, 6);
+        .slice(0, 10);
     const hasNutritionData = todayNutrition.hasData &&
         (todayNutrition.totalCal > 0 ||
             todayNutrition.mealNames.length > 0 ||
@@ -572,6 +682,7 @@ function buildChatAdviceContextBlock(data) {
         })
             .join("\n")
         : `- （直近のトレーニング記録なし／未同期）※筋トレをしていない可能性あり。セッション内容は推測しない`;
+    const style = inferTrainingStyle(recentWorkouts);
     const todayWeightLine = Number.isFinite(todayWeight) && todayWeight > 0 ? String(todayWeight) : "未記録";
     const todayBfLine = typeof todayBodyFatPercentage === "number" ? String(todayBodyFatPercentage) : "N/A";
     const goalSection = hasGoal
@@ -591,6 +702,8 @@ today.bodyFatPercentage: ${todayBfLine}`;
 - 体重データの日数（直近）: ${weightDayCount}日分
 - 本日の食事記録を参照できる: ${hasNutritionData ? "はい" : "いいえ"}
 - トレーニング記録がある: ${hasWorkoutData ? "はい" : "いいえ"}
+- 推定トレーニングスタイル: ${style.label}（信頼度: ${style.confidence}）
+- スタイル判定根拠: ${style.rationale}
 
 ${goalSection}
 
@@ -674,6 +787,8 @@ ${buildAiCoachPromptBlock(aiCoach)}
 - 身長・年齢・トレーニング段階・ジム通い情報がある場合は、提案の強度や難易度、設備前提をその条件に合わせる。
 - 目標設定（phase/targetWeight/targetCal）がある場合、「目標や好みによって変わる」だけで終わらせない。まず現在の目標に沿った具体案を提示し、その後に必要なら代替案を短く添える。
 - 目標設定がある場合、目標を再質問しない（不整合がある場合のみ確認質問可）。
+- 「推定トレーニングスタイル」が PPL法 / 全身法 / 上半身下半身分割 / 部位分割 の場合、まずその流れを尊重した提案を第一案にする。いきなり別スタイルへ全面変更しない。
+- 推定トレーニングスタイルが mixed / unknown の場合のみ、確認質問または汎用提案を行う。
 - 医学的診断・治療・薬の指示は行わない。痛みが強い・動けない・胸の痛みなどは医療機関を勧める。
 - 極端な断食・脱水・危険な重量など、健康を損なう指示はしない。
 - ユーザーの文脈が不明なときは、確認の質問をしてよい。

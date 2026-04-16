@@ -253,3 +253,11 @@ export async function mergeUserDemographicsFields(
   await setDoc(doc(db, 'users', uid), payload, { merge: true });
 }
 
+/** 新規登録直後に最低限入力してほしいプロフィール（現状はユーザーネーム） */
+export async function hasCompletedBasicProfile(uid: string): Promise<boolean> {
+  const snap = await getDoc(doc(db, 'users', uid));
+  if (!snap.exists()) return false;
+  const data = snap.data() as UserDocShape;
+  return typeof data.username === 'string' && data.username.trim().length > 0;
+}
+

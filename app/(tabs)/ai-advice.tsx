@@ -476,7 +476,7 @@ function AiAdviceTabContent() {
         getUserDemographics(user.uid),
         getDailyMetric(user.uid, todayId),
         fetchAdviceNutrition(user.uid, todayId),
-        fetchAdviceWorkouts(user.uid, todayId),
+        fetchAdviceWorkouts(user.uid, todayId, 10),
         getDailyMetricsLastNDays(user.uid, 7),
         coach ?? getAiCoachSettings(user.uid),
       ]);
