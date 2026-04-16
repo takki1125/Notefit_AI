@@ -115,17 +115,20 @@ export function buildAdviceContextFingerprint(
   dateId: string,
   nutrition: AdviceNutritionPayload,
   workoutDocIds: string[],
-  demographics?: { heightCm?: number; birthDate?: string },
+  demographics?: { heightCm?: number; birthDate?: string; trainingLevel?: string; goesToGym?: boolean },
   /** AIコーチ設定（口調・スタイル・自由記述）が変わったら再生成する */
   aiSettingsFingerprint?: string,
 ): string {
   const demo =
     demographics &&
-    (typeof demographics.heightCm === 'number' || typeof demographics.birthDate === 'string')
-      ? `h:${demographics.heightCm ?? 'x'}|b:${demographics.birthDate ?? 'x'}`
+    (typeof demographics.heightCm === 'number' ||
+      typeof demographics.birthDate === 'string' ||
+      typeof demographics.trainingLevel === 'string' ||
+      typeof demographics.goesToGym === 'boolean')
+      ? `h:${demographics.heightCm ?? 'x'}|b:${demographics.birthDate ?? 'x'}|tl:${demographics.trainingLevel ?? 'x'}|gym:${demographics.goesToGym ?? 'x'}`
       : 'demo:x';
   return [
-    'v5',
+    'v7',
     dateId,
     demo,
     `cal:${nutrition.totalCal}`,

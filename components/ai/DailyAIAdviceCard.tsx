@@ -97,6 +97,8 @@ export default function DailyAIAdviceCard() {
           ...(typeof demographics.heightCm === 'number' ? { heightCm: demographics.heightCm } : {}),
           ...(demographics.birthDate ? { birthDate: demographics.birthDate } : {}),
           ...(typeof ageYears === 'number' ? { ageYears } : {}),
+          ...(demographics.trainingLevel ? { trainingLevel: demographics.trainingLevel } : {}),
+          ...(typeof demographics.goesToGym === 'boolean' ? { goesToGym: demographics.goesToGym } : {}),
         },
         today: {
           weight: todayMetric.weight,
