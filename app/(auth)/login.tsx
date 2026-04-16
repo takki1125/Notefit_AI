@@ -19,10 +19,10 @@ import {
   sendEmailVerification,
   signInWithEmailAndPassword,
   signOut,
+  sendPasswordResetEmail, // ★ 追加: パスワードリセット用
 } from 'firebase/auth';
 
 import { auth } from '../../firebaseConfig';
-// ★ Markdownを表示するためのライブラリ
 import Markdown from 'react-native-markdown-display';
 
 const LoginScreen: React.FC = () => {
@@ -75,6 +75,27 @@ const LoginScreen: React.FC = () => {
     }
   };
 
+  // ★ 追加: パスワード再設定メールを送信する処理
+  const handlePasswordReset = async () => {
+    if (!email) {
+      Alert.alert('確認', 'パスワードを再設定するには、上の欄にメールアドレスを入力してからこのボタンを押してください。');
+      return;
+    }
+
+    try {
+      await sendPasswordResetEmail(auth, email);
+      Alert.alert(
+        'メール送信完了', 
+        'パスワード再設定用のメールを送信しました。メール内のリンクから新しいパスワードを設定してください。'
+      );
+    } catch (error: any) {
+      let errorMessage = 'エラーが発生しました。';
+      if (error.code === 'auth/invalid-email') errorMessage = 'メールアドレスの形式が正しくありません。';
+      if (error.code === 'auth/user-not-found') errorMessage = 'このメールアドレスは登録されていません。';
+      Alert.alert('エラー', errorMessage);
+    }
+  };
+
   const openTerms = async () => {
     setTermsModalVisible(true);
     setTermsOpened(true);
@@ -84,11 +105,9 @@ const LoginScreen: React.FC = () => {
     setTermsLoading(true);
     try {
       const response = await fetch('https://raw.githubusercontent.com/takki1125/Notefit_AI/main/docs/PRIVACY_POLICY.md');
-      
       if (!response.ok) {
         throw new Error('Network response was not ok');
       }
-      
       const text = await response.text();
       setTermsText(text);
     } catch (error) {
@@ -174,6 +193,15 @@ const LoginScreen: React.FC = () => {
             )}
           </TouchableOpacity>
 
+          {/* ★ 追加: ログイン画面の時だけパスワードリセットのリンクを表示 */}
+          {!isSignUp && (
+            <TouchableOpacity onPress={handlePasswordReset} style={{ marginTop: 15 }}>
+              <Text style={{ color: '#888', fontSize: 13, textDecorationLine: 'underline' }}>
+                パスワードを忘れた・変更したい方はこちら
+              </Text>
+            </TouchableOpacity>
+          )}
+
           <TouchableOpacity onPress={() => setIsSignUp(!isSignUp)} style={{ marginTop: 20 }}>
             <Text style={styles.switchText}>
               {isSignUp
@@ -192,7 +220,6 @@ const LoginScreen: React.FC = () => {
               <X color="#fff" size={28} />
             </TouchableOpacity>
           </View>
-          {/* ★ ScrollViewの中にMarkdownを配置 */}
           <ScrollView 
             style={styles.modalScroll}
             contentInsetAdjustmentBehavior="automatic"
@@ -200,7 +227,6 @@ const LoginScreen: React.FC = () => {
             {termsLoading ? (
               <ActivityIndicator size="large" color="#2ecc71" style={{ marginTop: 50 }} />
             ) : (
-              // ★ 取得したMarkdownテキストをレンダリングし、専用のスタイルを当てる
               <Markdown style={markdownStyles}>
                 {termsText}
               </Markdown>
@@ -311,13 +337,12 @@ const styles = StyleSheet.create({
   },
 });
 
-// ★ Markdown用のスタイル定義（ダークテーマに合わせた色・サイズ）
 const markdownStyles = StyleSheet.create({
   body: {
     color: '#ccc',
     fontSize: 15,
     lineHeight: 24,
-    paddingBottom: 40, // 下部の余白
+    paddingBottom: 40,
   },
   heading1: {
     color: '#fff',
