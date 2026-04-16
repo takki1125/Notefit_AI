@@ -13,13 +13,13 @@ import {
   ScrollView
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Check, X } from 'lucide-react-native';
+import { Check, Eye, EyeOff, X } from 'lucide-react-native';
 import {
   createUserWithEmailAndPassword,
   sendEmailVerification,
   signInWithEmailAndPassword,
   signOut,
-  sendPasswordResetEmail, // ★ 追加: パスワードリセット用
+  sendPasswordResetEmail,
 } from 'firebase/auth';
 
 import { auth } from '../../firebaseConfig';
@@ -30,6 +30,7 @@ const LoginScreen: React.FC = () => {
   const [password, setPassword] = useState('');
   const [isSignUp, setIsSignUp] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
   const [agreed, setAgreed] = useState(false);
   
   const [termsModalVisible, setTermsModalVisible] = useState(false);
@@ -75,7 +76,6 @@ const LoginScreen: React.FC = () => {
     }
   };
 
-  // ★ 追加: パスワード再設定メールを送信する処理
   const handlePasswordReset = async () => {
     if (!email) {
       Alert.alert('確認', 'パスワードを再設定するには、上の欄にメールアドレスを入力してからこのボタンを押してください。');
@@ -147,14 +147,26 @@ const LoginScreen: React.FC = () => {
             autoCapitalize="none"
             keyboardType="email-address"
           />
-          <TextInput
-            style={styles.inputField}
-            placeholder="パスワード (6文字以上)"
-            placeholderTextColor="#888"
-            value={password}
-            onChangeText={setPassword}
-            secureTextEntry
-          />
+          
+          {/* ★ ここを統合: パスワード入力＋目玉アイコン */}
+          <View style={styles.passwordFieldContainer}>
+            <TextInput
+              style={styles.passwordInputField}
+              placeholder="パスワード (6文字以上)"
+              placeholderTextColor="#888"
+              value={password}
+              onChangeText={setPassword}
+              secureTextEntry={!showPassword}
+            />
+            <TouchableOpacity
+              onPress={() => setShowPassword(prev => !prev)}
+              style={styles.passwordToggleButton}
+              accessibilityRole="button"
+              accessibilityLabel={showPassword ? 'パスワードを隠す' : 'パスワードを表示'}
+            >
+              {showPassword ? <EyeOff size={20} color="#aaa" /> : <Eye size={20} color="#aaa" />}
+            </TouchableOpacity>
+          </View>
 
           {isSignUp && (
             <View style={styles.termsContainer}>
@@ -193,7 +205,6 @@ const LoginScreen: React.FC = () => {
             )}
           </TouchableOpacity>
 
-          {/* ★ 追加: ログイン画面の時だけパスワードリセットのリンクを表示 */}
           {!isSignUp && (
             <TouchableOpacity onPress={handlePasswordReset} style={{ marginTop: 15 }}>
               <Text style={{ color: '#888', fontSize: 13, textDecorationLine: 'underline' }}>
@@ -267,6 +278,27 @@ const styles = StyleSheet.create({
     paddingHorizontal: 15,
     color: '#fff',
     marginBottom: 15,
+  },
+  passwordFieldContainer: {
+    width: '100%',
+    height: 50,
+    backgroundColor: '#111',
+    borderRadius: 10,
+    marginBottom: 15,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  passwordInputField: {
+    flex: 1,
+    height: '100%',
+    paddingHorizontal: 15,
+    color: '#fff',
+  },
+  passwordToggleButton: {
+    width: 44,
+    height: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   loginButton: {
     width: '100%',

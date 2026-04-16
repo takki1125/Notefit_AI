@@ -17,6 +17,18 @@ import { ChevronLeft, Check } from 'lucide-react-native';
 import { deleteField, doc, getDoc, setDoc } from 'firebase/firestore';
 import { auth, db } from '../../firebaseConfig';
 import { styles } from '../../theme/styles';
+import type { TrainingLevel } from '../../utils/models';
+
+const TRAINING_LEVEL_OPTIONS: Array<{ label: string; value: TrainingLevel }> = [
+  { label: '初めて', value: 'first_time' },
+  { label: '初心者', value: 'beginner' },
+  { label: '中級者', value: 'intermediate' },
+  { label: '上級者', value: 'advanced' },
+];
+
+function isTrainingLevel(v: unknown): v is TrainingLevel {
+  return typeof v === 'string' && TRAINING_LEVEL_OPTIONS.some((opt) => opt.value === v);
+}
 
 function isValidBirthDate(s: string): boolean {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(s.trim())) return false;
@@ -36,6 +48,8 @@ export default function ProfileEditScreen() {
   const [username, setUsername] = useState('');
   const [heightCm, setHeightCm] = useState('');
   const [birthDate, setBirthDate] = useState('');
+  const [trainingLevel, setTrainingLevel] = useState<TrainingLevel | null>(null);
+  const [goesToGym, setGoesToGym] = useState<boolean | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
@@ -56,6 +70,12 @@ export default function ProfileEditScreen() {
           }
           if (typeof data.birthDate === 'string') {
             setBirthDate(data.birthDate);
+          }
+          if (isTrainingLevel(data.trainingLevel)) {
+            setTrainingLevel(data.trainingLevel);
+          }
+          if (typeof data.goesToGym === 'boolean') {
+            setGoesToGym(data.goesToGym);
           }
         }
       } catch (e) {
@@ -99,6 +119,11 @@ export default function ProfileEditScreen() {
       birthPayload = { birthDate: birthTrim };
     }
 
+    const trainingPayload: Record<string, unknown> =
+      trainingLevel != null ? { trainingLevel } : { trainingLevel: deleteField() };
+    const gymPayload: Record<string, unknown> =
+      goesToGym != null ? { goesToGym } : { goesToGym: deleteField() };
+
     setSaving(true);
     try {
       await setDoc(
@@ -107,6 +132,8 @@ export default function ProfileEditScreen() {
           username: username.trim(),
           ...heightPayload,
           ...birthPayload,
+          ...trainingPayload,
+          ...gymPayload,
           updatedAt: new Date(),
         },
         { merge: true },
@@ -180,6 +207,76 @@ export default function ProfileEditScreen() {
               />
               <Text style={{ color: '#555', fontSize: 11, marginTop: 6, lineHeight: 16 }}>
                 AIアドバイス・食事のAI推定の参考に使います（任意）。医学的診断ではありません。
+              </Text>
+
+              <Text style={{ color: '#888', marginBottom: 8, fontSize: 12, marginTop: 16 }}>トレーニング段階</Text>
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+                {TRAINING_LEVEL_OPTIONS.map((opt) => {
+                  const active = trainingLevel === opt.value;
+                  return (
+                    <TouchableOpacity
+                      key={opt.value}
+                      style={{
+                        paddingVertical: 10,
+                        paddingHorizontal: 14,
+                        borderRadius: 999,
+                        borderWidth: 1,
+                        borderColor: active ? '#2ecc71' : '#3a3a3a',
+                        backgroundColor: active ? '#173924' : '#111',
+                      }}
+                      onPress={() => setTrainingLevel(active ? null : opt.value)}
+                      activeOpacity={0.85}
+                    >
+                      <Text style={{ color: active ? '#2ecc71' : '#bbb', fontSize: 13, fontWeight: '600' }}>
+                        {opt.label}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+              <Text style={{ color: '#555', fontSize: 11, marginTop: 6, lineHeight: 16 }}>
+                未選択でも保存できます。選ぶと、AIがあなたの経験段階に合わせて提案しやすくなります。
+              </Text>
+
+              <Text style={{ color: '#888', marginBottom: 8, fontSize: 12, marginTop: 16 }}>ジムに通っているか</Text>
+              <View style={{ flexDirection: 'row', gap: 8 }}>
+                <TouchableOpacity
+                  style={{
+                    flex: 1,
+                    paddingVertical: 10,
+                    borderRadius: 12,
+                    borderWidth: 1,
+                    borderColor: goesToGym === true ? '#2ecc71' : '#3a3a3a',
+                    backgroundColor: goesToGym === true ? '#173924' : '#111',
+                    alignItems: 'center',
+                  }}
+                  onPress={() => setGoesToGym((prev) => (prev === true ? null : true))}
+                  activeOpacity={0.85}
+                >
+                  <Text style={{ color: goesToGym === true ? '#2ecc71' : '#bbb', fontSize: 13, fontWeight: '600' }}>
+                    通っている
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={{
+                    flex: 1,
+                    paddingVertical: 10,
+                    borderRadius: 12,
+                    borderWidth: 1,
+                    borderColor: goesToGym === false ? '#2ecc71' : '#3a3a3a',
+                    backgroundColor: goesToGym === false ? '#173924' : '#111',
+                    alignItems: 'center',
+                  }}
+                  onPress={() => setGoesToGym((prev) => (prev === false ? null : false))}
+                  activeOpacity={0.85}
+                >
+                  <Text style={{ color: goesToGym === false ? '#2ecc71' : '#bbb', fontSize: 13, fontWeight: '600' }}>
+                    通っていない
+                  </Text>
+                </TouchableOpacity>
+              </View>
+              <Text style={{ color: '#555', fontSize: 11, marginTop: 6, lineHeight: 16 }}>
+                設備が使えるかどうかの前提としてAIアドバイスに反映されます（任意）。
               </Text>
 
               <TouchableOpacity

@@ -13,9 +13,10 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Sparkles } from 'lucide-react-native';
+import { doc, setDoc } from 'firebase/firestore';
 
 import AutoCalorieModal from '../../components/goals/AutoCalorieModal';
-import { auth } from '../../firebaseConfig';
+import { auth, db } from '../../firebaseConfig';
 import { styles as shared } from '../../theme/styles';
 import type { Phase } from '../../utils/models';
 import { setUserProfile } from '../../utils/firestoreProfile';
@@ -33,14 +34,15 @@ export default function OnboardingScreen() {
   const [phase, setPhase] = useState<Phase>('cut');
   const [targetWeight, setTargetWeight] = useState('');
   const [targetCal, setTargetCal] = useState('');
+  const [goesToGym, setGoesToGym] = useState<boolean | null>(null);
   const [saving, setSaving] = useState(false);
   const [autoCalOpen, setAutoCalOpen] = useState(false);
 
   const canSubmit = useMemo(() => {
     const w = Number(targetWeight);
     const c = Number(targetCal);
-    return Number.isFinite(w) && w > 0 && Number.isFinite(c) && c > 0;
-  }, [targetWeight, targetCal]);
+    return Number.isFinite(w) && w > 0 && Number.isFinite(c) && c > 0 && goesToGym !== null;
+  }, [goesToGym, targetWeight, targetCal]);
 
   const handleSave = async () => {
     if (!user) {
@@ -48,7 +50,7 @@ export default function OnboardingScreen() {
       return;
     }
     if (!canSubmit) {
-      Alert.alert('入力確認', '目標体重(kg)と目標カロリー(kcal)を入力してください。');
+      Alert.alert('入力確認', '目標体重・目標カロリー・ジム通いの有無を入力してください。');
       return;
     }
 
@@ -60,6 +62,14 @@ export default function OnboardingScreen() {
         targetCal: Number(targetCal),
         isDetailedTrackingEnabled: false,
       });
+      await setDoc(
+        doc(db, 'users', user.uid),
+        {
+          goesToGym,
+          updatedAt: new Date(),
+        },
+        { merge: true },
+      );
       router.replace('/home');
     } catch (e) {
       Alert.alert('エラー', '保存に失敗しました。時間をおいて再度お試しください。');
@@ -128,6 +138,28 @@ export default function OnboardingScreen() {
               <Sparkles color="#2ecc71" size={18} />
               <Text style={local.autoButtonText}>目安から自動で入れる</Text>
             </TouchableOpacity>
+
+            <Text style={[local.label, { marginTop: 2 }]}>ジムに通っていますか？</Text>
+            <View style={local.gymRow}>
+              <TouchableOpacity
+                style={[local.gymPill, goesToGym === true && local.gymPillActive]}
+                onPress={() => setGoesToGym(true)}
+                activeOpacity={0.85}
+              >
+                <Text style={[local.gymPillText, goesToGym === true && local.gymPillTextActive]}>
+                  通っている
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[local.gymPill, goesToGym === false && local.gymPillActive]}
+                onPress={() => setGoesToGym(false)}
+                activeOpacity={0.85}
+              >
+                <Text style={[local.gymPillText, goesToGym === false && local.gymPillTextActive]}>
+                  通っていない
+                </Text>
+              </TouchableOpacity>
+            </View>
 
             <TouchableOpacity
               style={[
@@ -226,6 +258,31 @@ const local = StyleSheet.create({
     color: '#2ecc71',
     fontSize: 14,
     fontWeight: '600',
+  },
+  gymRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginBottom: 10,
+  },
+  gymPill: {
+    flex: 1,
+    paddingVertical: 10,
+    borderRadius: 12,
+    backgroundColor: '#111',
+    borderWidth: 1,
+    borderColor: '#333',
+    alignItems: 'center',
+  },
+  gymPillActive: {
+    backgroundColor: '#2ecc71',
+    borderColor: '#2ecc71',
+  },
+  gymPillText: {
+    color: '#ccc',
+    fontWeight: 'bold',
+  },
+  gymPillTextActive: {
+    color: '#000',
   },
 });
 

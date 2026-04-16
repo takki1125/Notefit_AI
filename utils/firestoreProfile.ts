@@ -7,6 +7,7 @@ import type {
   CalorieEstimateSex,
   MealReminderSettings,
   Phase,
+  TrainingLevel,
   UserDemographics,
   UserProfile,
 } from './models';
@@ -21,6 +22,8 @@ type UserDocShape = Partial<{
   isDetailedTrackingEnabled: boolean;
   heightCm: number;
   birthDate: string;
+  trainingLevel: TrainingLevel;
+  goesToGym: boolean;
   mealRemindersEnabled: boolean;
   mealReminderBreakfastHour: number;
   mealReminderBreakfastMinute: number;
@@ -44,6 +47,13 @@ export const DEFAULT_MEAL_REMINDER_SETTINGS: MealReminderSettings = {
   dinnerHour: 19,
   dinnerMinute: 0,
 };
+
+const TRAINING_LEVELS: TrainingLevel[] = ['first_time', 'beginner', 'intermediate', 'advanced'];
+
+function parseTrainingLevel(raw: unknown): TrainingLevel | undefined {
+  if (typeof raw !== 'string') return undefined;
+  return TRAINING_LEVELS.includes(raw as TrainingLevel) ? (raw as TrainingLevel) : undefined;
+}
 
 function clampMinute(n: unknown, fallback: number): number {
   if (typeof n !== 'number' || !Number.isFinite(n)) return fallback;
@@ -104,7 +114,9 @@ export async function getUserDemographics(uid: string): Promise<UserDemographics
     typeof data.birthDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(data.birthDate)
       ? data.birthDate
       : undefined;
-  return { heightCm, birthDate };
+  const trainingLevel = parseTrainingLevel(data.trainingLevel);
+  const goesToGym = typeof data.goesToGym === 'boolean' ? data.goesToGym : undefined;
+  return { heightCm, birthDate, trainingLevel, goesToGym };
 }
 
 export async function setDetailedTrackingEnabled(

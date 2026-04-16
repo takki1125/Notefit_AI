@@ -47,6 +47,7 @@ export default function RootLayout() {
   const rootSegment = segmentList[0];
   const childSegment = segmentList[1];
   const inAuthGroup = rootSegment === '(auth)';
+  const inLogin = inAuthGroup && childSegment === 'login';
   const inVerify = inAuthGroup && childSegment === 'verify';
   const inOnboarding = inAuthGroup && childSegment === 'onboarding';
 
@@ -59,7 +60,7 @@ export default function RootLayout() {
   }
 
   if (!user) {
-    if (!inAuthGroup) return <Redirect href="/login" />;
+    if (!inLogin) return <Redirect href="/login" />;
   } else if (!user.emailVerified) {
     if (!inVerify) return <Redirect href="/verify" />;
   } else {

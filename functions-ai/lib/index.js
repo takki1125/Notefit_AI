@@ -53,6 +53,21 @@ function createOpenAIClient() {
     return new openai_1.default({ apiKey });
 }
 /** クライアントから渡す任意プロフィール（身長・生年月日・満年齢） */
+const TRAINING_LEVELS = ["first_time", "beginner", "intermediate", "advanced"];
+function toTrainingLevelLabel(level) {
+    switch (level) {
+        case "first_time":
+            return "初めて";
+        case "beginner":
+            return "初心者";
+        case "intermediate":
+            return "中級者";
+        case "advanced":
+            return "上級者";
+        default:
+            return level;
+    }
+}
 function parseDemographicsPayload(data) {
     const d = data?.demographics;
     if (!d || typeof d !== "object")
@@ -62,11 +77,19 @@ function parseDemographicsPayload(data) {
     const birthDate = typeof d.birthDate === "string" && /^\d{4}-\d{2}-\d{2}$/.test(d.birthDate) ? d.birthDate : undefined;
     const rawA = Number(d.ageYears);
     const ageYears = Number.isFinite(rawA) && rawA >= 3 && rawA <= 120 ? Math.floor(rawA) : undefined;
-    return { heightCm, birthDate, ageYears };
+    const trainingLevel = typeof d.trainingLevel === "string" && TRAINING_LEVELS.includes(d.trainingLevel)
+        ? d.trainingLevel
+        : undefined;
+    const goesToGym = typeof d.goesToGym === "boolean" ? d.goesToGym : undefined;
+    return { heightCm, birthDate, ageYears, trainingLevel, goesToGym };
 }
 function formatDemographicsForPrompt(parsed) {
-    if (!parsed.heightCm && !parsed.birthDate && parsed.ageYears == null) {
-        return "（身長・年齢の追加情報なし）";
+    if (!parsed.heightCm &&
+        !parsed.birthDate &&
+        parsed.ageYears == null &&
+        !parsed.trainingLevel &&
+        parsed.goesToGym == null) {
+        return "（身長・年齢・トレーニング段階・ジム環境の追加情報なし）";
     }
     const parts = [];
     if (parsed.heightCm)
@@ -75,6 +98,10 @@ function formatDemographicsForPrompt(parsed) {
         parts.push(`生年月日 ${parsed.birthDate}`);
     if (parsed.ageYears != null)
         parts.push(`満年齢 約${parsed.ageYears}歳`);
+    if (parsed.trainingLevel)
+        parts.push(`トレーニング段階 ${toTrainingLevelLabel(parsed.trainingLevel)}`);
+    if (parsed.goesToGym != null)
+        parts.push(`ジム通い ${parsed.goesToGym ? "あり" : "なし"}`);
     return parts.join(" / ");
 }
 const AI_COACH_STYLES = ["gentle", "balanced", "spartan", "facts"];
@@ -354,6 +381,8 @@ ${dataHandlingRules}
 要件:
 - title / bullets / calorieAdvice / workoutAdvice のすべてが、上記「ユーザー設定」の口調・コーチスタイルに沿うこと。
 - bullets は 1〜3件の文字列。
+- userDemographics にトレーニング段階がある場合は、提案の難易度・ボリューム・回復方針をその段階に合わせること。
+- userDemographics にジム通い情報がある場合は、設備前提を合わせること（ジムなしなら自宅でできる代替案を優先）。
 ${calorieRules}
 ${workoutRules}
 - calorieAdvice / workoutAdvice は各1〜4文程度。記録がない軸は「ないので〜できない」と正直に書く。
@@ -558,6 +587,7 @@ today.bodyFatPercentage: ${todayBfLine}`;
 ## アプリから同期された記録（ホームの「今日のAIアドバイス」と同種の参照データ）
 - この節の数値・メニュー・種目だけを事実として扱う。記録にない情報は推測・でっち上げをしない。
 - データが少ないモード: ${sparseContext ? "はい（断定を避け、次の一歩や一般論に寄せる）" : "いいえ"}
+- 目標設定（phase/targetWeight/targetCal）がある: ${hasGoal ? "はい" : "いいえ"}
 - 体重データの日数（直近）: ${weightDayCount}日分
 - 本日の食事記録を参照できる: ${hasNutritionData ? "はい" : "いいえ"}
 - トレーニング記録がある: ${hasWorkoutData ? "はい" : "いいえ"}
@@ -609,6 +639,15 @@ exports.aiCoachChat = (0, https_1.onCall)(callableOpts, async (request) => {
         const aiCoach = parseAiCoachPayload(request.data);
         const demo = parseDemographicsPayload(request.data);
         const adviceContextBlock = buildChatAdviceContextBlock(request.data);
+        const phase = request.data?.phase;
+        const targetWeight = Number(request.data?.targetWeight);
+        const targetCal = Number(request.data?.targetCal);
+        const hasGoalInChat = !!phase &&
+            ["cut", "maintain", "bulk"].includes(phase) &&
+            Number.isFinite(targetWeight) &&
+            targetWeight > 0 &&
+            Number.isFinite(targetCal) &&
+            targetCal > 0;
         let openai;
         try {
             openai = createOpenAIClient();
@@ -632,11 +671,15 @@ ${buildAiCoachPromptBlock(aiCoach)}
 
 ## 行動指針
 - ユーザーの相談・質問に、実用的で分かりやすく答える。短文だけで終わらず、必要なら手順や目安を添える。
+- 身長・年齢・トレーニング段階・ジム通い情報がある場合は、提案の強度や難易度、設備前提をその条件に合わせる。
+- 目標設定（phase/targetWeight/targetCal）がある場合、「目標や好みによって変わる」だけで終わらせない。まず現在の目標に沿った具体案を提示し、その後に必要なら代替案を短く添える。
+- 目標設定がある場合、目標を再質問しない（不整合がある場合のみ確認質問可）。
 - 医学的診断・治療・薬の指示は行わない。痛みが強い・動けない・胸の痛みなどは医療機関を勧める。
 - 極端な断食・脱水・危険な重量など、健康を損なう指示はしない。
 - ユーザーの文脈が不明なときは、確認の質問をしてよい。
 
-参考（身長・年齢など、ユーザーがアプリに登録している場合のみ）: ${formatDemographicsForPrompt(demo)}
+参考（身長・年齢・トレーニング段階・ジム通い情報など、ユーザーがアプリに登録している場合のみ）: ${formatDemographicsForPrompt(demo)}
+目標設定の有無: ${hasGoalInChat ? "あり（既存目標を前提に具体提案する）" : "なし（必要なら最小限の確認質問をする）"}
 
 ${adviceContextBlock}
 `.trim();
@@ -648,7 +691,7 @@ ${adviceContextBlock}
                     { role: "system", content: systemPrompt },
                     ...sanitized.map((m) => ({ role: m.role, content: m.content })),
                 ],
-                temperature: 0.65,
+                temperature: 0.45,
                 max_tokens: 1200,
             });
             reply = completion.choices[0]?.message?.content?.trim() ?? "";

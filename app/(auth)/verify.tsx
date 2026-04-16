@@ -70,6 +70,18 @@ const VerificationScreen: React.FC = () => {
     }
   };
 
+  const handleUseDifferentAccount = async () => {
+    setLoading(true);
+    try {
+      await signOut(auth);
+      router.replace('/login');
+    } catch {
+      Alert.alert('エラー', 'ログアウトに失敗しました。もう一度お試しください。');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <SafeAreaView style={styles.loginContainer}>
       <View style={[styles.loginBox, { alignItems: 'center', paddingVertical: 40 }]}>
@@ -102,7 +114,8 @@ const VerificationScreen: React.FC = () => {
 
         <TouchableOpacity
           style={{ marginTop: 20, padding: 10 }}
-          onPress={() => signOut(auth)}
+          onPress={handleUseDifferentAccount}
+          disabled={loading}
         >
           <Text style={styles.logoutText}>別のアカウントでやり直す</Text>
         </TouchableOpacity>

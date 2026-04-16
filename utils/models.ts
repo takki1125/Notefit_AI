@@ -25,11 +25,17 @@ export interface DailyMetric {
   bodyFatPercentage?: number; // %
 }
 
+/** AIアドバイス用: トレーニング経験レベル（任意） */
+export type TrainingLevel = 'first_time' | 'beginner' | 'intermediate' | 'advanced';
+
 /** 身長・生年月日（任意）。users/{uid} 直下に保存 */
 export interface UserDemographics {
   heightCm?: number;
   /** 生年月日 YYYY-MM-DD（ローカル日付として解釈） */
   birthDate?: string;
+  trainingLevel?: TrainingLevel;
+  /** ジム通いの有無（任意） */
+  goesToGym?: boolean;
 }
 
 /** 朝・昼・夕の食事記録リマインダー（users/{uid} に保存） */
