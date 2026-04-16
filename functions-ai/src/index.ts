@@ -759,3 +759,4 @@ export {
   updateCustomExercise,
 } from "./userContentCallables";
 export { claimMissionReward, getMissionsSnapshot } from "./missions";
+export { deleteMyAccount } from "./accountDeletion";

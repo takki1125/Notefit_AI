@@ -7,7 +7,7 @@ import { getUserProfile } from '../utils/firestoreProfile';
 
 export default function RootLayout() {
   const { user, initializing } = useAuthState();
-  const segments = useSegments();
+  const segmentList = useSegments() as string[];
   const [onboardingChecked, setOnboardingChecked] = useState(false);
   const [needsOnboarding, setNeedsOnboarding] = useState(false);
 
@@ -44,9 +44,11 @@ export default function RootLayout() {
     };
   }, [user?.uid]);
 
-  const inAuthGroup = segments[0] === '(auth)';
-  const inVerify = inAuthGroup && segments[1] === 'verify';
-  const inOnboarding = inAuthGroup && segments[1] === 'onboarding';
+  const rootSegment = segmentList[0];
+  const childSegment = segmentList[1];
+  const inAuthGroup = rootSegment === '(auth)';
+  const inVerify = inAuthGroup && childSegment === 'verify';
+  const inOnboarding = inAuthGroup && childSegment === 'onboarding';
 
   if (initializing) {
     return (

@@ -787,6 +787,107 @@ const TrainingTabContent: React.FC<Props> = ({ navigation }) => {
     []
   );
 
+  const fetchPreviousExerciseHints = useCallback(async () => {
+    const user = auth.currentUser;
+    if (!user) return;
+
+    const hasInputValue = (value: unknown) => {
+      if (value === null || value === undefined) return false;
+      return String(value).trim().length > 0;
+    };
+
+    const hasSetValue = (set: WorkoutSet, isCardio: boolean) => {
+      if (isCardio) {
+        return hasInputValue(set.durationMinutes) || hasInputValue(set.distanceKm);
+      }
+      return hasInputValue(set.weight) || hasInputValue(set.reps);
+    };
+
+    const trimTrailingEmptySets = (sets: WorkoutSet[], isCardio: boolean) => {
+      let lastFilledIndex = -1;
+      sets.forEach((set, index) => {
+        if (hasSetValue(set, isCardio)) lastFilledIndex = index;
+      });
+      if (lastFilledIndex < 0) return [];
+      return sets.slice(0, lastFilledIndex + 1);
+    };
+
+    try {
+      const q = query(
+        collection(db, "users", user.uid, "workouts"),
+        orderBy("dateObj", "desc"),
+        limit(50),
+      );
+      const snapshot = await getDocs(q);
+
+      const hints: PreviousExerciseHints = {};
+      snapshot.forEach((workoutDoc) => {
+        const workoutData = workoutDoc.data() as {
+          exercises?: Array<{ name?: string; category?: string; sets?: WorkoutSet[] }>;
+        };
+        const exercises = workoutData.exercises ?? [];
+
+        exercises.forEach((exercise) => {
+          const exerciseName = exercise.name?.trim();
+          if (!exerciseName) return;
+
+          const isCardio = (exercise.category ?? "").includes("有酸素");
+          const mappedSets = (exercise.sets ?? []).map((set) =>
+            isCardio
+              ? {
+                durationMinutes: set.durationMinutes ?? set.weight ?? "",
+                distanceKm: set.distanceKm ?? set.reps ?? "",
+                done: false,
+              }
+              : {
+                weight: set.weight ?? "",
+                reps: set.reps ?? "",
+                done: false,
+              }
+          );
+
+          const existingSets = hints[exerciseName] ?? [];
+          const maxLength = Math.max(existingSets.length, mappedSets.length);
+          const mergedSets: WorkoutSet[] = Array.from({ length: maxLength }, (_, index) => {
+            const existing = existingSets[index];
+            const candidate = mappedSets[index];
+
+            if (!existing && candidate) return candidate;
+            if (existing && !candidate) return existing;
+            if (!existing && !candidate) return { done: false };
+
+            if (isCardio) {
+              return {
+                durationMinutes: hasInputValue(existing?.durationMinutes)
+                  ? existing?.durationMinutes
+                  : candidate?.durationMinutes ?? "",
+                distanceKm: hasInputValue(existing?.distanceKm)
+                  ? existing?.distanceKm
+                  : candidate?.distanceKm ?? "",
+                done: false,
+              };
+            }
+
+            return {
+              weight: hasInputValue(existing?.weight) ? existing?.weight : candidate?.weight ?? "",
+              reps: hasInputValue(existing?.reps) ? existing?.reps : candidate?.reps ?? "",
+              done: false,
+            };
+          });
+
+          const cleanedSets = trimTrailingEmptySets(mergedSets, isCardio);
+          if (cleanedSets.length > 0) {
+            hints[exerciseName] = cleanedSets;
+          }
+        });
+      });
+
+      setPreviousExerciseHints(hints);
+    } catch (error) {
+      console.error("前回セットの取得に失敗:", error);
+    }
+  }, []);
+
   const restoreTrainingDraft = useCallback(async () => {
     if (draftRestored) return;
 
@@ -952,107 +1053,6 @@ const TrainingTabContent: React.FC<Props> = ({ navigation }) => {
     const s = (totalSeconds % 60).toString().padStart(2, "0");
     return h > 0 ? `${h}:${m}:${s}` : `${m}:${s}`;
   };
-
-  const fetchPreviousExerciseHints = useCallback(async () => {
-    const user = auth.currentUser;
-    if (!user) return;
-
-    const hasInputValue = (value: unknown) => {
-      if (value === null || value === undefined) return false;
-      return String(value).trim().length > 0;
-    };
-
-    const hasSetValue = (set: WorkoutSet, isCardio: boolean) => {
-      if (isCardio) {
-        return hasInputValue(set.durationMinutes) || hasInputValue(set.distanceKm);
-      }
-      return hasInputValue(set.weight) || hasInputValue(set.reps);
-    };
-
-    const trimTrailingEmptySets = (sets: WorkoutSet[], isCardio: boolean) => {
-      let lastFilledIndex = -1;
-      sets.forEach((set, index) => {
-        if (hasSetValue(set, isCardio)) lastFilledIndex = index;
-      });
-      if (lastFilledIndex < 0) return [];
-      return sets.slice(0, lastFilledIndex + 1);
-    };
-
-    try {
-      const q = query(
-        collection(db, "users", user.uid, "workouts"),
-        orderBy("dateObj", "desc"),
-        limit(50),
-      );
-      const snapshot = await getDocs(q);
-
-      const hints: PreviousExerciseHints = {};
-      snapshot.forEach((workoutDoc) => {
-        const workoutData = workoutDoc.data() as {
-          exercises?: Array<{ name?: string; category?: string; sets?: WorkoutSet[] }>;
-        };
-        const exercises = workoutData.exercises ?? [];
-
-        exercises.forEach((exercise) => {
-          const exerciseName = exercise.name?.trim();
-          if (!exerciseName) return;
-
-          const isCardio = (exercise.category ?? "").includes("有酸素");
-          const mappedSets = (exercise.sets ?? []).map((set) =>
-            isCardio
-              ? {
-                durationMinutes: set.durationMinutes ?? set.weight ?? "",
-                distanceKm: set.distanceKm ?? set.reps ?? "",
-                done: false,
-              }
-              : {
-                weight: set.weight ?? "",
-                reps: set.reps ?? "",
-                done: false,
-              }
-          );
-
-          const existingSets = hints[exerciseName] ?? [];
-          const maxLength = Math.max(existingSets.length, mappedSets.length);
-          const mergedSets: WorkoutSet[] = Array.from({ length: maxLength }, (_, index) => {
-            const existing = existingSets[index];
-            const candidate = mappedSets[index];
-
-            if (!existing && candidate) return candidate;
-            if (existing && !candidate) return existing;
-            if (!existing && !candidate) return { done: false };
-
-            if (isCardio) {
-              return {
-                durationMinutes: hasInputValue(existing?.durationMinutes)
-                  ? existing?.durationMinutes
-                  : candidate?.durationMinutes ?? "",
-                distanceKm: hasInputValue(existing?.distanceKm)
-                  ? existing?.distanceKm
-                  : candidate?.distanceKm ?? "",
-                done: false,
-              };
-            }
-
-            return {
-              weight: hasInputValue(existing?.weight) ? existing?.weight : candidate?.weight ?? "",
-              reps: hasInputValue(existing?.reps) ? existing?.reps : candidate?.reps ?? "",
-              done: false,
-            };
-          });
-
-          const cleanedSets = trimTrailingEmptySets(mergedSets, isCardio);
-          if (cleanedSets.length > 0) {
-            hints[exerciseName] = cleanedSets;
-          }
-        });
-      });
-
-      setPreviousExerciseHints(hints);
-    } catch (error) {
-      console.error("前回セットの取得に失敗:", error);
-    }
-  }, []);
 
   const getPreviousSetPlaceholder = (
     exerciseName: string,

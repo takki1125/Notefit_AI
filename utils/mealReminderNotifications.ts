@@ -28,6 +28,8 @@ function getNotifications(): NotificationsModule | null {
       notificationsModule.setNotificationHandler({
         handleNotification: async () => ({
           shouldShowAlert: true,
+          shouldShowBanner: true,
+          shouldShowList: true,
           shouldPlaySound: true,
           shouldSetBadge: false,
         }),

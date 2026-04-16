@@ -3,7 +3,9 @@ import { useRouter } from 'expo-router';
 import { Alert, ScrollView, Switch, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LogOut, Trash2, X, User, ChevronRight, Target, Bell, Sparkles, CheckSquare, Coins, BookOpen } from 'lucide-react-native';
-import { deleteUser, signOut } from 'firebase/auth';
+import { signOut } from 'firebase/auth';
+import { getApp } from 'firebase/app';
+import { getFunctions, httpsCallable } from 'firebase/functions';
 import { auth } from '../../firebaseConfig';
 import { styles } from '../../theme/styles';
 import { getUserProfile, setDetailedTrackingEnabled } from '../../utils/firestoreProfile';
@@ -75,10 +77,28 @@ export default function SettingsScreen() {
         onPress: async () => {
           try {
             const user = auth.currentUser;
-            if (user) await deleteUser(user);
+            if (!user) return;
+
+            /**
+             * 審査要件対応:
+             * クライアント権限では削除できないサブコレクション（coin_transactions など）があるため、
+             * サーバー側 callable（deleteMyAccount）で Firestore + Auth を一括削除する。
+             */
+            const functions = getFunctions(getApp(), 'asia-northeast1');
+            const callable = httpsCallable<unknown, { ok?: boolean }>(functions, 'deleteMyAccount');
+            await callable({});
+
+            // トークン無効化後のUI残りを防ぐため明示的にサインアウト
+            await signOut(auth);
           } catch (error: any) {
-            if (error.code === 'auth/requires-recent-login') {
+            const code = typeof error?.code === 'string' ? error.code : '';
+            if (code === 'functions/unauthenticated' || code === 'auth/requires-recent-login') {
               Alert.alert('エラー', '再ログインしてから実行してください。');
+            } else if (code === 'functions/not-found') {
+              Alert.alert(
+                'サーバー未反映',
+                'アカウント削除機能をデプロイしてください（firebase deploy --only functions:ai）。',
+              );
             } else {
               Alert.alert('エラー', 'エラーが発生しました。時間をおいて再度お試しください。');
             }

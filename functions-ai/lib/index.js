@@ -36,7 +36,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.getMissionsSnapshot = exports.claimMissionReward = exports.updateCustomExercise = exports.deleteMealRoutine = exports.deleteCustomExercise = exports.createMealRoutine = exports.createCustomExercise = exports.revenueCatWebhook = exports.aiCoachChat = exports.generateDailyAIAdvice = exports.analyzeFoodPFC = exports.grantRewardAdCoins = exports.grantRegistrationBonus = void 0;
+exports.deleteMyAccount = exports.getMissionsSnapshot = exports.claimMissionReward = exports.updateCustomExercise = exports.deleteMealRoutine = exports.deleteCustomExercise = exports.createMealRoutine = exports.createCustomExercise = exports.revenueCatWebhook = exports.aiCoachChat = exports.generateDailyAIAdvice = exports.analyzeFoodPFC = exports.grantRewardAdCoins = exports.grantRegistrationBonus = void 0;
 const https_1 = require("firebase-functions/v2/https");
 const logger = __importStar(require("firebase-functions/logger"));
 const params_1 = require("firebase-functions/params");
@@ -113,6 +113,7 @@ const callableOpts = {
     region: "asia-northeast1",
     secrets: [OPENAI_API_KEY],
     cors: true,
+    invoker: "public",
 };
 const publicCallableOpts = {
     region: "asia-northeast1",
@@ -142,6 +143,9 @@ exports.analyzeFoodPFC = (0, https_1.onCall)(callableOpts, async (request) => {
         const { text } = (request.data || {});
         if (!text || typeof text !== "string" || !text.trim()) {
             throw new https_1.HttpsError("invalid-argument", "Parameter 'text' must be a non-empty string.");
+        }
+        if (text.length > 500) {
+            throw new https_1.HttpsError("invalid-argument", "Parameter 'text' must be 500 characters or fewer.");
         }
         const demo = parseDemographicsPayload(request.data);
         const openai = createOpenAIClient();
@@ -227,7 +231,7 @@ exports.analyzeFoodPFC = (0, https_1.onCall)(callableOpts, async (request) => {
         logger.error("analyzeFoodPFC error", error);
         if (error instanceof https_1.HttpsError)
             throw error;
-        throw new https_1.HttpsError("internal", error?.message || "Unknown error in analyzeFoodPFC.");
+        throw new https_1.HttpsError("internal", "Failed to analyze food data.");
     }
 });
 /** 今日のアドバイス生成（ホーム） */
@@ -686,3 +690,5 @@ Object.defineProperty(exports, "updateCustomExercise", { enumerable: true, get: 
 var missions_1 = require("./missions");
 Object.defineProperty(exports, "claimMissionReward", { enumerable: true, get: function () { return missions_1.claimMissionReward; } });
 Object.defineProperty(exports, "getMissionsSnapshot", { enumerable: true, get: function () { return missions_1.getMissionsSnapshot; } });
+var accountDeletion_1 = require("./accountDeletion");
+Object.defineProperty(exports, "deleteMyAccount", { enumerable: true, get: function () { return accountDeletion_1.deleteMyAccount; } });

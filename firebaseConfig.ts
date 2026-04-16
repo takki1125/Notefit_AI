@@ -1,7 +1,8 @@
 // firebaseConfig.ts
 import { initializeApp } from "firebase/app";
 import { getFirestore, initializeFirestore } from "firebase/firestore";
-import { getAuth, getReactNativePersistence, initializeAuth } from "firebase/auth";
+import * as FirebaseAuth from "firebase/auth";
+import { getAuth, initializeAuth, type Persistence } from "firebase/auth";
 import ReactNativeAsyncStorage from "@react-native-async-storage/async-storage";
 
 // 瀧本さんのプロジェクトの鍵情報
@@ -30,11 +31,21 @@ function getFirestoreForApp() {
 
 export const db = getFirestoreForApp();
 
+type AuthModuleWithReactNativePersistence = {
+  getReactNativePersistence?: (storage: typeof ReactNativeAsyncStorage) => Persistence;
+};
+
 function getFirebaseAuth() {
   try {
-    return initializeAuth(app, {
-      persistence: getReactNativePersistence(ReactNativeAsyncStorage),
-    });
+    // `getReactNativePersistence` is available at runtime on React Native builds but not always typed on this import path.
+    const maybeGetReactNativePersistence = (FirebaseAuth as AuthModuleWithReactNativePersistence)
+      .getReactNativePersistence;
+    if (typeof maybeGetReactNativePersistence === "function") {
+      return initializeAuth(app, {
+        persistence: maybeGetReactNativePersistence(ReactNativeAsyncStorage),
+      });
+    }
+    return initializeAuth(app);
   } catch {
     return getAuth(app);
   }

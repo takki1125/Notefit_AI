@@ -1,6 +1,6 @@
 # Google Play Store リリースチェックリスト
 
-> **最終更新**: 2026-04-14
+> **最終更新**: 2026-04-16
 
 ---
 
@@ -43,6 +43,12 @@
 - [ ] `docs/PRIVACY_POLICY.md` の `[メールアドレスを記入]` を実際のアドレスに置換
 - [ ] プライバシーポリシーを公開 URL に配置（GitHub Pages / Notion / 独自サイト等）
 - [ ] Play Console にプライバシーポリシー URL を登録
+
+### アカウント削除（実データ削除要件）
+- [ ] `functions-ai` の callable `deleteMyAccount` をデプロイ済み（`firebase deploy --only functions:ai`）
+- [ ] `app/settings/index.tsx` が `deleteUser` 直呼びではなく `deleteMyAccount` を呼んでいることを確認
+- [ ] 削除時に `users/{uid}` 配下（`workouts` / `food_logs` / `daily_metrics` / `coin_transactions` など）が再帰削除されることを実機で確認
+- [ ] 削除後、Firebase Auth のユーザーも削除され再ログイン不可になることを確認
 
 ---
 
@@ -140,3 +146,5 @@ eas submit --platform android --profile production
 | `google-services.json` | Firebase Android 設定（Firebase Console からダウンロード） |
 | `pc-api-service-account.json` | Play Console API サービスアカウント（EAS Submit 用） |
 | `docs/PRIVACY_POLICY.md` | プライバシーポリシーのひな形 |
+| `app/settings/index.tsx` | アプリ内のアカウント削除 UI（`deleteMyAccount` 呼び出し） |
+| `functions-ai/src/accountDeletion.ts` | Firestore 実データ + Auth アカウントの削除 callable |

@@ -58,20 +58,19 @@ export async function getDailyMetricsLastNDays(uid: string, n: number): Promise<
   );
 
   const snap = await getDocs(q);
-  const metrics: DailyMetric[] = snap.docs
-    .map((d) => {
-      const data = d.data() as any;
-      const date = typeof data?.date === 'string' ? data.date : d.id;
-      const weight = typeof data?.weight === 'number' ? data.weight : null;
-      if (!weight) return null;
+  const metrics: DailyMetric[] = [];
 
-      return {
-        date,
-        weight,
-        bodyFatPercentage: typeof data?.bodyFatPercentage === 'number' ? data.bodyFatPercentage : undefined,
-      } satisfies DailyMetric;
-    })
-    .filter((m): m is DailyMetric => !!m);
+  snap.docs.forEach((d) => {
+    const data = d.data() as any;
+    const date = typeof data?.date === 'string' ? data.date : d.id;
+    const weight = typeof data?.weight === 'number' ? data.weight : NaN;
+    if (!Number.isFinite(weight)) return;
+
+    const bodyFatPercentage =
+      typeof data?.bodyFatPercentage === 'number' ? data.bodyFatPercentage : undefined;
+
+    metrics.push({ date, weight, bodyFatPercentage });
+  });
 
   // Firestore query is descending; chart/progress calculations usually assume ascending.
   return metrics.sort((a, b) => a.date.localeCompare(b.date));
