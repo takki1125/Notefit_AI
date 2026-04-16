@@ -10,7 +10,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { Check } from 'lucide-react-native';
+import { Check, Eye, EyeOff } from 'lucide-react-native';
 import {
   createUserWithEmailAndPassword,
   sendEmailVerification,
@@ -26,6 +26,7 @@ const LoginScreen: React.FC = () => {
   const [password, setPassword] = useState('');
   const [isSignUp, setIsSignUp] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
   const [agreed, setAgreed] = useState(false);
   const [termsOpened, setTermsOpened] = useState(false);
 
@@ -107,14 +108,24 @@ const LoginScreen: React.FC = () => {
           autoCapitalize="none"
           keyboardType="email-address"
         />
-        <TextInput
-          style={styles.inputField}
-          placeholder="パスワード (6文字以上)"
-          placeholderTextColor="#888"
-          value={password}
-          onChangeText={setPassword}
-          secureTextEntry
-        />
+        <View style={styles.passwordFieldContainer}>
+          <TextInput
+            style={styles.passwordInputField}
+            placeholder="パスワード (6文字以上)"
+            placeholderTextColor="#888"
+            value={password}
+            onChangeText={setPassword}
+            secureTextEntry={!showPassword}
+          />
+          <TouchableOpacity
+            onPress={() => setShowPassword(prev => !prev)}
+            style={styles.passwordToggleButton}
+            accessibilityRole="button"
+            accessibilityLabel={showPassword ? 'パスワードを隠す' : 'パスワードを表示'}
+          >
+            {showPassword ? <EyeOff size={20} color="#aaa" /> : <Eye size={20} color="#aaa" />}
+          </TouchableOpacity>
+        </View>
 
         {isSignUp && (
           <View style={styles.termsContainer}>
@@ -194,6 +205,27 @@ const styles = StyleSheet.create({
     paddingHorizontal: 15,
     color: '#fff',
     marginBottom: 15,
+  },
+  passwordFieldContainer: {
+    width: '100%',
+    height: 50,
+    backgroundColor: '#111',
+    borderRadius: 10,
+    marginBottom: 15,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  passwordInputField: {
+    flex: 1,
+    height: '100%',
+    paddingHorizontal: 15,
+    color: '#fff',
+  },
+  passwordToggleButton: {
+    width: 44,
+    height: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   loginButton: {
     width: '100%',
