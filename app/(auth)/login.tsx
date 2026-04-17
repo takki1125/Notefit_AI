@@ -22,7 +22,7 @@ import {
   sendPasswordResetEmail,
 } from 'firebase/auth';
 
-import { auth } from '../../firebaseConfig';
+import { auth, emailVerificationActionCodeSettings } from '../../firebaseConfig';
 import Markdown from 'react-native-markdown-display';
 
 const LoginScreen: React.FC = () => {
@@ -49,7 +49,7 @@ const LoginScreen: React.FC = () => {
     try {
       if (isSignUp) {
         const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-        await sendEmailVerification(userCredential.user);
+        await sendEmailVerification(userCredential.user, emailVerificationActionCodeSettings);
       } else {
         const userCredential = await signInWithEmailAndPassword(auth, email, password);
         const user = userCredential.user;

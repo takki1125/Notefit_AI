@@ -104,4 +104,7 @@ app-example
 /ios
 /android
 serviceAccountKey.json
+serviceaccountkey.json
+**/serviceAccountKey.json
+**/serviceaccountkey.json
 pc-api-service-account.json

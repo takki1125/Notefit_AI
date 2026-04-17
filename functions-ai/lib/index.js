@@ -36,7 +36,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.deleteMyAccount = exports.getMissionsSnapshot = exports.claimMissionReward = exports.updateCustomExercise = exports.deleteMealRoutine = exports.deleteCustomExercise = exports.createMealRoutine = exports.createCustomExercise = exports.revenueCatWebhook = exports.aiCoachChat = exports.generateDailyAIAdvice = exports.analyzeFoodPFC = exports.grantRewardAdCoins = exports.grantRegistrationBonus = void 0;
+exports.deleteUserByEmail = exports.deleteMyAccount = exports.getMissionsSnapshot = exports.claimMissionReward = exports.updateCustomExercise = exports.deleteMealRoutine = exports.deleteCustomExercise = exports.createMealRoutine = exports.createCustomExercise = exports.revenueCatWebhook = exports.aiCoachChat = exports.generateDailyAIAdvice = exports.analyzeFoodPFC = exports.grantRewardAdCoins = exports.grantRegistrationBonus = void 0;
 const https_1 = require("firebase-functions/v2/https");
 const logger = __importStar(require("firebase-functions/logger"));
 const params_1 = require("firebase-functions/params");
@@ -850,3 +850,4 @@ Object.defineProperty(exports, "claimMissionReward", { enumerable: true, get: fu
 Object.defineProperty(exports, "getMissionsSnapshot", { enumerable: true, get: function () { return missions_1.getMissionsSnapshot; } });
 var accountDeletion_1 = require("./accountDeletion");
 Object.defineProperty(exports, "deleteMyAccount", { enumerable: true, get: function () { return accountDeletion_1.deleteMyAccount; } });
+Object.defineProperty(exports, "deleteUserByEmail", { enumerable: true, get: function () { return accountDeletion_1.deleteUserByEmail; } });

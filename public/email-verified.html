@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>メール確認が完了しました — NoteFit AI</title>
+  <style>
+    :root {
+      --bg: #0f1210;
+      --surface: #1c2220;
+      --border: rgba(46, 204, 113, 0.22);
+      --accent: #2ecc71;
+      --accent-dim: rgba(46, 204, 113, 0.15);
+      --text: #e8ece9;
+      --muted: #9aa8a2;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Noto Sans JP", "Yu Gothic UI", "Meiryo", system-ui, sans-serif;
+      background: radial-gradient(ellipse 120% 80% at 50% -20%, var(--accent-dim), transparent 55%), var(--bg);
+      color: var(--text);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+      line-height: 1.65;
+    }
+    .card {
+      width: 100%;
+      max-width: 420px;
+      background: linear-gradient(165deg, rgba(46, 204, 113, 0.08) 0%, var(--surface) 42%);
+      border: 1px solid var(--border);
+      border-radius: 24px;
+      padding: 40px 32px 36px;
+      box-shadow: 0 24px 48px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(255, 255, 255, 0.04) inset;
+    }
+    .badge {
+      width: 72px;
+      height: 72px;
+      border-radius: 50%;
+      background: var(--accent-dim);
+      border: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin: 0 auto 24px;
+    }
+    .badge svg { width: 36px; height: 36px; stroke: var(--accent); fill: none; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+    h1 {
+      font-size: 1.35rem;
+      font-weight: 700;
+      text-align: center;
+      margin: 0 0 12px;
+      letter-spacing: 0.02em;
+    }
+    .brand {
+      text-align: center;
+      font-size: 0.8rem;
+      color: var(--accent);
+      font-weight: 600;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      margin-bottom: 20px;
+    }
+    p {
+      margin: 0 0 16px;
+      color: var(--muted);
+      font-size: 0.95rem;
+      text-align: center;
+    }
+    p:last-of-type { margin-bottom: 0; }
+    .steps {
+      margin: 28px 0 0;
+      padding: 20px 20px 18px;
+      background: rgba(0, 0, 0, 0.25);
+      border-radius: 16px;
+      border: 1px solid rgba(255, 255, 255, 0.06);
+    }
+    .steps h2 {
+      font-size: 0.75rem;
+      font-weight: 600;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      margin: 0 0 14px;
+    }
+    ol {
+      margin: 0;
+      padding-left: 1.2em;
+      color: var(--text);
+      font-size: 0.9rem;
+    }
+    li { margin-bottom: 10px; }
+    li:last-child { margin-bottom: 0; }
+    .foot {
+      margin-top: 28px;
+      font-size: 0.8rem;
+      color: var(--muted);
+      text-align: center;
+      opacity: 0.85;
+    }
+  </style>
+</head>
+<body>
+  <main class="card">
+    <div class="badge" aria-hidden="true">
+      <svg viewBox="0 0 24 24"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+    </div>
+    <p class="brand">NoteFit AI</p>
+    <h1>メールアドレスの確認が完了しました</h1>
+    <p>ご登録ありがとうございます。アカウントの確認が正常に取れました。</p>
+    <div class="steps">
+      <h2>次のステップ</h2>
+      <ol>
+        <li>NoteFit AI アプリに戻ります。</li>
+        <li>「確認を完了する」をタップして続行してください。</li>
+      </ol>
+    </div>
+    <p class="foot">このページは閉じて問題ありません。</p>
+  </main>
+</body>
+</html>
