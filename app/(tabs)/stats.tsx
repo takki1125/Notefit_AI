@@ -30,7 +30,6 @@ const screenWidth = Dimensions.get("window").width;
 // ★追加：ラップ用コンポーネントの定義
 const WalkthroughableView = walkthroughable(View);
 
-// ★変更：関数名を StatsTabContent に変更（一番下でProviderでラップするため）
 function StatsTabContent() {
   const [loading, setLoading] = useState(true);
   const [workoutCount, setWorkoutCount] = useState(0);
@@ -46,6 +45,9 @@ function StatsTabContent() {
   const [selectedExercise, setSelectedExercise] = useState<string>("");
   const [exerciseProgress, setExerciseProgress] = useState<{ labels: string[], values: number[] }>({ labels: [], values: [] });
   const [isDropdownVisible, setDropdownVisible] = useState(false);
+
+  // ★ 追加：選んだ種目が有酸素かどうかでグラフの単位を変えるState
+  const [exerciseUnit, setExerciseUnit] = useState<string>("kg");
 
   // ★追加：CopilotのHooksとタイマー管理
   const { start, copilotEvents } = useCopilot();
@@ -97,7 +99,6 @@ function StatsTabContent() {
 
     setLoading(true);
     try {
-      // 1. マスターデータ（部位）の取得
       const masterSnapshot = await getDocs(collection(db, "master_data"));
       const partLabels = masterSnapshot.docs.map(d => d.data().label || d.id);
       setParts(partLabels);
@@ -105,18 +106,17 @@ function StatsTabContent() {
 
       const currentTargetPart = selectedPart || partLabels[0];
 
-      // 2. トレーニング履歴の取得
       const wQuery = query(collection(db, "users", user.uid, "workouts"), orderBy("date", "asc"));
       const wSnapshot = await getDocs(wQuery);
       setWorkoutCount(wSnapshot.size);
 
-      // --- 部位用＆種目用のデータ集計用ハコ ---
       const partLabelsArr: string[] = [];
       const partValuesArr: number[] = [];
       const exLabelsArr: string[] = [];
       const exValuesArr: number[] = [];
       
-      const uniqueExercises = new Set<string>();
+      // ★ 変更：SetからMapに変えて、カテゴリー（部位）も一緒に記憶する
+      const uniqueExercises = new Map<string, string>();
 
       wSnapshot.docs.forEach(docSnap => {
         const data = docSnap.data();
@@ -128,10 +128,13 @@ function StatsTabContent() {
 
         if (data.exercises) {
           data.exercises.forEach((ex: any) => {
-            if (ex.name) uniqueExercises.add(ex.name);
+            if (ex.name) uniqueExercises.set(ex.name, ex.category || "他");
+            
+            // ★ 有酸素かどうか判定
+            const isCardio = (ex.category || "").includes("有酸素");
 
-            // 部位グラフの集計
-            if (ex.category === currentTargetPart) {
+            // 部位グラフの集計（有酸素は除外し、完了チェックがついてるものだけ）
+            if (ex.category === currentTargetPart && !isCardio) {
               (ex.sets ?? []).forEach((set: any) => {
                 if (set.done && set.weight && set.reps) {
                   const estimatedRM = parseFloat(set.weight) * (1 + parseInt(set.reps) / 30);
@@ -140,12 +143,24 @@ function StatsTabContent() {
               });
             }
 
-            // 種目グラフの集計
+            // 種目グラフの集計（★ オリジナル種目・有酸素に対応！）
             if (ex.name === selectedExercise) {
               (ex.sets ?? []).forEach((set: any) => {
-                if (set.done && set.weight && set.reps) {
-                  const estimatedRM = parseFloat(set.weight) * (1 + parseInt(set.reps) / 30);
-                  if (estimatedRM > maxExRmForThisDay) maxExRmForThisDay = Math.round(estimatedRM);
+                // done(完了)がtrueのものだけ計算する
+                if (set.done) {
+                  if (isCardio) {
+                    // 有酸素の場合は距離か時間を使う
+                    const dist = parseFloat(set.distanceKm || "0");
+                    const mins = parseFloat(set.durationMinutes || "0");
+                    const val = dist > 0 ? dist : mins; // 距離があれば優先
+                    if (val > maxExRmForThisDay) maxExRmForThisDay = val;
+                  } else {
+                    // 筋トレの場合は推定1RM
+                    if (set.weight && set.reps) {
+                      const estimatedRM = parseFloat(set.weight) * (1 + parseInt(set.reps) / 30);
+                      if (estimatedRM > maxExRmForThisDay) maxExRmForThisDay = Math.round(estimatedRM);
+                    }
+                  }
                 }
               });
             }
@@ -166,9 +181,21 @@ function StatsTabContent() {
       setExerciseProgress({ labels: exLabelsArr.slice(-7), values: exValuesArr.slice(-7) });
 
       // 種目一覧をStateにセット
-      const exList = Array.from(uniqueExercises);
+      const exList = Array.from(uniqueExercises.keys());
       setExercises(exList);
+      
+      // ★ 追加：選んだ種目のカテゴリーから単位を判定
+      const activeEx = selectedExercise || (exList.length > 0 ? exList[0] : "");
       if (!selectedExercise && exList.length > 0) setSelectedExercise(exList[0]);
+      
+      if (activeEx) {
+        const cat = uniqueExercises.get(activeEx) || "";
+        if (cat.includes("有酸素")) {
+          setExerciseUnit("km/分"); 
+        } else {
+          setExerciseUnit("kg");
+        }
+      }
 
       // 3. 食事データの取得
       const fQuery = query(collection(db, "users", user.uid, "food_logs"), orderBy("date", "desc"), limit(5));
@@ -222,7 +249,6 @@ function StatsTabContent() {
 
       <ScrollView 
         contentContainerStyle={{ paddingVertical: 20 }}
-        // {...scrollViewProps}
       >
         
         {loading ? (
@@ -259,7 +285,7 @@ function StatsTabContent() {
               ) : partProgress.values.length === 1 ? (
                 <BarChart data={{ labels: partProgress.labels, datasets: [{ data: partProgress.values }] }} width={screenWidth - 40} height={220} chartConfig={chartConfig} yAxisLabel="" yAxisSuffix="kg" fromZero showValuesOnTopOfBars style={{ borderRadius: 16 }} />
               ) : (
-                <Text style={{ color: '#666' }}>まだ記録がありません</Text>
+                <Text style={{ color: '#666' }}>完了チェック(✅)を付けた記録がありません</Text>
               )}
             </View>
 
@@ -279,11 +305,12 @@ function StatsTabContent() {
 
             <View style={{ backgroundColor: '#1a1a1a', borderRadius: 16, paddingVertical: 15, alignItems: 'center', marginBottom: 35, minHeight: 200, justifyContent: 'center', borderWidth: 1, borderColor: '#333' }}>
               {exerciseProgress.values.length > 1 ? (
-                <LineChart data={{ labels: exerciseProgress.labels, datasets: [{ data: exerciseProgress.values }] }} width={screenWidth - 40} height={220} chartConfig={chartConfigPink} bezier style={{ borderRadius: 16 }} />
+                // ★ yAxisSuffix に単位をセット
+                <LineChart data={{ labels: exerciseProgress.labels, datasets: [{ data: exerciseProgress.values }] }} width={screenWidth - 40} height={220} chartConfig={chartConfigPink} yAxisSuffix={exerciseUnit === "kg" ? "" : ` ${exerciseUnit}`} bezier style={{ borderRadius: 16 }} />
               ) : exerciseProgress.values.length === 1 ? (
-                <BarChart data={{ labels: exerciseProgress.labels, datasets: [{ data: exerciseProgress.values }] }} width={screenWidth - 40} height={220} chartConfig={chartConfigPink} yAxisLabel="" yAxisSuffix="kg" fromZero showValuesOnTopOfBars style={{ borderRadius: 16 }} />
+                <BarChart data={{ labels: exerciseProgress.labels, datasets: [{ data: exerciseProgress.values }] }} width={screenWidth - 40} height={220} chartConfig={chartConfigPink} yAxisLabel="" yAxisSuffix={exerciseUnit} fromZero showValuesOnTopOfBars style={{ borderRadius: 16 }} />
               ) : (
-                <Text style={{ color: '#666' }}>まだ記録がありません</Text>
+                <Text style={{ color: '#666' }}>完了チェック(✅)を付けた記録がありません</Text>
               )}
             </View>
 
@@ -350,7 +377,6 @@ function StatsTabContent() {
   );
 }
 
-// ★追加：チュートリアル全体をプロバイダーで包む
 export default function StatsTabScreen() {
   return (
     <CopilotProvider

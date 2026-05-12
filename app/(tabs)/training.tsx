@@ -2,6 +2,7 @@ import React, { useEffect, useState, useCallback } from "react";
 import {
   ActivityIndicator,
   Alert,
+  AppState, // ★ 追加：アプリがバックグラウンドに行ったかを検知する
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -40,11 +41,9 @@ import {
 } from "../../utils/aiUserContentCallables";
 import { CopilotProvider, CopilotStep, walkthroughable, useCopilot } from "react-native-copilot";
 
-
 type ExerciseSectionRow = { title: string; data: (string | CustomExerciseListItem)[] };
 type ExerciseCategoryRow = { id: string; label: string; sections: ExerciseSectionRow[] };
 
-// ★ 変更: 有酸素用のフィールドを追加
 type WorkoutSet = {
   weight?: string;
   reps?: string;
@@ -871,6 +870,9 @@ const TrainingTabContent: React.FC<Props> = ({ navigation }) => {
   const startTutorialRef = React.useRef(start);
   startTutorialRef.current = start;
 
+  // ★ 追加：タイマーの絶対時刻を記憶するRef
+  const startTimeRef = React.useRef<number | null>(null);
+
   const getTodayDateString = () => {
     const now = new Date();
     const yyyy = now.getFullYear();
@@ -1037,7 +1039,12 @@ const TrainingTabContent: React.FC<Props> = ({ navigation }) => {
           ? parsed.currentRoutineName
           : "自由メニュー"
       );
-      setTimerSeconds(typeof parsed.timerSeconds === "number" ? parsed.timerSeconds : 0);
+      
+      const restoredSeconds = typeof parsed.timerSeconds === "number" ? parsed.timerSeconds : 0;
+      setTimerSeconds(restoredSeconds);
+      // ★ 追加：下書きを復元した時、タイマーの開始時刻を逆算してセットする
+      startTimeRef.current = Date.now() - restoredSeconds * 1000;
+      
     } catch (error) {
       console.error("トレーニング下書きの復元に失敗:", error);
     } finally {
@@ -1077,6 +1084,19 @@ const TrainingTabContent: React.FC<Props> = ({ navigation }) => {
     }, [fetchPreviousExerciseHints, restoreTrainingDraft])
   );
 
+  // ★ 追加：アプリがバックグラウンドから復帰した時にタイマーを同期する
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', nextAppState => {
+      if (nextAppState === 'active' && startTimeRef.current && menu.length > 0) {
+        const elapsed = Math.floor((Date.now() - startTimeRef.current) / 1000);
+        setTimerSeconds(elapsed);
+      }
+    });
+    return () => {
+      subscription.remove();
+    };
+  }, [menu.length]);
+
   useEffect(() => {
     const onStop = async () => {
       const user = auth.currentUser;
@@ -1104,28 +1124,31 @@ const TrainingTabContent: React.FC<Props> = ({ navigation }) => {
     });
   }, [menu.length, navigation]);
 
+  // ★ 変更：タイマーを1秒ずつ足すのではなく、開始時刻との差分を計算する
   useEffect(() => {
     let interval: any = null;
 
     if (menu.length > 0) {
       setIsTimerActive(true);
+      if (!startTimeRef.current) {
+        startTimeRef.current = Date.now();
+      }
+      interval = setInterval(() => {
+        if (startTimeRef.current) {
+          const elapsedSeconds = Math.floor((Date.now() - startTimeRef.current) / 1000);
+          setTimerSeconds(elapsedSeconds);
+        }
+      }, 1000);
     } else {
       setIsTimerActive(false);
+      startTimeRef.current = null;
       setTimerSeconds(0);
-    }
-
-    if (isTimerActive) {
-      interval = setInterval(() => {
-        setTimerSeconds((sec) => sec + 1);
-      }, 1000);
-    } else if (interval) {
-      clearInterval(interval);
     }
 
     return () => {
       if (interval) clearInterval(interval);
     };
-  }, [isTimerActive, menu.length]);
+  }, [menu.length]);
 
   useEffect(() => {
     if (!draftRestored) return;
@@ -1178,7 +1201,6 @@ const TrainingTabContent: React.FC<Props> = ({ navigation }) => {
   };
 
   const handleAddExercise = (exerciseName: string, category: string) => {
-    // ★ 変更: 有酸素なら初期値を分・km用のプロパティにする
     const isCardio = category.includes("有酸素");
     const previousSets = previousExerciseHints[exerciseName] ?? [];
     const initialSetCount = Math.max(previousSets.length, 1);
@@ -1206,7 +1228,6 @@ const TrainingTabContent: React.FC<Props> = ({ navigation }) => {
           text: "読み込む",
           onPress: () => {
             const loadedExercises: Exercise[] = routine.exercises.map((ex) => {
-              // 古いデータとの互換性を保ちつつ読み込む
               const isCardio = (ex.category || "").includes("有酸素");
               return {
                 ...ex,
@@ -1214,7 +1235,6 @@ const TrainingTabContent: React.FC<Props> = ({ navigation }) => {
                 id: Date.now() + Math.random(),
                 sets: ex.sets.map((s) => {
                   if (isCardio) {
-                    // もし昔の weight/reps に入ってたら移行する
                     return {
                       durationMinutes: s.durationMinutes ?? s.weight ?? "",
                       distanceKm: s.distanceKm ?? s.reps ?? "",
@@ -1233,6 +1253,7 @@ const TrainingTabContent: React.FC<Props> = ({ navigation }) => {
             setMenu(loadedExercises);
             setCurrentRoutineName(routine.name);
             setTimerSeconds(0);
+            startTimeRef.current = Date.now(); // ★ 追加：タイマーを0から再スタートさせる
           },
         },
       ]
@@ -1375,6 +1396,7 @@ const TrainingTabContent: React.FC<Props> = ({ navigation }) => {
                       await presentInterstitialWhenReady({ bypassCooldown: true });
                     } finally {
                       setMenu([]);
+                      startTimeRef.current = null; // ★ 追加：タイマーリセット
                       navigation?.navigate?.("home");
                     }
                   })();
@@ -1468,7 +1490,6 @@ const TrainingTabContent: React.FC<Props> = ({ navigation }) => {
                       <Text style={styles.setText}>{index + 1}</Text>
                     </View>
                     <View style={[styles.inputBox, { width: "25%" }]}>
-                      {/* ★変更: 有酸素なら durationMinutes を扱う */}
                       <TextInput
                         style={styles.inputFieldText}
                         keyboardType="numeric"
@@ -1488,7 +1509,6 @@ const TrainingTabContent: React.FC<Props> = ({ navigation }) => {
                       />
                     </View>
                     <View style={[styles.inputBox, { width: "25%" }]}>
-                      {/* ★変更: 有酸素なら distanceKm を扱う */}
                       <TextInput
                         style={styles.inputFieldText}
                         keyboardType="numeric"
