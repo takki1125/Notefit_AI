@@ -13,6 +13,7 @@ import {
   Dumbbell,
   GripVertical,
   Minus,
+  Pencil, 
   Plus,
   Settings as SettingsIcon,
   Trash2,
@@ -41,14 +42,9 @@ import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaView } from "react-native-safe-area-context";
 import * as Haptics from "expo-haptics";
 import { usePathname, useRouter } from "expo-router";
-
 import { CopilotProvider, CopilotStep, walkthroughable, useCopilot } from "react-native-copilot";
 
-import {
-  HOME_WIDGET_LABELS,
-  type HomeWidgetId,
-  hiddenWidgetIds,
-} from "../../constants/homeWidgets";
+import { HOME_WIDGET_LABELS, type HomeWidgetId, hiddenWidgetIds } from "../../constants/homeWidgets";
 import { auth, db } from "../../firebaseConfig";
 import DailyAIAdviceCard from "../../components/ai/DailyAIAdviceCard";
 import GoalProgressCard from "../../components/goal/GoalProgressCard";
@@ -65,14 +61,7 @@ import {
   tutorialHomeKeyForUser,
 } from "../../utils/homeTutorialStorage";
 
-// ★ 変更: 有酸素用の箱（durationMinutes, distanceKm）を追加で許可する
-type WorkoutSet = {
-  weight?: number | string;
-  reps?: number | string;
-  durationMinutes?: number | string;
-  distanceKm?: number | string;
-  done: boolean;
-};
+type WorkoutSet = { weight?: number | string; reps?: number | string; durationMinutes?: number | string; distanceKm?: number | string; done: boolean; };
 type WorkoutExercise = { name: string; sets: WorkoutSet[]; category?: string; };
 type Workout = { id: string; routineName: string; exercises: WorkoutExercise[]; dateObj: Date; dateStr: string; day: number; durationSeconds?: number; };
 type Meal = { name: string; cal: number; pro: number; fat: number; carb: number; };
@@ -88,14 +77,16 @@ const formatTime = (totalSeconds: number | undefined) => {
 
 const WalkthroughableView = walkthroughable(View);
 
-// --- 詳細モーダル ---
 const WorkoutDetailModal: React.FC<{
   visible: boolean;
   onClose: () => void;
   workouts: Workout[];
   foodLog: DailyFoodLog | null;
-  onDelete: (id: string) => void;
-}> = ({ visible, onClose, workouts, foodLog, onDelete }) => {
+  targetDateId: string; 
+  onDeleteWorkout: (id: string) => void;
+  onEditWorkout: (id: string) => void; 
+  onEditFood: (dateId: string) => void; 
+}> = ({ visible, onClose, workouts, foodLog, targetDateId, onDeleteWorkout, onEditWorkout, onEditFood }) => {
   if (workouts.length === 0 && !foodLog) return null;
   const dateStr = workouts.length > 0 ? workouts[0].dateStr : "記録詳細";
 
@@ -118,18 +109,24 @@ const WorkoutDetailModal: React.FC<{
                 {workouts.map((workout) => (
                   <View key={workout.id} style={{ backgroundColor: '#262626', borderRadius: 15, padding: 15, marginBottom: 15 }}>
                     <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 12 }}>
-                      <View>
+                      <View style={{ flex: 1 }}>
                         <Text style={{ color: '#fff', fontWeight: 'bold', fontSize: 16 }}>{workout.routineName}</Text>
                         <Text style={{ color: '#666', fontSize: 12 }}>{formatTime(workout.durationSeconds)}</Text>
                       </View>
-                      <TouchableOpacity onPress={() => onDelete(workout.id)}><Trash2 color="#444" size={20} /></TouchableOpacity>
+                      <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                        <TouchableOpacity onPress={() => onEditWorkout(workout.id)} style={{ padding: 5, marginRight: 10 }}>
+                          <Pencil color="#4facfe" size={20} />
+                        </TouchableOpacity>
+                        <TouchableOpacity onPress={() => onDeleteWorkout(workout.id)} style={{ padding: 5 }}>
+                          <Trash2 color="#ff4444" size={20} />
+                        </TouchableOpacity>
+                      </View>
                     </View>
 
                     {workout.exercises.map((ex, i) => (
                       <View key={i} style={{ marginTop: 10, borderLeftWidth: 2, borderColor: '#2ecc71', paddingLeft: 12, marginBottom: 5 }}>
                         <Text style={{ color: '#eee', fontWeight: 'bold', fontSize: 15, marginBottom: 6 }}>{ex.name}</Text>
                         
-                        {/* ★ 変更: 有酸素でも空じゃなければ表示するようにフィルターを調整 */}
                         {ex.sets.filter(s => s.done || (s.weight !== undefined && s.weight !== "") || (s.durationMinutes !== undefined && s.durationMinutes !== "")).map((set, k) => {
                           const isCardio = set.durationMinutes !== undefined || set.distanceKm !== undefined;
                           const displayStr = isCardio 
@@ -151,9 +148,14 @@ const WorkoutDetailModal: React.FC<{
             )}
 
             <View>
-              <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 15 }}>
-                <Utensils color="#ff4757" size={20} style={{ marginRight: 10 }} />
-                <Text style={{ color: '#ff4757', fontWeight: 'bold', letterSpacing: 1 }}>NUTRITION LOG</Text>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 15 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                  <Utensils color="#ff4757" size={20} style={{ marginRight: 10 }} />
+                  <Text style={{ color: '#ff4757', fontWeight: 'bold', letterSpacing: 1 }}>NUTRITION LOG</Text>
+                </View>
+                <TouchableOpacity onPress={() => onEditFood(targetDateId)} style={{ padding: 5 }}>
+                  <Pencil color="#4facfe" size={20} />
+                </TouchableOpacity>
               </View>
               <View style={{ backgroundColor: '#262626', borderRadius: 15, padding: 15 }}>
                 {foodLog && foodLog.meals && foodLog.meals.length > 0 ? (
@@ -282,13 +284,36 @@ function HomeTabContent() {
   startTutorialRef.current = start;
   stopTutorialRef.current = stop;
 
+  // ★ チュートリアル用のListRef
+  const listRef = useRef<any>(null);
+
+  useEffect(() => {
+    const onStepChange = (step: any) => {
+      if (step?.name === 'homeIntro') {
+        listRef.current?.scrollToOffset?.({ offset: 0, animated: true });
+      } else if (step?.name === 'calendarTutorial') {
+        listRef.current?.scrollToOffset?.({ offset: 250, animated: true });
+      } else if (step?.name === 'shortcutTutorial') {
+        listRef.current?.scrollToEnd?.({ animated: true });
+      }
+    };
+
+    copilotEvents.on("stepChange", onStepChange);
+    return () => {
+      copilotEvents.off("stepChange", onStepChange);
+    };
+  }, [copilotEvents]);
+
   const [isEditMode, setIsEditMode] = useState(false);
   const [addWidgetModalVisible, setAddWidgetModalVisible] = useState(false);
   const [history, setHistory] = useState<Workout[]>([]);
   const [viewedDate, setViewedDate] = useState(new Date());
+  
   const [modalVisible, setModalVisible] = useState(false);
   const [selectedDateWorkouts, setSelectedDateWorkouts] = useState<Workout[]>([]);
   const [selectedDateFoodLog, setSelectedDateFoodLog] = useState<DailyFoodLog | null>(null);
+  const [targetDateId, setTargetDateId] = useState(""); 
+  
   const [todayMeals, setTodayMeals] = useState<Meal[]>([]);
   const [displayName, setDisplayName] = useState("");
 
@@ -379,9 +404,7 @@ function HomeTabContent() {
               skipTutorialPersistOnNextStopRef.current = true;
               try { await stopTutorialRef.current(); } catch { }
               await new Promise<void>((resolve) => {
-                InteractionManager.runAfterInteractions(() => {
-                  setTimeout(resolve, 550);
-                });
+                InteractionManager.runAfterInteractions(() => { setTimeout(resolve, 550); });
               });
               await startTutorialRef.current();
               await AsyncStorage.removeItem(TUTORIAL_REPLAY_PENDING_KEY);
@@ -448,13 +471,16 @@ function HomeTabContent() {
     );
     setSelectedDateWorkouts(dayWorkouts);
 
+    const mStr = String(month).padStart(2, '0');
+    const dStr = String(day).padStart(2, '0');
+    const docId = `${year}-${mStr}-${dStr}`;
+    setTargetDateId(docId); 
+
     const user = auth.currentUser;
     if (user) {
       try {
-        const monthStr = String(month).padStart(2, '0');
-        const dayStr = String(day).padStart(2, '0');
-        const docId = `${year}-${monthStr}-${dayStr}_Food`;
-        const docRef = doc(db, "users", user.uid, "food_logs", docId);
+        const foodDocId = `${docId}_Food`;
+        const docRef = doc(db, "users", user.uid, "food_logs", foodDocId);
         const docSnap = await getDoc(docRef);
         if (docSnap.exists()) {
           setSelectedDateFoodLog(docSnap.data() as DailyFoodLog);
@@ -483,12 +509,23 @@ function HomeTabContent() {
               setModalVisible(false);
               fetchHistory();
             } catch (e) {
+              console.error(e);
               Alert.alert("エラー", "削除に失敗しました。");
             }
           },
         },
       ]
     );
+  };
+
+  const handleEditWorkout = (workoutId: string) => {
+    setModalVisible(false);
+    router.push({ pathname: "/training", params: { editWorkoutId: workoutId } });
+  };
+
+  const handleEditFood = (dateId: string) => {
+    setModalVisible(false);
+    router.push({ pathname: "/food", params: { editFoodDateId: dateId } });
   };
 
   const todayTotalCal = todayMeals.reduce((sum, item) => sum + item.cal, 0);
@@ -578,9 +615,7 @@ function HomeTabContent() {
                         {todaysWorkouts.length > 1 && <Text style={{ color: "#666", fontSize: 9, fontWeight: 'bold', marginBottom: 8, textAlign: 'right' }}>SESSION {todaysWorkouts.length - index}</Text>}
                         <View style={{ gap: 10 }}>
                           {workout.exercises.map((ex, i) => {
-                            // ★ 変更: 有酸素対応のフィルターロジック
                             const doneSets = ex.sets.filter(s => s.done || (s.weight !== undefined && s.weight !== "") || (s.durationMinutes !== undefined && s.durationMinutes !== ""));
-                            
                             return (
                               <View key={i} style={{ marginBottom: 10 }}>
                                 <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 4 }}>
@@ -589,7 +624,6 @@ function HomeTabContent() {
                                 </View>
                                 {doneSets.length > 0 ? (
                                   <Text style={{ color: '#888', fontSize: 12, paddingLeft: 14 }}>
-                                    {/* ★ 変更: 有酸素対応の表示ロジック */}
                                     {doneSets.map(s => {
                                       const isCardio = s.durationMinutes !== undefined || s.distanceKm !== undefined;
                                       return isCardio 
@@ -777,9 +811,19 @@ function HomeTabContent() {
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
         {isEditMode ? (
-          <DraggableFlatList {...listCommon} onDragEnd={({ data }) => void persistOrder(data)} renderItem={renderDraggableRow} containerStyle={{ flex: 1 }} />
+          <DraggableFlatList 
+            ref={listRef} 
+            {...listCommon} 
+            onDragEnd={({ data }) => void persistOrder(data)} 
+            renderItem={renderDraggableRow} 
+            containerStyle={{ flex: 1 }} 
+          />
         ) : (
-          <FlatList {...listCommon} renderItem={renderStaticRow} />
+          <FlatList 
+            ref={listRef} 
+            {...listCommon} 
+            renderItem={renderStaticRow} 
+          />
         )}
 
         <Modal visible={addWidgetModalVisible} transparent animationType="slide" onRequestClose={() => setAddWidgetModalVisible(false)}>
@@ -804,7 +848,16 @@ function HomeTabContent() {
           </View>
         </Modal>
 
-        <WorkoutDetailModal visible={modalVisible} onClose={() => setModalVisible(false)} workouts={selectedDateWorkouts} foodLog={selectedDateFoodLog} onDelete={handleDeleteWorkout} />
+        <WorkoutDetailModal 
+          visible={modalVisible} 
+          onClose={() => setModalVisible(false)} 
+          workouts={selectedDateWorkouts} 
+          foodLog={selectedDateFoodLog} 
+          targetDateId={targetDateId} 
+          onDeleteWorkout={handleDeleteWorkout} 
+          onEditWorkout={handleEditWorkout}
+          onEditFood={handleEditFood}
+        />
       </SafeAreaView>
     </GestureHandlerRootView>
   );
@@ -813,9 +866,16 @@ function HomeTabContent() {
 export default function HomeTabScreen() {
   return (
     <CopilotProvider
-      stopOnOutsideClick={true}
+      stopOnOutsideClick={false} 
       androidStatusBarVisible={true}
-      tooltipStyle={{ backgroundColor: "#ffffff", borderRadius: 12 }}
+      backdropColor="rgba(0, 0, 0, 0.85)" 
+      tooltipStyle={{ 
+        backgroundColor: "#ffffff", 
+        borderRadius: 12, 
+        margin: 16,
+        paddingTop: 16,
+        paddingBottom: 16,
+      }}
       stepNumberComponent={() => null}
       labels={{ skip: "スキップ", previous: "前へ", next: "次へ", finish: "OK" }}
     >
