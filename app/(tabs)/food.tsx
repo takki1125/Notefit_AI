@@ -18,7 +18,6 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { FREE_MEAL_ROUTINE_LIMIT } from "../../constants/subscriptionLimits";
-// ★ 追加：URLパラメータを受け取るために useLocalSearchParams をインポート
 import { useRouter, useLocalSearchParams } from "expo-router";
 
 import { auth, db } from "../../firebaseConfig";
@@ -61,7 +60,6 @@ const DATE_KEY_BASE = '@food_last_opened_date_';
 
 const WalkthroughableView = walkthroughable(View);
 
-/** analyzeFoodPFC はアプリ内で resource-exhausted を投げない。Google 側の一時的な混雑・クォータで返ることがある。 */
 function foodAiSearchErrorMessage(err: unknown): string {
   const e = err as { message?: string; code?: string };
   if (e?.code === "functions/resource-exhausted") {
@@ -72,7 +70,6 @@ function foodAiSearchErrorMessage(err: unknown): string {
 
 function FoodTabContent() {
   const router = useRouter();
-  // ★ 追加：ホーム画面から渡されるパラメータ（YYYY-MM-DD形式）を受け取る
   const { editFoodDateId } = useLocalSearchParams<{ editFoodDateId?: string }>();
   
   const { flags } = useSubscriptionEntitlements();
@@ -102,6 +99,23 @@ function FoodTabContent() {
   const { start, copilotEvents } = useCopilot();
   const startTutorialRef = useRef(start);
   startTutorialRef.current = start;
+
+  // ★ チュートリアル用のScrollRef
+  const scrollViewRef = useRef<ScrollView>(null);
+
+  useEffect(() => {
+    const onStepChange = (step: any) => {
+      if (step?.name === 'foodTotal') scrollViewRef.current?.scrollTo({ y: 0, animated: true });
+      else if (step?.name === 'foodRoutine') scrollViewRef.current?.scrollTo({ y: 150, animated: true });
+      else if (step?.name === 'foodAi') scrollViewRef.current?.scrollTo({ y: 350, animated: true });
+      else if (step?.name === 'foodManual') scrollViewRef.current?.scrollToEnd({ animated: true });
+    };
+
+    copilotEvents.on("stepChange", onStepChange);
+    return () => {
+      copilotEvents.off("stepChange", onStepChange);
+    };
+  }, [copilotEvents]);
 
   useFocusEffect(
     useCallback(() => {
@@ -152,7 +166,6 @@ function FoodTabContent() {
         const user = auth.currentUser;
         if (!user) return;
 
-        // ★ 変更：過去の編集モードかどうかでデータの取得元を変える
         if (editFoodDateId) {
           try {
             const docId = `${editFoodDateId}_Food`;
@@ -161,13 +174,12 @@ function FoodTabContent() {
               const data = snap.data();
               setMeals(data.meals || []);
             } else {
-              setMeals([]); // その日の記録がない場合は空
+              setMeals([]);
             }
           } catch (e) {
             console.error("過去の食事ログ取得エラー:", e);
           }
         } else {
-          // 通常（今日の記録）の処理
           const storageKey = `${STORAGE_KEY_BASE}${user.uid}`;
           const dateKey = `${DATE_KEY_BASE}${user.uid}`;
           try {
@@ -189,7 +201,6 @@ function FoodTabContent() {
           }
         }
 
-        // 食事辞書の読み込み
         try {
           const q = query(collection(db, "users", user.uid, "food_dictionary"));
           const snap = await getDocs(q);
@@ -199,7 +210,6 @@ function FoodTabContent() {
           console.error("辞書の読み込み失敗:", e);
         }
 
-        // 食事ルーティーンの読み込み
         try {
           const rq = query(collection(db, "users", user.uid, "meal_routines"));
           const rsnap = await getDocs(rq);
@@ -227,7 +237,7 @@ function FoodTabContent() {
         }
       };
       loadData();
-    }, [editFoodDateId]) // ★ 依存配列に editFoodDateId を追加
+    }, [editFoodDateId])
   );
 
   const saveMealsToAll = async (newMeals: Meal[]) => {
@@ -241,7 +251,6 @@ function FoodTabContent() {
     const tFat = newMeals.reduce((s, i) => s + i.fat, 0);
     const tCarb = newMeals.reduce((s, i) => s + i.carb, 0);
 
-    // ★ 変更：過去の編集モードなら、対象の日付のドキュメントだけを直接更新する
     if (editFoodDateId) {
       try {
         const docId = `${editFoodDateId}_Food`;
@@ -251,12 +260,11 @@ function FoodTabContent() {
           totalPro: tPro,
           totalFat: tFat,
           totalCarb: tCarb
-        }, { merge: true }); // mergeで元のdateObj等は維持する
+        }, { merge: true });
       } catch (e) {
         console.error("過去データの保存失敗:", e);
       }
     } else {
-      // 通常（今日）の処理
       const storageKey = `${STORAGE_KEY_BASE}${user.uid}`;
       try {
         await AsyncStorage.setItem(storageKey, JSON.stringify(newMeals));
@@ -696,7 +704,6 @@ function FoodTabContent() {
 
   return (
     <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
-      {/* ★ 追加：過去の記録を編集している時のアラートバー */}
       {editFoodDateId && (
         <View style={{ backgroundColor: '#2ecc71', padding: 8, flexDirection: 'row', alignItems: 'center' }}>
           <Text style={{ color: '#000', fontWeight: 'bold', flex: 1, textAlign: 'center' }}>
@@ -704,7 +711,6 @@ function FoodTabContent() {
           </Text>
           <TouchableOpacity 
             onPress={() => {
-              // 完了したらホームに戻す（パラメータをクリアする意味も込めてnavigate）
               router.navigate('/home');
             }} 
             style={{ paddingHorizontal: 12, paddingVertical: 6, backgroundColor: '#000', borderRadius: 8 }}
@@ -722,6 +728,7 @@ function FoodTabContent() {
         </View>
       </View>
       <ScrollView 
+        ref={scrollViewRef} // ★ Refを追加
         contentContainerStyle={{ padding: 20 }}
       >
         
@@ -911,7 +918,7 @@ function FoodTabContent() {
 
       </ScrollView>
 
-      {/* 履歴から選ぶモーダル */}
+      {/* 履歴から選ぶモーダル等のその他モーダルは省略せずそのまま */}
       <Modal visible={isDictModalVisible} transparent animationType="slide">
         <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.8)", justifyContent: "flex-end" }}>
           <View style={{ backgroundColor: "#2a2a2a", height: "85%", borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20 }}>
@@ -1299,9 +1306,10 @@ function FoodTabContent() {
 export default function FoodTabScreen() {
   return (
     <CopilotProvider
-      stopOnOutsideClick={true}
+      stopOnOutsideClick={false}
       androidStatusBarVisible={true}
-      tooltipStyle={{ backgroundColor: "#ffffff", borderRadius: 12, margin: 16 }}
+      backdropColor="rgba(0, 0, 0, 0.85)"
+      tooltipStyle={{ backgroundColor: "#ffffff", borderRadius: 12, margin: 16, paddingTop: 16, paddingBottom: 16 }}
       stepNumberComponent={() => null}
       labels={{ skip: "スキップ", previous: "前へ", next: "次へ", finish: "OK" }}
     >
