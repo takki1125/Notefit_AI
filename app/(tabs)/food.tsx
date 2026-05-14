@@ -62,6 +62,15 @@ const DATE_KEY_BASE = '@food_last_opened_date_';
 // ★追加：チュートリアル用のラップコンポーネント（View用とTouchableOpacity用）
 const WalkthroughableView = walkthroughable(View);
 
+/** analyzeFoodPFC はアプリ内で resource-exhausted を投げない。Google 側の一時的な混雑・クォータで返ることがある。 */
+function foodAiSearchErrorMessage(err: unknown): string {
+  const e = err as { message?: string; code?: string };
+  if (e?.code === "functions/resource-exhausted") {
+    return "食事AIのサーバーが一時的に混雑しているか、短時間の上限に達しています。30秒〜1分ほど待ってから「検索」をもう一度試してください。（連打すると出やすくなります）";
+  }
+  return e?.message || e?.code || "AIでの解析に失敗しました。";
+}
+
 // ★変更：関数名を FoodTabContent に変更（一番下でProviderでラップするため）
 function FoodTabContent() {
   const router = useRouter();
@@ -459,7 +468,26 @@ function FoodTabContent() {
     const app = getApp();
     const functions = getFunctions(app, "asia-northeast1");
     const callable = httpsCallable(functions, "analyzeFoodPFC");
-    const res = await callable({ text: trimmed });
+    const maxAttempts = 6;
+    let res: Awaited<ReturnType<typeof callable>> | null = null;
+    let lastErr: unknown;
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      try {
+        res = await callable({ text: trimmed });
+        break;
+      } catch (e) {
+        lastErr = e;
+        const code = (e as { code?: string })?.code;
+        if (code === "functions/resource-exhausted" && attempt < maxAttempts - 1) {
+          await new Promise((r) => setTimeout(r, 600 * (attempt + 1)));
+          continue;
+        }
+        throw e;
+      }
+    }
+    if (!res) {
+      throw lastErr instanceof Error ? lastErr : new Error("AI解析に失敗しました");
+    }
     const data = res.data as { total?: { name?: string; cal?: unknown; pro?: unknown; fat?: unknown; carb?: unknown } };
     const total = data?.total;
     if (!total) {
@@ -525,8 +553,7 @@ function FoodTabContent() {
       setScratchAiInput("");
     } catch (error: unknown) {
       console.error("ルーティーンAI追加エラー:", error);
-      const err = error as { message?: string; code?: string };
-      Alert.alert("エラー", err?.message || err?.code || "AIでの解析に失敗しました。");
+      Alert.alert("エラー", foodAiSearchErrorMessage(error));
     } finally {
       setIsScratchAiLoading(false);
     }
@@ -548,8 +575,7 @@ function FoodTabContent() {
       setAiInput("");
     } catch (error: unknown) {
       console.error("AI解析エラー:", error);
-      const err = error as { message?: string; code?: string };
-      Alert.alert("エラー", err?.message || err?.code || "AIでの解析に失敗しました。");
+      Alert.alert("エラー", foodAiSearchErrorMessage(error));
     } finally {
       setIsAiLoading(false);
     }
