@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from "react";
+import React, { useEffect, useState, useCallback, useRef } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -24,13 +24,12 @@ import {
   deleteDoc,
   doc,
   getDocs,
-  getDoc, // ★ 追加
+  getDoc,
   limit,
   orderBy,
   query,
   serverTimestamp,
 } from "firebase/firestore";
-// ★ 追加：URLパラメータ取得用
 import { useLocalSearchParams } from "expo-router";
 
 import { FREE_CUSTOM_EXERCISE_LIMIT } from "../../constants/subscriptionLimits";
@@ -873,9 +872,24 @@ const TrainingTabContent: React.FC<Props> = ({ navigation }) => {
   const startTutorialRef = React.useRef(start);
   startTutorialRef.current = start;
 
+  // ★ チュートリアル用のScrollRef
+  const scrollViewRef = useRef<ScrollView>(null);
+
+  useEffect(() => {
+    const onStepChange = (step: any) => {
+      if (step?.name === 'addExercise') {
+        scrollViewRef.current?.scrollToEnd({ animated: true });
+      }
+    };
+
+    copilotEvents.on("stepChange", onStepChange);
+    return () => {
+      copilotEvents.off("stepChange", onStepChange);
+    };
+  }, [copilotEvents]);
+
   const startTimeRef = React.useRef<number | null>(null);
 
-  // ★ 追加：URLパラメータ（編集モード用）を受け取る
   const { editWorkoutId } = useLocalSearchParams<{ editWorkoutId?: string }>();
   const [originalDateData, setOriginalDateData] = useState<any>(null);
 
@@ -1008,7 +1022,6 @@ const TrainingTabContent: React.FC<Props> = ({ navigation }) => {
     }
   }, []);
 
-  // ★ 追加：編集モード時のデータ読み込み
   useEffect(() => {
     if (editWorkoutId) {
       const loadEditData = async () => {
@@ -1024,14 +1037,13 @@ const TrainingTabContent: React.FC<Props> = ({ navigation }) => {
             setCurrentRoutineName(data.routineName || "自由メニュー");
             setTimerSeconds(data.durationSeconds || 0);
             startTimeRef.current = Date.now() - (data.durationSeconds || 0) * 1000;
-            // 元の日付データを上書きしないように退避
             setOriginalDateData({ date: data.date, dateObj: data.dateObj });
           }
         } catch (e) {
           console.error(e);
         } finally {
           setLoading(false);
-          setDraftRestored(true); // 下書き復元と競合しないようにフラグを立てる
+          setDraftRestored(true);
         }
       };
       loadEditData();
@@ -1039,7 +1051,7 @@ const TrainingTabContent: React.FC<Props> = ({ navigation }) => {
   }, [editWorkoutId]);
 
   const restoreTrainingDraft = useCallback(async () => {
-    if (draftRestored || editWorkoutId) return; // ★ 編集モードなら下書きを無視する
+    if (draftRestored || editWorkoutId) return; 
 
     const key = getTrainingDraftKey();
     if (!key) {
@@ -1184,7 +1196,7 @@ const TrainingTabContent: React.FC<Props> = ({ navigation }) => {
   }, [menu.length]);
 
   useEffect(() => {
-    if (!draftRestored || editWorkoutId) return; // 編集モード時は下書き保存しない
+    if (!draftRestored || editWorkoutId) return; 
 
     if (menu.length === 0) {
       void clearTrainingDraft();
@@ -1404,14 +1416,12 @@ const TrainingTabContent: React.FC<Props> = ({ navigation }) => {
               ? currentRoutineName.replace(/[\/]/g, "_")
               : "自由メニュー";
 
-            // ★ 変更：編集モードなら元のドキュメントIDを使う
             const targetDocId = editWorkoutId ? editWorkoutId : `${dateStr}_${timeStr}_${safeRoutineName}`;
 
             const saveData = {
               routineName: currentRoutineName,
               exercises: menu,
               durationSeconds: timerSeconds,
-              // ★ 追加：編集なら過去の日付データを維持、新規なら今の日時を入れる
               ...(editWorkoutId && originalDateData
                 ? { date: originalDateData.date, dateObj: originalDateData.dateObj }
                 : { date: serverTimestamp(), dateObj: now.toISOString() }
@@ -1421,7 +1431,7 @@ const TrainingTabContent: React.FC<Props> = ({ navigation }) => {
             await setDoc(doc(db, "users", user.uid, "workouts", targetDocId), saveData, { merge: true });
             
             if (!editWorkoutId) {
-              await clearTrainingDraft(); // 新規の時だけ下書きをクリア
+              await clearTrainingDraft();
             }
 
             Alert.alert("Good Job!", "保存しました", [
@@ -1456,7 +1466,6 @@ const TrainingTabContent: React.FC<Props> = ({ navigation }) => {
 
   return (
     <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
-      {/* ★ 追加：編集モードの時のアラートバー */}
       {editWorkoutId && (
         <View style={{ backgroundColor: '#2ecc71', padding: 8, alignItems: 'center' }}>
           <Text style={{ color: '#000', fontWeight: 'bold' }}>過去のトレーニング記録を編集中</Text>
@@ -1489,6 +1498,7 @@ const TrainingTabContent: React.FC<Props> = ({ navigation }) => {
         keyboardVerticalOffset={100}
       >
         <ScrollView
+          ref={scrollViewRef} // ★ Refを追加
           contentContainerStyle={styles.scrollContent}
           keyboardShouldPersistTaps="handled"
           automaticallyAdjustKeyboardInsets
@@ -1654,9 +1664,10 @@ const TrainingTabContent: React.FC<Props> = ({ navigation }) => {
 export default function TrainingTabScreen(props: Props) {
   return (
     <CopilotProvider
-      stopOnOutsideClick={true}
+      stopOnOutsideClick={false}
       androidStatusBarVisible={true}
-      tooltipStyle={{ backgroundColor: "#ffffff", borderRadius: 12, margin: 16 }}
+      backdropColor="rgba(0, 0, 0, 0.85)"
+      tooltipStyle={{ backgroundColor: "#ffffff", borderRadius: 12, margin: 16, paddingTop: 16, paddingBottom: 16 }}
       stepNumberComponent={() => null}
       labels={{ skip: "スキップ", previous: "前へ", next: "次へ", finish: "OK" }}
     >
