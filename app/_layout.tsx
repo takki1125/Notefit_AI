@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, View } from 'react-native';
+import { ActivityIndicator, View, DeviceEventEmitter } from 'react-native'; // ★ DeviceEventEmitterを追加
 import { Redirect, Stack, useSegments } from 'expo-router';
 
 import { useAuthState } from '../hooks/useAuthState';
@@ -46,8 +46,13 @@ export default function RootLayout() {
     };
 
     run();
+
+    // ★ 追加：他の画面から「reloadLayoutCheck」という電報が来たら、もう一度 run() を実行して再確認する！
+    const subscription = DeviceEventEmitter.addListener('reloadLayoutCheck', run);
+
     return () => {
       cancelled = true;
+      subscription.remove(); // ★ クリーンアップを忘れずに
     };
   }, [user]);
 
