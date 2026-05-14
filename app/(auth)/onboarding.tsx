@@ -9,6 +9,7 @@ import {
   TextInput,
   TouchableOpacity,
   View,
+  DeviceEventEmitter, // ★ これを追加！
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
@@ -95,7 +96,11 @@ export default function OnboardingScreen() {
         },
         { merge: true },
       );
-      router.replace('/home');
+      
+      // ★ 変更：直接画面移動するのではなく、親玉(Layout)に「終わったぞ！」と電報を送る
+      // こうするとLayoutが再確認してくれて、自動的にホーム画面にワープさせてくれる！
+      DeviceEventEmitter.emit('reloadLayoutCheck');
+
     } catch {
       Alert.alert('エラー', '保存に失敗しました。時間をおいて再度お試しください。');
     } finally {
@@ -310,4 +315,3 @@ const local = StyleSheet.create({
     color: '#000',
   },
 });
-
