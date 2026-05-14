@@ -18,7 +18,8 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { FREE_MEAL_ROUTINE_LIMIT } from "../../constants/subscriptionLimits";
-import { useRouter } from "expo-router";
+// ★ 追加：URLパラメータを受け取るために useLocalSearchParams をインポート
+import { useRouter, useLocalSearchParams } from "expo-router";
 
 import { auth, db } from "../../firebaseConfig";
 import { useSubscriptionEntitlements } from "../../hooks/useSubscriptionEntitlements";
@@ -26,7 +27,6 @@ import { styles } from "../../theme/styles";
 import { callableCreateMealRoutine, callableDeleteMealRoutine } from "../../utils/aiUserContentCallables";
 import { sanitizeDocId } from "../../utils/firestoreUtils";
 
-// ★追加：Copilotのインポート
 import { CopilotProvider, CopilotStep, walkthroughable, useCopilot } from "react-native-copilot";
 
 type Meal = {
@@ -59,7 +59,6 @@ type ScratchMealDraft = {
 const STORAGE_KEY_BASE = "@food_meals_today_";
 const DATE_KEY_BASE = '@food_last_opened_date_';
 
-// ★追加：チュートリアル用のラップコンポーネント（View用とTouchableOpacity用）
 const WalkthroughableView = walkthroughable(View);
 
 /** analyzeFoodPFC はアプリ内で resource-exhausted を投げない。Google 側の一時的な混雑・クォータで返ることがある。 */
@@ -71,9 +70,11 @@ function foodAiSearchErrorMessage(err: unknown): string {
   return e?.message || e?.code || "AIでの解析に失敗しました。";
 }
 
-// ★変更：関数名を FoodTabContent に変更（一番下でProviderでラップするため）
 function FoodTabContent() {
   const router = useRouter();
+  // ★ 追加：ホーム画面から渡されるパラメータ（YYYY-MM-DD形式）を受け取る
+  const { editFoodDateId } = useLocalSearchParams<{ editFoodDateId?: string }>();
+  
   const { flags } = useSubscriptionEntitlements();
   const mealRoutineUnlimited = flags.hideAds || flags.unlockExtraExercises;
 
@@ -98,14 +99,12 @@ function FoodTabContent() {
   const [searchQuery, setSearchQuery] = useState("");
   const [modalTab, setModalTab] = useState<'all' | 'favorites'>('all');
 
-  // ★追加：チュートリアル関連のHooksとタイマー管理
   const { start, copilotEvents } = useCopilot();
   const startTutorialRef = useRef(start);
   startTutorialRef.current = start;
 
   useFocusEffect(
     useCallback(() => {
-      // チュートリアルの発火チェック
       let cancelled = false;
       let timer: ReturnType<typeof setTimeout> | undefined;
 
@@ -153,27 +152,44 @@ function FoodTabContent() {
         const user = auth.currentUser;
         if (!user) return;
 
-        const storageKey = `${STORAGE_KEY_BASE}${user.uid}`;
-        const dateKey = `${DATE_KEY_BASE}${user.uid}`;
-
-        try {
-          const todayStr = new Date().toDateString();
-          const storedDate = await AsyncStorage.getItem(dateKey);
-
-          if (storedDate !== todayStr) {
-            setMeals([]);
-            await AsyncStorage.removeItem(storageKey);
-            await AsyncStorage.setItem(dateKey, todayStr);
-          } else {
-            const stored = await AsyncStorage.getItem(storageKey);
-            if (stored) {
-              try { setMeals(JSON.parse(stored)); } catch { setMeals([]); }
+        // ★ 変更：過去の編集モードかどうかでデータの取得元を変える
+        if (editFoodDateId) {
+          try {
+            const docId = `${editFoodDateId}_Food`;
+            const snap = await getDoc(doc(db, "users", user.uid, "food_logs", docId));
+            if (snap.exists()) {
+              const data = snap.data();
+              setMeals(data.meals || []);
+            } else {
+              setMeals([]); // その日の記録がない場合は空
             }
+          } catch (e) {
+            console.error("過去の食事ログ取得エラー:", e);
           }
-        } catch (e) {
-          console.error("ローカルデータの読み込み失敗:", e);
+        } else {
+          // 通常（今日の記録）の処理
+          const storageKey = `${STORAGE_KEY_BASE}${user.uid}`;
+          const dateKey = `${DATE_KEY_BASE}${user.uid}`;
+          try {
+            const todayStr = new Date().toDateString();
+            const storedDate = await AsyncStorage.getItem(dateKey);
+
+            if (storedDate !== todayStr) {
+              setMeals([]);
+              await AsyncStorage.removeItem(storageKey);
+              await AsyncStorage.setItem(dateKey, todayStr);
+            } else {
+              const stored = await AsyncStorage.getItem(storageKey);
+              if (stored) {
+                try { setMeals(JSON.parse(stored)); } catch { setMeals([]); }
+              }
+            }
+          } catch (e) {
+            console.error("ローカルデータの読み込み失敗:", e);
+          }
         }
 
+        // 食事辞書の読み込み
         try {
           const q = query(collection(db, "users", user.uid, "food_dictionary"));
           const snap = await getDocs(q);
@@ -183,6 +199,7 @@ function FoodTabContent() {
           console.error("辞書の読み込み失敗:", e);
         }
 
+        // 食事ルーティーンの読み込み
         try {
           const rq = query(collection(db, "users", user.uid, "meal_routines"));
           const rsnap = await getDocs(rq);
@@ -210,7 +227,7 @@ function FoodTabContent() {
         }
       };
       loadData();
-    }, [])
+    }, [editFoodDateId]) // ★ 依存配列に editFoodDateId を追加
   );
 
   const saveMealsToAll = async (newMeals: Meal[]) => {
@@ -219,35 +236,51 @@ function FoodTabContent() {
     const user = auth.currentUser;
     if (!user) return;
 
-    const storageKey = `${STORAGE_KEY_BASE}${user.uid}`;
+    const tCal = newMeals.reduce((s, i) => s + i.cal, 0);
+    const tPro = newMeals.reduce((s, i) => s + i.pro, 0);
+    const tFat = newMeals.reduce((s, i) => s + i.fat, 0);
+    const tCarb = newMeals.reduce((s, i) => s + i.carb, 0);
 
-    try {
-      await AsyncStorage.setItem(storageKey, JSON.stringify(newMeals));
-    } catch (e) {
-      console.error("ローカル保存失敗:", e);
-    }
+    // ★ 変更：過去の編集モードなら、対象の日付のドキュメントだけを直接更新する
+    if (editFoodDateId) {
+      try {
+        const docId = `${editFoodDateId}_Food`;
+        await setDoc(doc(db, 'users', user.uid, 'food_logs', docId), {
+          meals: newMeals,
+          totalCal: tCal,
+          totalPro: tPro,
+          totalFat: tFat,
+          totalCarb: tCarb
+        }, { merge: true }); // mergeで元のdateObj等は維持する
+      } catch (e) {
+        console.error("過去データの保存失敗:", e);
+      }
+    } else {
+      // 通常（今日）の処理
+      const storageKey = `${STORAGE_KEY_BASE}${user.uid}`;
+      try {
+        await AsyncStorage.setItem(storageKey, JSON.stringify(newMeals));
+      } catch (e) {
+        console.error("ローカル保存失敗:", e);
+      }
 
-    try {
-      const now = new Date();
-      const dateStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
-      const docId = `${dateStr}_Food`;
+      try {
+        const now = new Date();
+        const dateStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+        const docId = `${dateStr}_Food`;
 
-      const tCal = newMeals.reduce((s, i) => s + i.cal, 0);
-      const tPro = newMeals.reduce((s, i) => s + i.pro, 0);
-      const tFat = newMeals.reduce((s, i) => s + i.fat, 0);
-      const tCarb = newMeals.reduce((s, i) => s + i.carb, 0);
-
-      await setDoc(doc(db, 'users', user.uid, 'food_logs', docId), {
-        date: serverTimestamp(),
-        dateObj: now.toISOString(),
-        meals: newMeals,
-        totalCal: tCal,
-        totalPro: tPro,
-        totalFat: tFat,
-        totalCarb: tCarb
-      });
-    } catch (e) {
-      console.error("オートセーブ失敗:", e);
+        await setDoc(doc(db, 'users', user.uid, 'food_logs', docId), {
+          date: serverTimestamp(),
+          dateObj: now.toISOString(),
+          meals: newMeals,
+          totalCal: tCal,
+          totalPro: tPro,
+          totalFat: tFat,
+          totalCarb: tCarb
+        }, { merge: true });
+      } catch (e) {
+        console.error("オートセーブ失敗:", e);
+      }
     }
   };
 
@@ -321,7 +354,7 @@ function FoodTabContent() {
 
   const openRoutineFromToday = () => {
     if (meals.length === 0) {
-      Alert.alert("エラー", "今日の食事リストにまだ品目がありません。先に食事を追加してください。");
+      Alert.alert("エラー", "食事リストにまだ品目がありません。先に食事を追加してください。");
       return;
     }
     const nextSel: Record<string, boolean> = {};
@@ -663,17 +696,35 @@ function FoodTabContent() {
 
   return (
     <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
+      {/* ★ 追加：過去の記録を編集している時のアラートバー */}
+      {editFoodDateId && (
+        <View style={{ backgroundColor: '#2ecc71', padding: 8, flexDirection: 'row', alignItems: 'center' }}>
+          <Text style={{ color: '#000', fontWeight: 'bold', flex: 1, textAlign: 'center' }}>
+            {editFoodDateId} の食事記録を編集中
+          </Text>
+          <TouchableOpacity 
+            onPress={() => {
+              // 完了したらホームに戻す（パラメータをクリアする意味も込めてnavigate）
+              router.navigate('/home');
+            }} 
+            style={{ paddingHorizontal: 12, paddingVertical: 6, backgroundColor: '#000', borderRadius: 8 }}
+          >
+            <Text style={{ color: '#fff', fontSize: 12, fontWeight: 'bold' }}>完了</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
       <View style={styles.headerRow}>
         <View style={styles.headerContent}>
-          <Text style={styles.headerLabel}>Today&apos;s Nutrition</Text>
+          <Text style={styles.headerLabel}>
+            {editFoodDateId ? "Past Nutrition" : "Today's Nutrition"}
+          </Text>
         </View>
       </View>
       <ScrollView 
         contentContainerStyle={{ padding: 20 }}
-        // {...scrollViewProps} // ★追加：自動スクロール用
       >
         
-        {/* ★STEP 1: 合計表示 */}
         <CopilotStep text="今日の総摂取カロリーと、PFC（タンパク質・脂質・炭水化物）のバランスをここで確認できます。" order={1} name="foodTotal">
           <WalkthroughableView style={{ backgroundColor: "#1a1a1a", padding: 20, borderRadius: 16, marginBottom: 20 }}>
             <Text style={{ color: "#fff", fontSize: 18, fontWeight: "bold", marginBottom: 15, textAlign: "center" }}>1日の合計摂取量</Text>
@@ -698,7 +749,6 @@ function FoodTabContent() {
           </WalkthroughableView>
         </CopilotStep>
 
-        {/* ★STEP 2: 食事ルーティーン */}
         <CopilotStep text="毎日食べる決まったメニューは、ルーティンに登録しておけばワンタップでサクッと記録できます。" order={2} name="foodRoutine">
           <WalkthroughableView style={{ backgroundColor: "#252525", padding: 16, borderRadius: 14, marginBottom: 20, borderWidth: 1, borderColor: "#333" }}>
             <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 10 }}>
@@ -777,7 +827,6 @@ function FoodTabContent() {
           </WalkthroughableView>
         </CopilotStep>
 
-        {/* ★STEP 3: AI自動入力 兼 辞書検索エリア */}
         <CopilotStep text="『コンビニの牛丼』のように入力して検索するだけで、AIがカロリーと栄養素を自動で推測してくれます。" order={3} name="foodAi">
           <WalkthroughableView style={{ backgroundColor: "#2a2a2a", padding: 15, borderRadius: 12, marginBottom: 20, borderWidth: 1, borderColor: "#444" }}>
             <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 10 }}>
@@ -799,7 +848,6 @@ function FoodTabContent() {
           </WalkthroughableView>
         </CopilotStep>
 
-        {/* 履歴 */}
         {meals.length > 0 && (
           <View style={{ marginBottom: 20 }}>
             <Text style={{ color: "#fff", fontSize: 16, fontWeight: "bold", marginBottom: 10 }}>食べたもの履歴</Text>
@@ -817,7 +865,6 @@ function FoodTabContent() {
           </View>
         )}
 
-        {/* ★STEP 4: 手動入力フォーム */}
         <CopilotStep text="自分で細かく数値を入力したい場合や、過去の履歴から選びたい時はここから追加しましょう。" order={4} name="foodManual">
           <WalkthroughableView style={{ backgroundColor: '#1a1a1a', padding: 15, borderRadius: 12, marginBottom: 40 }}>
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 15 }}>
@@ -1249,7 +1296,6 @@ function FoodTabContent() {
   );
 }
 
-// ★追加：チュートリアル全体をプロバイダーで包む
 export default function FoodTabScreen() {
   return (
     <CopilotProvider
