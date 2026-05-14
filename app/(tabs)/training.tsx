@@ -2,7 +2,7 @@ import React, { useEffect, useState, useCallback } from "react";
 import {
   ActivityIndicator,
   Alert,
-  AppState, // ★ 追加：アプリがバックグラウンドに行ったかを検知する
+  AppState,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -24,11 +24,14 @@ import {
   deleteDoc,
   doc,
   getDocs,
+  getDoc, // ★ 追加
   limit,
   orderBy,
   query,
   serverTimestamp,
 } from "firebase/firestore";
+// ★ 追加：URLパラメータ取得用
+import { useLocalSearchParams } from "expo-router";
 
 import { FREE_CUSTOM_EXERCISE_LIMIT } from "../../constants/subscriptionLimits";
 import { type CustomExerciseListItem } from "../../hooks/useExerciseMaster";
@@ -870,8 +873,11 @@ const TrainingTabContent: React.FC<Props> = ({ navigation }) => {
   const startTutorialRef = React.useRef(start);
   startTutorialRef.current = start;
 
-  // ★ 追加：タイマーの絶対時刻を記憶するRef
   const startTimeRef = React.useRef<number | null>(null);
+
+  // ★ 追加：URLパラメータ（編集モード用）を受け取る
+  const { editWorkoutId } = useLocalSearchParams<{ editWorkoutId?: string }>();
+  const [originalDateData, setOriginalDateData] = useState<any>(null);
 
   const getTodayDateString = () => {
     const now = new Date();
@@ -1002,8 +1008,38 @@ const TrainingTabContent: React.FC<Props> = ({ navigation }) => {
     }
   }, []);
 
+  // ★ 追加：編集モード時のデータ読み込み
+  useEffect(() => {
+    if (editWorkoutId) {
+      const loadEditData = async () => {
+        setLoading(true);
+        try {
+          const user = auth.currentUser;
+          if (!user) return;
+          const docRef = doc(db, "users", user.uid, "workouts", editWorkoutId);
+          const snap = await getDoc(docRef);
+          if (snap.exists()) {
+            const data = snap.data();
+            setMenu(data.exercises || []);
+            setCurrentRoutineName(data.routineName || "自由メニュー");
+            setTimerSeconds(data.durationSeconds || 0);
+            startTimeRef.current = Date.now() - (data.durationSeconds || 0) * 1000;
+            // 元の日付データを上書きしないように退避
+            setOriginalDateData({ date: data.date, dateObj: data.dateObj });
+          }
+        } catch (e) {
+          console.error(e);
+        } finally {
+          setLoading(false);
+          setDraftRestored(true); // 下書き復元と競合しないようにフラグを立てる
+        }
+      };
+      loadEditData();
+    }
+  }, [editWorkoutId]);
+
   const restoreTrainingDraft = useCallback(async () => {
-    if (draftRestored) return;
+    if (draftRestored || editWorkoutId) return; // ★ 編集モードなら下書きを無視する
 
     const key = getTrainingDraftKey();
     if (!key) {
@@ -1042,7 +1078,6 @@ const TrainingTabContent: React.FC<Props> = ({ navigation }) => {
       
       const restoredSeconds = typeof parsed.timerSeconds === "number" ? parsed.timerSeconds : 0;
       setTimerSeconds(restoredSeconds);
-      // ★ 追加：下書きを復元した時、タイマーの開始時刻を逆算してセットする
       startTimeRef.current = Date.now() - restoredSeconds * 1000;
       
     } catch (error) {
@@ -1050,7 +1085,7 @@ const TrainingTabContent: React.FC<Props> = ({ navigation }) => {
     } finally {
       setDraftRestored(true);
     }
-  }, [draftRestored]);
+  }, [draftRestored, editWorkoutId]);
 
   useFocusEffect(
     useCallback(() => {
@@ -1084,7 +1119,6 @@ const TrainingTabContent: React.FC<Props> = ({ navigation }) => {
     }, [fetchPreviousExerciseHints, restoreTrainingDraft])
   );
 
-  // ★ 追加：アプリがバックグラウンドから復帰した時にタイマーを同期する
   useEffect(() => {
     const subscription = AppState.addEventListener('change', nextAppState => {
       if (nextAppState === 'active' && startTimeRef.current && menu.length > 0) {
@@ -1124,7 +1158,6 @@ const TrainingTabContent: React.FC<Props> = ({ navigation }) => {
     });
   }, [menu.length, navigation]);
 
-  // ★ 変更：タイマーを1秒ずつ足すのではなく、開始時刻との差分を計算する
   useEffect(() => {
     let interval: any = null;
 
@@ -1151,7 +1184,7 @@ const TrainingTabContent: React.FC<Props> = ({ navigation }) => {
   }, [menu.length]);
 
   useEffect(() => {
-    if (!draftRestored) return;
+    if (!draftRestored || editWorkoutId) return; // 編集モード時は下書き保存しない
 
     if (menu.length === 0) {
       void clearTrainingDraft();
@@ -1165,10 +1198,10 @@ const TrainingTabContent: React.FC<Props> = ({ navigation }) => {
       menu,
     };
     void persistTrainingDraft(draft);
-  }, [draftRestored, menu, currentRoutineName, clearTrainingDraft, persistTrainingDraft]);
+  }, [draftRestored, menu, currentRoutineName, clearTrainingDraft, persistTrainingDraft, editWorkoutId]);
 
   useEffect(() => {
-    if (!draftRestored || menu.length === 0) return;
+    if (!draftRestored || menu.length === 0 || editWorkoutId) return;
     if (timerSeconds === 0 || timerSeconds % 10 !== 0) return;
 
     const draft: TrainingDraft = {
@@ -1178,7 +1211,7 @@ const TrainingTabContent: React.FC<Props> = ({ navigation }) => {
       menu,
     };
     void persistTrainingDraft(draft);
-  }, [draftRestored, timerSeconds, menu, currentRoutineName, persistTrainingDraft]);
+  }, [draftRestored, timerSeconds, menu, currentRoutineName, persistTrainingDraft, editWorkoutId]);
 
   const formatTime = (totalSeconds: number) => {
     const h = Math.floor(totalSeconds / 3600);
@@ -1253,7 +1286,7 @@ const TrainingTabContent: React.FC<Props> = ({ navigation }) => {
             setMenu(loadedExercises);
             setCurrentRoutineName(routine.name);
             setTimerSeconds(0);
-            startTimeRef.current = Date.now(); // ★ 追加：タイマーを0から再スタートさせる
+            startTimeRef.current = Date.now();
           },
         },
       ]
@@ -1371,18 +1404,25 @@ const TrainingTabContent: React.FC<Props> = ({ navigation }) => {
               ? currentRoutineName.replace(/[\/]/g, "_")
               : "自由メニュー";
 
-            const customDocId = `${dateStr}_${timeStr}_${safeRoutineName}`;
+            // ★ 変更：編集モードなら元のドキュメントIDを使う
+            const targetDocId = editWorkoutId ? editWorkoutId : `${dateStr}_${timeStr}_${safeRoutineName}`;
 
-            console.log("★保存データの中身確認:", menu);
-
-            await setDoc(doc(db, "users", user.uid, "workouts", customDocId), {
-              date: serverTimestamp(),
-              dateObj: now.toISOString(),
+            const saveData = {
               routineName: currentRoutineName,
               exercises: menu,
               durationSeconds: timerSeconds,
-            });
-            await clearTrainingDraft();
+              // ★ 追加：編集なら過去の日付データを維持、新規なら今の日時を入れる
+              ...(editWorkoutId && originalDateData
+                ? { date: originalDateData.date, dateObj: originalDateData.dateObj }
+                : { date: serverTimestamp(), dateObj: now.toISOString() }
+              )
+            };
+
+            await setDoc(doc(db, "users", user.uid, "workouts", targetDocId), saveData, { merge: true });
+            
+            if (!editWorkoutId) {
+              await clearTrainingDraft(); // 新規の時だけ下書きをクリア
+            }
 
             Alert.alert("Good Job!", "保存しました", [
               {
@@ -1396,7 +1436,7 @@ const TrainingTabContent: React.FC<Props> = ({ navigation }) => {
                       await presentInterstitialWhenReady({ bypassCooldown: true });
                     } finally {
                       setMenu([]);
-                      startTimeRef.current = null; // ★ 追加：タイマーリセット
+                      startTimeRef.current = null;
                       navigation?.navigate?.("home");
                     }
                   })();
@@ -1416,6 +1456,13 @@ const TrainingTabContent: React.FC<Props> = ({ navigation }) => {
 
   return (
     <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
+      {/* ★ 追加：編集モードの時のアラートバー */}
+      {editWorkoutId && (
+        <View style={{ backgroundColor: '#2ecc71', padding: 8, alignItems: 'center' }}>
+          <Text style={{ color: '#000', fontWeight: 'bold' }}>過去のトレーニング記録を編集中</Text>
+        </View>
+      )}
+      
       <View style={styles.headerRow}>
         <View style={styles.headerContent}>
           <View>
