@@ -711,6 +711,9 @@ function FoodTabContent() {
           </Text>
           <TouchableOpacity 
             onPress={() => {
+              // ★ 追加：空っぽにして居残りバグを消す！
+              router.setParams({ editFoodDateId: "" });
+              // ホームに戻す
               router.navigate('/home');
             }} 
             style={{ paddingHorizontal: 12, paddingVertical: 6, backgroundColor: '#000', borderRadius: 8 }}
