@@ -872,7 +872,6 @@ const TrainingTabContent: React.FC<Props> = ({ navigation }) => {
   const startTutorialRef = React.useRef(start);
   startTutorialRef.current = start;
 
-  // ★ チュートリアル用のScrollRef
   const scrollViewRef = useRef<ScrollView>(null);
 
   useEffect(() => {
@@ -1022,31 +1021,45 @@ const TrainingTabContent: React.FC<Props> = ({ navigation }) => {
     }
   }, []);
 
+  // ★ 変更: 編集 or 新規追加の判断ロジックを追加
   useEffect(() => {
     if (editWorkoutId) {
-      const loadEditData = async () => {
-        setLoading(true);
-        try {
-          const user = auth.currentUser;
-          if (!user) return;
-          const docRef = doc(db, "users", user.uid, "workouts", editWorkoutId);
-          const snap = await getDoc(docRef);
-          if (snap.exists()) {
-            const data = snap.data();
-            setMenu(data.exercises || []);
-            setCurrentRoutineName(data.routineName || "自由メニュー");
-            setTimerSeconds(data.durationSeconds || 0);
-            startTimeRef.current = Date.now() - (data.durationSeconds || 0) * 1000;
-            setOriginalDateData({ date: data.date, dateObj: data.dateObj });
+      const isNewForPastDate = editWorkoutId.split('-').length === 3;
+
+      if (isNewForPastDate) {
+        setMenu([]);
+        setCurrentRoutineName("自由メニュー");
+        setTimerSeconds(0);
+        // YYYY-MM-DDをそのままDateに変換し、日本時間などに合わせて少し補正（※単純化）
+        const newDate = new Date(editWorkoutId); 
+        setOriginalDateData({ dateObj: newDate.toISOString() });
+        setLoading(false);
+        setDraftRestored(true);
+      } else {
+        const loadEditData = async () => {
+          setLoading(true);
+          try {
+            const user = auth.currentUser;
+            if (!user) return;
+            const docRef = doc(db, "users", user.uid, "workouts", editWorkoutId);
+            const snap = await getDoc(docRef);
+            if (snap.exists()) {
+              const data = snap.data();
+              setMenu(data.exercises || []);
+              setCurrentRoutineName(data.routineName || "自由メニュー");
+              setTimerSeconds(data.durationSeconds || 0);
+              startTimeRef.current = Date.now() - (data.durationSeconds || 0) * 1000;
+              setOriginalDateData({ date: data.date, dateObj: data.dateObj });
+            }
+          } catch (e) {
+            console.error(e);
+          } finally {
+            setLoading(false);
+            setDraftRestored(true);
           }
-        } catch (e) {
-          console.error(e);
-        } finally {
-          setLoading(false);
-          setDraftRestored(true);
-        }
-      };
-      loadEditData();
+        };
+        loadEditData();
+      }
     }
   }, [editWorkoutId]);
 
@@ -1416,21 +1429,27 @@ const TrainingTabContent: React.FC<Props> = ({ navigation }) => {
               ? currentRoutineName.replace(/[\/]/g, "_")
               : "自由メニュー";
 
-            const targetDocId = editWorkoutId ? editWorkoutId : `${dateStr}_${timeStr}_${safeRoutineName}`;
+            // ★ 追加: editWorkoutId が YYYY-MM-DD 形式かチェック
+            const isNewForPastDate = editWorkoutId && editWorkoutId.split('-').length === 3;
+            
+            // ★ 変更: 新規の場合は常に新しくIDを振り、既存ドキュメントの編集時だけ editWorkoutId を使う
+            const targetDocId = (editWorkoutId && !isNewForPastDate) ? editWorkoutId : `${dateStr}_${timeStr}_${safeRoutineName}`;
 
             const saveData = {
               routineName: currentRoutineName,
               exercises: menu,
               durationSeconds: timerSeconds,
-              ...(editWorkoutId && originalDateData
-                ? { date: originalDateData.date, dateObj: originalDateData.dateObj }
+              // originalDateData があればそれを使う（過去日付への新規追加や編集の場合）
+              ...(originalDateData
+                ? { date: originalDateData.date || serverTimestamp(), dateObj: originalDateData.dateObj }
                 : { date: serverTimestamp(), dateObj: now.toISOString() }
               )
             };
 
             await setDoc(doc(db, "users", user.uid, "workouts", targetDocId), saveData, { merge: true });
             
-            if (!editWorkoutId) {
+            // ★ 変更: 既存ドキュメントの編集時以外は下書きを消す
+            if (!editWorkoutId || isNewForPastDate) {
               await clearTrainingDraft();
             }
 
@@ -1447,6 +1466,10 @@ const TrainingTabContent: React.FC<Props> = ({ navigation }) => {
                     } finally {
                       setMenu([]);
                       startTimeRef.current = null;
+
+                      // ★ ここにリセット処理を追加！
+                      navigation?.setParams({ editWorkoutId: undefined });
+                      
                       navigation?.navigate?.("home");
                     }
                   })();
@@ -1467,8 +1490,19 @@ const TrainingTabContent: React.FC<Props> = ({ navigation }) => {
   return (
     <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
       {editWorkoutId && (
-        <View style={{ backgroundColor: '#2ecc71', padding: 8, alignItems: 'center' }}>
-          <Text style={{ color: '#000', fontWeight: 'bold' }}>過去のトレーニング記録を編集中</Text>
+        <View style={{ backgroundColor: '#2ecc71', padding: 8, flexDirection: 'row', alignItems: 'center' }}>
+          <Text style={{ color: '#000', fontWeight: 'bold', flex: 1, textAlign: 'center' }}>
+            {editWorkoutId.split('-').length === 3 ? `${editWorkoutId} の記録を追加中` : '過去のトレーニング記録を編集中'}
+          </Text>
+          <TouchableOpacity 
+            onPress={() => {
+              // ★ 変更：router ではなく navigation を使う！
+              navigation?.navigate?.("home");
+            }} 
+            style={{ paddingHorizontal: 12, paddingVertical: 6, backgroundColor: '#000', borderRadius: 8 }}
+          >
+            <Text style={{ color: '#fff', fontSize: 12, fontWeight: 'bold' }}>完了</Text>
+          </TouchableOpacity>
         </View>
       )}
       
@@ -1498,7 +1532,7 @@ const TrainingTabContent: React.FC<Props> = ({ navigation }) => {
         keyboardVerticalOffset={100}
       >
         <ScrollView
-          ref={scrollViewRef} // ★ Refを追加
+          ref={scrollViewRef}
           contentContainerStyle={styles.scrollContent}
           keyboardShouldPersistTaps="handled"
           automaticallyAdjustKeyboardInsets
