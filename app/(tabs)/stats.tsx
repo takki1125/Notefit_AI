@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect, useRef } from 'react';
+import React, { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import {
   ScrollView,
   View,
@@ -7,7 +7,7 @@ import {
   Dimensions,
   TouchableOpacity,
   Modal,
-  FlatList,
+  SectionList,
   TouchableWithoutFeedback
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -27,8 +27,39 @@ import { CopilotProvider, CopilotStep, walkthroughable, useCopilot } from "react
 
 const screenWidth = Dimensions.get("window").width;
 
+type CustomExerciseRow = {
+  id: string;
+  name: string;
+  categoryLabel: string;
+};
+
+type ExercisePickerOption = {
+  name: string;
+  category: string;
+  isCustom: boolean;
+};
+
+type PartTab = {
+  label: string;
+  shortLabel: string;
+  subLabel: string;
+};
+
+function shortPartLabel(full: string): string {
+  const ja = full.split("(")[0].trim();
+  return ja || full;
+}
+
+function partSubLabel(full: string): string {
+  const m = full.match(/\(([^)]+)\)/);
+  return m?.[1]?.trim() ?? "";
+}
+
 // ★追加：ラップ用コンポーネントの定義
 const WalkthroughableView = walkthroughable(View);
+
+const PART_GRID_GAP = 10;
+const H_PAD = 20;
 
 function StatsTabContent() {
   const [loading, setLoading] = useState(true);
@@ -36,12 +67,13 @@ function StatsTabContent() {
   const [recentFoods, setRecentFoods] = useState<any[]>([]);
 
   // --- 部位グラフ用のState ---
-  const [parts, setParts] = useState<string[]>([]);
+  const [partTabs, setPartTabs] = useState<PartTab[]>([]);
   const [selectedPart, setSelectedPart] = useState<string>("");
   const [partProgress, setPartProgress] = useState<{ labels: string[], values: number[] }>({ labels: [], values: [] });
 
   // --- 種目グラフ用のState ---
-  const [exercises, setExercises] = useState<string[]>([]);
+  const [exerciseOptions, setExerciseOptions] = useState<ExercisePickerOption[]>([]);
+  const [customExercises, setCustomExercises] = useState<CustomExerciseRow[]>([]);
   const [selectedExercise, setSelectedExercise] = useState<string>("");
   const [exerciseProgress, setExerciseProgress] = useState<{ labels: string[], values: number[] }>({ labels: [], values: [] });
   const [isDropdownVisible, setDropdownVisible] = useState(false);
@@ -100,15 +132,38 @@ function StatsTabContent() {
     setLoading(true);
     try {
       const masterSnapshot = await getDocs(collection(db, "master_data"));
-      const partLabels = masterSnapshot.docs.map(d => d.data().label || d.id);
-      setParts(partLabels);
-      if (!selectedPart && partLabels.length > 0) setSelectedPart(partLabels[0]);
+      const tabs: PartTab[] = masterSnapshot.docs.map((d) => {
+        const label = (d.data().label as string) || d.id;
+        return {
+          label,
+          shortLabel: shortPartLabel(label),
+          subLabel: partSubLabel(label),
+        };
+      });
+      setPartTabs(tabs);
+      if (!selectedPart && tabs.length > 0) setSelectedPart(tabs[0].label);
 
-      const currentTargetPart = selectedPart || partLabels[0];
+      const currentTargetPart = selectedPart || tabs[0]?.label || "";
 
-      const wQuery = query(collection(db, "users", user.uid, "workouts"), orderBy("date", "asc"));
-      const wSnapshot = await getDocs(wQuery);
+      const [wSnapshot, customSnap] = await Promise.all([
+        getDocs(query(collection(db, "users", user.uid, "workouts"), orderBy("date", "asc"))),
+        getDocs(collection(db, "users", user.uid, "custom_exercises")),
+      ]);
       setWorkoutCount(wSnapshot.size);
+
+      const customRows: CustomExerciseRow[] = customSnap.docs
+        .map((d) => {
+          const x = d.data() as { name?: string; categoryLabel?: string };
+          const name = typeof x.name === "string" ? x.name.trim() : "";
+          if (!name) return null;
+          return {
+            id: d.id,
+            name,
+            categoryLabel: typeof x.categoryLabel === "string" ? x.categoryLabel : "",
+          };
+        })
+        .filter((row): row is CustomExerciseRow => row !== null);
+      setCustomExercises(customRows);
 
       const partLabelsArr: string[] = [];
       const partValuesArr: number[] = [];
@@ -180,18 +235,34 @@ function StatsTabContent() {
       setPartProgress({ labels: partLabelsArr.slice(-7), values: partValuesArr.slice(-7) });
       setExerciseProgress({ labels: exLabelsArr.slice(-7), values: exValuesArr.slice(-7) });
 
-      // 種目一覧をStateにセット
-      const exList = Array.from(uniqueExercises.keys());
-      setExercises(exList);
-      
-      // ★ 追加：選んだ種目のカテゴリーから単位を判定
-      const activeEx = selectedExercise || (exList.length > 0 ? exList[0] : "");
-      if (!selectedExercise && exList.length > 0) setSelectedExercise(exList[0]);
-      
+      const customNameSet = new Set(customRows.map((c) => c.name));
+      const optionMap = new Map<string, ExercisePickerOption>();
+
+      uniqueExercises.forEach((cat, name) => {
+        optionMap.set(name, {
+          name,
+          category: cat,
+          isCustom: customNameSet.has(name),
+        });
+      });
+      customRows.forEach((c) => {
+        optionMap.set(c.name, {
+          name: c.name,
+          category: c.categoryLabel || "他",
+          isCustom: true,
+        });
+      });
+
+      const exOptions = Array.from(optionMap.values()).sort((a, b) =>
+        a.name.localeCompare(b.name, "ja"),
+      );
+      setExerciseOptions(exOptions);
+
+      const activeEx = selectedExercise;
       if (activeEx) {
-        const cat = uniqueExercises.get(activeEx) || "";
+        const cat = optionMap.get(activeEx)?.category || uniqueExercises.get(activeEx) || "";
         if (cat.includes("有酸素")) {
-          setExerciseUnit("km/分"); 
+          setExerciseUnit("km/分");
         } else {
           setExerciseUnit("kg");
         }
@@ -214,6 +285,45 @@ function StatsTabContent() {
   }, [selectedPart, selectedExercise]);
 
   useFocusEffect(useCallback(() => { fetchStatsData(); }, [fetchStatsData]));
+
+  const customsForPart = useMemo(
+    () => customExercises.filter((c) => c.categoryLabel === selectedPart),
+    [customExercises, selectedPart],
+  );
+
+  const exercisesForPart = useMemo(
+    () => exerciseOptions.filter((o) => o.category === selectedPart),
+    [exerciseOptions, selectedPart],
+  );
+
+  const exercisePickerSections = useMemo(() => {
+    const byPart = new Map<string, ExercisePickerOption[]>();
+    exerciseOptions.forEach((o) => {
+      const key = o.category || "その他";
+      if (!byPart.has(key)) byPart.set(key, []);
+      byPart.get(key)!.push(o);
+    });
+    return partTabs
+      .map((p) => ({
+        title: p.shortLabel,
+        fullTitle: p.label,
+        data: byPart.get(p.label) ?? [],
+      }))
+      .filter((s) => s.data.length > 0);
+  }, [exerciseOptions, partTabs]);
+
+  const selectedPartShort = shortPartLabel(selectedPart);
+  const partCardWidth = (screenWidth - H_PAD * 2 - PART_GRID_GAP) / 2;
+
+  useEffect(() => {
+    if (!selectedPart) return;
+    if (exercisesForPart.length === 0) {
+      if (selectedExercise) setSelectedExercise("");
+      return;
+    }
+    const valid = exercisesForPart.some((o) => o.name === selectedExercise);
+    if (!valid) setSelectedExercise(exercisesForPart[0].name);
+  }, [selectedPart, exercisesForPart]);
 
   const chartConfig = {
     backgroundColor: "#1a1a1a",
@@ -258,50 +368,243 @@ function StatsTabContent() {
             <GoalProgressCard />
             <WeightTrendCard />
 
-            <View style={{ marginBottom: 15 }}>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                {parts.map((part) => (
+            <Text style={{ color: '#888', fontSize: 12, fontWeight: '600', marginBottom: 10, letterSpacing: 0.5 }}>
+              部位を選ぶ
+            </Text>
+            <View
+              style={{
+                flexDirection: 'row',
+                flexWrap: 'wrap',
+                marginBottom: 20,
+                marginHorizontal: -PART_GRID_GAP / 2,
+              }}
+            >
+              {partTabs.map((part) => {
+                const active = selectedPart === part.label;
+                return (
                   <TouchableOpacity
-                    key={part}
-                    onPress={() => setSelectedPart(part)}
+                    key={part.label}
+                    onPress={() => setSelectedPart(part.label)}
                     style={{
-                      paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20,
-                      backgroundColor: selectedPart === part ? '#2ecc71' : '#2a2a2a',
-                      marginRight: 10, justifyContent: 'center', height: 40
+                      width: partCardWidth,
+                      marginHorizontal: PART_GRID_GAP / 2,
+                      marginBottom: PART_GRID_GAP,
+                      paddingVertical: 14,
+                      paddingHorizontal: 12,
+                      borderRadius: 14,
+                      backgroundColor: active ? '#2ecc71' : '#2a2a2a',
+                      borderWidth: 1,
+                      borderColor: active ? '#2ecc71' : '#3a3a3a',
                     }}
                   >
-                    <Text style={{ color: selectedPart === part ? '#000' : '#888', fontWeight: 'bold' }}>{part}</Text>
+                    <Text
+                      style={{
+                        color: active ? '#000' : '#fff',
+                        fontSize: 17,
+                        fontWeight: 'bold',
+                      }}
+                    >
+                      {part.shortLabel}
+                    </Text>
+                    {part.subLabel ? (
+                      <Text
+                        style={{
+                          color: active ? 'rgba(0,0,0,0.55)' : '#666',
+                          fontSize: 11,
+                          marginTop: 4,
+                        }}
+                      >
+                        {part.subLabel}
+                      </Text>
+                    ) : null}
                   </TouchableOpacity>
-                ))}
-              </ScrollView>
+                );
+              })}
             </View>
 
-            <Text style={{ color: '#fff', fontSize: 18, fontWeight: 'bold', marginBottom: 10 }}>
-              {selectedPart} の推定1RM推移
-            </Text>
-            <View style={{ backgroundColor: '#1a1a1a', borderRadius: 16, paddingVertical: 15, alignItems: 'center', marginBottom: 35, minHeight: 200, justifyContent: 'center' }}>
-              {partProgress.values.length > 1 ? (
-                <LineChart data={{ labels: partProgress.labels, datasets: [{ data: partProgress.values }] }} width={screenWidth - 40} height={220} chartConfig={chartConfig} bezier style={{ borderRadius: 16 }} />
-              ) : partProgress.values.length === 1 ? (
-                <BarChart data={{ labels: partProgress.labels, datasets: [{ data: partProgress.values }] }} width={screenWidth - 40} height={220} chartConfig={chartConfig} yAxisLabel="" yAxisSuffix="kg" fromZero showValuesOnTopOfBars style={{ borderRadius: 16 }} />
-              ) : (
-                <Text style={{ color: '#666' }}>完了チェック(✅)を付けた記録がありません</Text>
-              )}
-            </View>
-
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-              <Text style={{ color: '#fff', fontSize: 18, fontWeight: 'bold' }}>種目別の成長記録</Text>
-              
-              <TouchableOpacity 
-                onPress={() => setDropdownVisible(true)}
-                style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#333', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20 }}
+            <View
+              style={{
+                backgroundColor: '#242424',
+                borderRadius: 16,
+                padding: 16,
+                marginBottom: 24,
+                borderWidth: 1,
+                borderColor: '#333',
+              }}
+            >
+              <Text style={{ color: '#fff', fontSize: 17, fontWeight: 'bold', marginBottom: 4 }}>
+                {selectedPartShort}の推定1RM推移
+              </Text>
+              <Text style={{ color: '#666', fontSize: 12, marginBottom: 14 }}>
+                この部位で完了チェック(✅)を付けたセットの最高記録
+              </Text>
+              <View
+                style={{
+                  backgroundColor: '#1a1a1a',
+                  borderRadius: 12,
+                  paddingVertical: 12,
+                  alignItems: 'center',
+                  minHeight: 200,
+                  justifyContent: 'center',
+                }}
               >
-                <Text style={{ color: '#fff', fontWeight: 'bold', marginRight: 5 }}>
-                  {selectedExercise ? (selectedExercise.length > 8 ? selectedExercise.substring(0, 8) + '...' : selectedExercise) : "種目を選択"}
-                </Text>
-                <ChevronDown color="#fff" size={16} />
-              </TouchableOpacity>
+                {partProgress.values.length > 1 ? (
+                  <LineChart
+                    data={{ labels: partProgress.labels, datasets: [{ data: partProgress.values }] }}
+                    width={screenWidth - H_PAD * 2 - 32}
+                    height={220}
+                    chartConfig={chartConfig}
+                    bezier
+                    style={{ borderRadius: 12 }}
+                  />
+                ) : partProgress.values.length === 1 ? (
+                  <BarChart
+                    data={{ labels: partProgress.labels, datasets: [{ data: partProgress.values }] }}
+                    width={screenWidth - H_PAD * 2 - 32}
+                    height={220}
+                    chartConfig={chartConfig}
+                    yAxisLabel=""
+                    yAxisSuffix="kg"
+                    fromZero
+                    showValuesOnTopOfBars
+                    style={{ borderRadius: 12 }}
+                  />
+                ) : (
+                  <Text style={{ color: '#666', textAlign: 'center', paddingHorizontal: 16, lineHeight: 20 }}>
+                    {selectedPartShort}の完了済みセットがまだありません
+                  </Text>
+                )}
+              </View>
+
+              {customsForPart.length > 0 ? (
+                <View style={{ marginTop: 18, paddingTop: 16, borderTopWidth: 1, borderTopColor: '#333' }}>
+                  <Text style={{ color: '#888', fontSize: 12, marginBottom: 10 }}>
+                    {selectedPartShort}に登録したマイ種目
+                  </Text>
+                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+                    {customsForPart.map((item) => {
+                      const active = selectedExercise === item.name;
+                      return (
+                        <TouchableOpacity
+                          key={item.id}
+                          onPress={() => setSelectedExercise(item.name)}
+                          style={{
+                            paddingHorizontal: 14,
+                            paddingVertical: 10,
+                            borderRadius: 20,
+                            backgroundColor: active ? 'rgba(46, 204, 113, 0.2)' : '#1a1a1a',
+                            borderWidth: 1,
+                            borderColor: active ? '#2ecc71' : '#444',
+                            maxWidth: '100%',
+                          }}
+                        >
+                          <Text
+                            style={{
+                              color: active ? '#2ecc71' : '#fff',
+                              fontSize: 14,
+                              fontWeight: active ? 'bold' : '500',
+                            }}
+                            numberOfLines={2}
+                          >
+                            {item.name}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                </View>
+              ) : null}
             </View>
+
+            <View style={{ marginBottom: 12 }}>
+              <Text style={{ color: '#fff', fontSize: 17, fontWeight: 'bold', marginBottom: 4 }}>
+                種目別の成長記録
+              </Text>
+              <Text style={{ color: '#666', fontSize: 12, marginBottom: 12 }}>
+                {selectedPartShort}の種目を選んで推移を確認
+              </Text>
+
+              {exercisesForPart.length > 0 ? (
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={{ paddingBottom: 4, gap: 8 }}
+                >
+                  {exercisesForPart.map((item) => {
+                    const active = selectedExercise === item.name;
+                    return (
+                      <TouchableOpacity
+                        key={item.name}
+                        onPress={() => setSelectedExercise(item.name)}
+                        style={{
+                          paddingHorizontal: 14,
+                          paddingVertical: 10,
+                          borderRadius: 20,
+                          backgroundColor: active ? '#ff4757' : '#2a2a2a',
+                          borderWidth: 1,
+                          borderColor: active ? '#ff4757' : '#444',
+                          marginRight: 8,
+                          maxWidth: 200,
+                        }}
+                      >
+                        <Text
+                          style={{
+                            color: '#fff',
+                            fontSize: 14,
+                            fontWeight: active ? 'bold' : '500',
+                          }}
+                          numberOfLines={2}
+                        >
+                          {item.name}
+                        </Text>
+                        {item.isCustom ? (
+                          <Text style={{ color: active ? 'rgba(255,255,255,0.75)' : '#888', fontSize: 10, marginTop: 3 }}>
+                            マイ種目
+                          </Text>
+                        ) : null}
+                      </TouchableOpacity>
+                    );
+                  })}
+                </ScrollView>
+              ) : (
+                <Text style={{ color: '#666', fontSize: 13, lineHeight: 20 }}>
+                  {selectedPartShort}の種目がまだありません。トレ画面で記録するか、マイ種目を追加してください。
+                </Text>
+              )}
+
+              {exercisePickerSections.length > 1 ? (
+                <TouchableOpacity
+                  onPress={() => setDropdownVisible(true)}
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    alignSelf: 'flex-start',
+                    marginTop: 10,
+                    paddingVertical: 6,
+                  }}
+                >
+                  <Text style={{ color: '#4facfe', fontSize: 13, fontWeight: '600', marginRight: 4 }}>
+                    他の部位の種目を見る
+                  </Text>
+                  <ChevronDown color="#4facfe" size={16} />
+                </TouchableOpacity>
+              ) : null}
+            </View>
+
+            {selectedExercise ? (
+              <Text
+                style={{
+                  color: '#ff4757',
+                  fontSize: 15,
+                  fontWeight: 'bold',
+                  marginBottom: 10,
+                }}
+                numberOfLines={2}
+              >
+                {selectedExercise}
+                {exerciseUnit !== 'kg' ? `（${exerciseUnit}）` : '（推定1RM）'}
+              </Text>
+            ) : null}
 
             <View style={{ backgroundColor: '#1a1a1a', borderRadius: 16, paddingVertical: 15, alignItems: 'center', marginBottom: 35, minHeight: 200, justifyContent: 'center', borderWidth: 1, borderColor: '#333' }}>
               {exerciseProgress.values.length > 1 ? (
@@ -337,33 +640,64 @@ function StatsTabContent() {
         )}
       </ScrollView>
 
-      {/* ドロップダウンメニューのモーダル */}
       <Modal visible={isDropdownVisible} transparent animationType="fade">
         <TouchableWithoutFeedback onPress={() => setDropdownVisible(false)}>
           <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center' }}>
             <TouchableWithoutFeedback>
-              <View style={{ backgroundColor: '#2a2a2a', width: '80%', maxHeight: '60%', borderRadius: 16, overflow: 'hidden' }}>
-                <View style={{ padding: 15, borderBottomWidth: 1, borderColor: '#444', alignItems: 'center' }}>
-                  <Text style={{ color: '#888', fontSize: 12 }}>グラフを見たい種目を選択</Text>
+              <View style={{ backgroundColor: '#2a2a2a', width: '88%', maxHeight: '70%', borderRadius: 16, overflow: 'hidden' }}>
+                <View style={{ padding: 16, borderBottomWidth: 1, borderColor: '#444' }}>
+                  <Text style={{ color: '#fff', fontSize: 16, fontWeight: 'bold', textAlign: 'center' }}>
+                    種目を選択
+                  </Text>
+                  <Text style={{ color: '#888', fontSize: 12, textAlign: 'center', marginTop: 6 }}>
+                    部位ごとに表示しています
+                  </Text>
                 </View>
-                <FlatList
-                  data={exercises}
-                  keyExtractor={(item) => item}
+                <SectionList
+                  sections={exercisePickerSections}
+                  keyExtractor={(item) => item.name}
+                  stickySectionHeadersEnabled
+                  ListEmptyComponent={
+                    <Text style={{ color: '#666', textAlign: 'center', padding: 24, lineHeight: 20 }}>
+                      トレーニングで記録した種目、またはトレ画面で登録したマイ種目がここに表示されます
+                    </Text>
+                  }
+                  renderSectionHeader={({ section }) => (
+                    <View style={{ backgroundColor: '#333', paddingHorizontal: 16, paddingVertical: 8 }}>
+                      <Text style={{ color: '#2ecc71', fontSize: 13, fontWeight: 'bold' }}>{section.title}</Text>
+                    </View>
+                  )}
                   renderItem={({ item }) => (
                     <TouchableOpacity
                       onPress={() => {
-                        setSelectedExercise(item);
+                        setSelectedPart(item.category);
+                        setSelectedExercise(item.name);
                         setDropdownVisible(false);
                       }}
                       style={{
-                        flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-                        padding: 16, borderBottomWidth: 1, borderColor: '#333'
+                        flexDirection: 'row',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        padding: 16,
+                        borderBottomWidth: 1,
+                        borderColor: '#333',
                       }}
                     >
-                      <Text style={{ color: '#fff', fontSize: 16, fontWeight: selectedExercise === item ? 'bold' : 'normal' }}>
-                        {item}
-                      </Text>
-                      {selectedExercise === item && <Check color="#2ecc71" size={20} />}
+                      <View style={{ flex: 1, marginRight: 8 }}>
+                        <Text
+                          style={{
+                            color: '#fff',
+                            fontSize: 16,
+                            fontWeight: selectedExercise === item.name ? 'bold' : 'normal',
+                          }}
+                        >
+                          {item.name}
+                        </Text>
+                        {item.isCustom ? (
+                          <Text style={{ color: '#888', fontSize: 11, marginTop: 4 }}>マイ種目</Text>
+                        ) : null}
+                      </View>
+                      {selectedExercise === item.name && <Check color="#2ecc71" size={20} />}
                     </TouchableOpacity>
                   )}
                 />
