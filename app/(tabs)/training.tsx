@@ -94,6 +94,68 @@ type RoutineModalProps = {
 
 const WalkthroughableView = walkthroughable(TouchableOpacity);
 
+const confirmAction = (
+  title: string,
+  message: string,
+  onConfirm: () => void,
+  options?: { confirmLabel?: string; destructive?: boolean },
+) => {
+  const confirmLabel = options?.confirmLabel ?? "OK";
+  if (Platform.OS === "web") {
+    const text = message ? `${title}\n\n${message}` : title;
+    if (typeof window !== "undefined" && window.confirm(text)) {
+      onConfirm();
+    }
+    return;
+  }
+  Alert.alert(title, message, [
+    { text: "キャンセル", style: "cancel" },
+    {
+      text: confirmLabel,
+      style: options?.destructive ? "destructive" : "default",
+      onPress: onConfirm,
+    },
+  ]);
+};
+
+type SetValueInputProps = {
+  width?: `${number}%`;
+  value: string;
+  ghostValue: string;
+  placeholder: string;
+  onChangeText: (val: string) => void;
+};
+
+const SetValueInput: React.FC<SetValueInputProps> = ({
+  width = "25%",
+  value,
+  ghostValue,
+  placeholder,
+  onChangeText,
+}) => {
+  const hasGhost = ghostValue.length > 0;
+  const isEmpty = value.trim().length === 0;
+  const showGhost = hasGhost && isEmpty;
+  return (
+    <View style={[styles.inputBox, { width }]}>
+      {showGhost ? (
+        <View style={styles.inputGhostLayer} pointerEvents="none">
+          <Text style={styles.inputGhostText}>{ghostValue}</Text>
+        </View>
+      ) : null}
+      <TextInput
+        style={[styles.inputFieldText, { backgroundColor: "transparent" }]}
+        keyboardType="numeric"
+        placeholder={showGhost ? "" : placeholder}
+        placeholderTextColor="#444"
+        value={value}
+        onChangeText={onChangeText}
+        returnKeyType="done"
+      />
+    </View>
+  );
+};
+
 const ExerciseSelectorModal: React.FC<ExerciseSelectorModalProps> = ({
   visible,
   onClose,
@@ -164,7 +226,7 @@ const ExerciseSelectorModal: React.FC<ExerciseSelectorModalProps> = ({
         const matchingCustoms = customDocs.filter((c) => c.categoryLabel === targetCat.label);
         if (matchingCustoms.length > 0) {
           targetCat.sections.unshift({
-            title: "オリジナル",
+            title: "マイ種目",
             data: matchingCustoms.map(
               (c): CustomExerciseListItem => ({
                 kind: "custom",
@@ -359,7 +421,7 @@ const ExerciseSelectorModal: React.FC<ExerciseSelectorModalProps> = ({
                 stickySectionHeadersEnabled={false}
                 renderSectionHeader={({ section: { title } }) => (
                   <View style={styles.sectionHeader}>
-                    <Text style={[styles.sectionHeaderText, title === "オリジナル" && { color: "#f1c40f" }]}>{title}</Text>
+                    <Text style={[styles.sectionHeaderText, title === "マイ種目" && { color: "#2ecc71" }]}>{title}</Text>
                   </View>
                 )}
                 renderItem={({ item, section }) => {
@@ -395,7 +457,7 @@ const ExerciseSelectorModal: React.FC<ExerciseSelectorModalProps> = ({
                         <Text
                           style={[
                             styles.exerciseListText,
-                            section.title === "オリジナル" && { color: "#f1c40f", fontWeight: "bold" },
+                            section.title === "マイ種目" && { color: "#2ecc71", fontWeight: "bold" },
                             { flex: 1 },
                           ]}
                         >
@@ -418,7 +480,7 @@ const ExerciseSelectorModal: React.FC<ExerciseSelectorModalProps> = ({
                 }}
                 ListFooterComponent={
                   <View style={{ marginTop: 20, marginBottom: 40, padding: 15, backgroundColor: "#1a1a1a", borderRadius: 12, marginHorizontal: 16 }}>
-                    <Text style={{ color: "#2ecc71", fontWeight: "bold", marginBottom: 10 }}>＋ オリジナル種目を追加</Text>
+                    <Text style={{ color: "#2ecc71", fontWeight: "bold", marginBottom: 10 }}>＋ マイ種目を追加</Text>
                     <TextInput
                       style={[styles.inputField, { marginBottom: 10, backgroundColor: "#2a2a2a", borderWidth: 0 }]}
                       placeholder={`「${selectedCategory?.label || "この部位"}」の新しい種目名`}
@@ -455,7 +517,7 @@ const ExerciseSelectorModal: React.FC<ExerciseSelectorModalProps> = ({
           }}
         >
           <View style={{ backgroundColor: "#2a2a2a", borderRadius: 16, padding: 16 }}>
-            <Text style={{ color: "#fff", fontSize: 17, fontWeight: "bold", marginBottom: 12 }}>オリジナル種目を編集</Text>
+            <Text style={{ color: "#fff", fontSize: 17, fontWeight: "bold", marginBottom: 12 }}>マイ種目を編集</Text>
             <Text style={{ color: "#888", fontSize: 12, marginBottom: 6 }}>種目名</Text>
             <TextInput
               style={{
@@ -963,7 +1025,7 @@ const TrainingTabContent: React.FC<Props> = ({ navigation }) => {
 
         exercises.forEach((exercise) => {
           const exerciseName = exercise.name?.trim();
-          if (!exerciseName) return;
+          if (!exerciseName || hints[exerciseName]) return;
 
           const isCardio = (exercise.category ?? "").includes("有酸素");
           const mappedSets = (exercise.sets ?? []).map((set) =>
@@ -980,36 +1042,7 @@ const TrainingTabContent: React.FC<Props> = ({ navigation }) => {
               }
           );
 
-          const existingSets = hints[exerciseName] ?? [];
-          const maxLength = Math.max(existingSets.length, mappedSets.length);
-          const mergedSets: WorkoutSet[] = Array.from({ length: maxLength }, (_, index) => {
-            const existing = existingSets[index];
-            const candidate = mappedSets[index];
-
-            if (!existing && candidate) return candidate;
-            if (existing && !candidate) return existing;
-            if (!existing && !candidate) return { done: false };
-
-            if (isCardio) {
-              return {
-                durationMinutes: hasInputValue(existing?.durationMinutes)
-                  ? existing?.durationMinutes
-                  : candidate?.durationMinutes ?? "",
-                distanceKm: hasInputValue(existing?.distanceKm)
-                  ? existing?.distanceKm
-                  : candidate?.distanceKm ?? "",
-                done: false,
-              };
-            }
-
-            return {
-              weight: hasInputValue(existing?.weight) ? existing?.weight : candidate?.weight ?? "",
-              reps: hasInputValue(existing?.reps) ? existing?.reps : candidate?.reps ?? "",
-              done: false,
-            };
-          });
-
-          const cleanedSets = trimTrailingEmptySets(mergedSets, isCardio);
+          const cleanedSets = trimTrailingEmptySets(mappedSets, isCardio);
           if (cleanedSets.length > 0) {
             hints[exerciseName] = cleanedSets;
           }
@@ -1234,7 +1267,7 @@ const TrainingTabContent: React.FC<Props> = ({ navigation }) => {
     return h > 0 ? `${h}:${m}:${s}` : `${m}:${s}`;
   };
 
-  const getPreviousSetPlaceholder = (
+  const getPreviousSetValue = (
     exerciseName: string,
     setIndex: number,
     field: "weight" | "reps" | "durationMinutes" | "distanceKm"
@@ -1306,15 +1339,12 @@ const TrainingTabContent: React.FC<Props> = ({ navigation }) => {
   };
 
   const handleRemoveExercise = (exerciseId: number) => {
-    Alert.alert("削除", "この種目を削除しますか？", [
-      { text: "キャンセル", style: "cancel" },
-      {
-        text: "削除",
-        style: "destructive",
-        onPress: () =>
-          setMenu((prev) => prev.filter((item) => item.id !== exerciseId)),
-      },
-    ]);
+    confirmAction(
+      "削除",
+      "この種目を削除しますか？",
+      () => setMenu((prev) => prev.filter((item) => item.id !== exerciseId)),
+      { confirmLabel: "削除", destructive: true },
+    );
   };
 
   const handleAddSet = (exerciseId: number) => {
@@ -1546,44 +1576,30 @@ const TrainingTabContent: React.FC<Props> = ({ navigation }) => {
                     <View style={[styles.setBadge, { width: "15%" }]}>
                       <Text style={styles.setText}>{index + 1}</Text>
                     </View>
-                    <View style={[styles.inputBox, { width: "25%" }]}>
-                      <TextInput
-                        style={styles.inputFieldText}
-                        keyboardType="numeric"
-                        placeholder={
-                          getPreviousSetPlaceholder(
-                            item.name,
-                            index,
-                            isCardio ? "durationMinutes" : "weight"
-                          ) || (isCardio ? "分" : "-")
-                        }
-                        placeholderTextColor="#444"
-                        value={isCardio ? (set.durationMinutes || "") : (set.weight || "")}
-                        onChangeText={(val) =>
-                          handleUpdateSet(item.id, index, isCardio ? "durationMinutes" : "weight", val)
-                        }
-                        returnKeyType="done"
-                      />
-                    </View>
-                    <View style={[styles.inputBox, { width: "25%" }]}>
-                      <TextInput
-                        style={styles.inputFieldText}
-                        keyboardType="numeric"
-                        placeholder={
-                          getPreviousSetPlaceholder(
-                            item.name,
-                            index,
-                            isCardio ? "distanceKm" : "reps"
-                          ) || (isCardio ? "km" : "-")
-                        }
-                        placeholderTextColor="#444"
-                        value={isCardio ? (set.distanceKm || "") : (set.reps || "")}
-                        onChangeText={(val) =>
-                          handleUpdateSet(item.id, index, isCardio ? "distanceKm" : "reps", val)
-                        }
-                        returnKeyType="done"
-                      />
-                    </View>
+                    <SetValueInput
+                      value={isCardio ? (set.durationMinutes || "") : (set.weight || "")}
+                      ghostValue={getPreviousSetValue(
+                        item.name,
+                        index,
+                        isCardio ? "durationMinutes" : "weight"
+                      )}
+                      placeholder={isCardio ? "分" : "-"}
+                      onChangeText={(val) =>
+                        handleUpdateSet(item.id, index, isCardio ? "durationMinutes" : "weight", val)
+                      }
+                    />
+                    <SetValueInput
+                      value={isCardio ? (set.distanceKm || "") : (set.reps || "")}
+                      ghostValue={getPreviousSetValue(
+                        item.name,
+                        index,
+                        isCardio ? "distanceKm" : "reps"
+                      )}
+                      placeholder={isCardio ? "km" : "-"}
+                      onChangeText={(val) =>
+                        handleUpdateSet(item.id, index, isCardio ? "distanceKm" : "reps", val)
+                      }
+                    />
                     <TouchableOpacity
                       style={[
                         styles.checkBtn,
