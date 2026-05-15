@@ -223,6 +223,22 @@ export const styles = StyleSheet.create({
     textAlignVertical: 'center',
     width: '100%',
   },
+  inputGhostLayer: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: 0,
+    bottom: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  inputGhostText: {
+    color: '#fff',
+    opacity: 0.28,
+    fontSize: 18,
+    fontWeight: 'bold',
+    textAlign: 'center',
+  },
 
   termsContainer: {
     flexDirection: 'row',
