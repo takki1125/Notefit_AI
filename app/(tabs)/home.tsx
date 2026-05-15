@@ -77,6 +77,7 @@ const formatTime = (totalSeconds: number | undefined) => {
 
 const WalkthroughableView = walkthroughable(View);
 
+// --- 詳細モーダル ---
 const WorkoutDetailModal: React.FC<{
   visible: boolean;
   onClose: () => void;
@@ -87,8 +88,13 @@ const WorkoutDetailModal: React.FC<{
   onEditWorkout: (id: string) => void; 
   onEditFood: (dateId: string) => void; 
 }> = ({ visible, onClose, workouts, foodLog, targetDateId, onDeleteWorkout, onEditWorkout, onEditFood }) => {
-  if (workouts.length === 0 && !foodLog) return null;
-  const dateStr = workouts.length > 0 ? workouts[0].dateStr : "記録詳細";
+  
+  // ★ 変更: 記録がない日でも表示するため、以下のガード処理を削除
+  // if (workouts.length === 0 && !foodLog) return null;
+
+  // targetDateId (YYYY-MM-DD) を YYYY/MM/DD 形式に直して表示する
+  const displayDateStr = targetDateId ? targetDateId.replace(/-/g, "/") : "記録詳細";
+  const dateStr = workouts.length > 0 ? workouts[0].dateStr : displayDateStr;
 
   return (
     <Modal visible={visible} animationType="slide" transparent>
@@ -100,13 +106,27 @@ const WorkoutDetailModal: React.FC<{
           </View>
 
           <ScrollView contentContainerStyle={{ padding: 20, paddingBottom: 50 }}>
-            {workouts.length > 0 && (
-              <View style={{ marginBottom: 35 }}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 15 }}>
+            {/* --- トレーニング セクション --- */}
+            <View style={{ marginBottom: 35 }}>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 15 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                   <Dumbbell color="#2ecc71" size={20} style={{ marginRight: 10 }} />
                   <Text style={{ color: '#2ecc71', fontWeight: 'bold', letterSpacing: 1 }}>TRAINING LOG</Text>
                 </View>
-                {workouts.map((workout) => (
+                {/* ★ 追加: トレーニング記録がない場合は「追加ボタン」を右上に表示 */}
+                {workouts.length === 0 && (
+                  <TouchableOpacity 
+                    onPress={() => onEditWorkout(targetDateId)} 
+                    style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#2ecc71', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 10 }}
+                  >
+                    <Plus color="#000" size={16} style={{ marginRight: 4 }} />
+                    <Text style={{ color: '#000', fontSize: 12, fontWeight: 'bold' }}>追加</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+              
+              {workouts.length > 0 ? (
+                workouts.map((workout) => (
                   <View key={workout.id} style={{ backgroundColor: '#262626', borderRadius: 15, padding: 15, marginBottom: 15 }}>
                     <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 12 }}>
                       <View style={{ flex: 1 }}>
@@ -143,20 +163,29 @@ const WorkoutDetailModal: React.FC<{
                       </View>
                     ))}
                   </View>
-                ))}
-              </View>
-            )}
+                ))
+              ) : (
+                /* ★ 追加: 空の時の表示 */
+                <View style={{ backgroundColor: '#262626', borderRadius: 15, padding: 20, alignItems: 'center', borderStyle: 'dashed', borderWidth: 1, borderColor: '#444' }}>
+                  <Text style={{ color: '#666', fontSize: 14 }}>トレーニングの記録がありません</Text>
+                </View>
+              )}
+            </View>
 
+            {/* --- 食事 セクション --- */}
             <View>
               <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 15 }}>
                 <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                   <Utensils color="#ff4757" size={20} style={{ marginRight: 10 }} />
                   <Text style={{ color: '#ff4757', fontWeight: 'bold', letterSpacing: 1 }}>NUTRITION LOG</Text>
                 </View>
-                <TouchableOpacity onPress={() => onEditFood(targetDateId)} style={{ padding: 5 }}>
-                  <Pencil color="#4facfe" size={20} />
+                {/* ★ 変更: データがない時は「追加(Plus)」、ある時は「編集(Pencil)」にする */}
+                <TouchableOpacity onPress={() => onEditFood(targetDateId)} style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#ff4757', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 10 }}>
+                  {foodLog ? <Pencil color="#fff" size={16} style={{ marginRight: 4 }} /> : <Plus color="#fff" size={16} style={{ marginRight: 4 }} />}
+                  <Text style={{ color: '#fff', fontSize: 12, fontWeight: 'bold' }}>{foodLog ? "編集" : "追加"}</Text>
                 </TouchableOpacity>
               </View>
+              
               <View style={{ backgroundColor: '#262626', borderRadius: 15, padding: 15 }}>
                 {foodLog && foodLog.meals && foodLog.meals.length > 0 ? (
                   <>
@@ -175,7 +204,10 @@ const WorkoutDetailModal: React.FC<{
                     </View>
                   </>
                 ) : (
-                  <Text style={{ color: '#555', textAlign: 'center', paddingVertical: 10 }}>食事の記録はありません</Text>
+                  /* ★ 追加: 空の時の表示 */
+                  <View style={{ paddingVertical: 10, alignItems: 'center' }}>
+                    <Text style={{ color: '#555' }}>食事の記録はありません</Text>
+                  </View>
                 )}
               </View>
             </View>
@@ -284,7 +316,6 @@ function HomeTabContent() {
   startTutorialRef.current = start;
   stopTutorialRef.current = stop;
 
-  // ★ チュートリアル用のListRef
   const listRef = useRef<any>(null);
 
   useEffect(() => {
