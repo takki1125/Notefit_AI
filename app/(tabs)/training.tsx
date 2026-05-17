@@ -30,7 +30,7 @@ import {
   query,
   serverTimestamp,
 } from "firebase/firestore";
-import { useLocalSearchParams } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 
 import { FREE_CUSTOM_EXERCISE_LIMIT } from "../../constants/subscriptionLimits";
 import { type CustomExerciseListItem } from "../../hooks/useExerciseMaster";
@@ -916,6 +916,7 @@ type Props = {
 };
 
 const TrainingTabContent: React.FC<Props> = ({ navigation }) => {
+  const router = useRouter(); 
   const [modalVisible, setModalVisible] = useState(false);
   const [routineModalVisible, setRoutineModalVisible] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -934,20 +935,7 @@ const TrainingTabContent: React.FC<Props> = ({ navigation }) => {
   const startTutorialRef = React.useRef(start);
   startTutorialRef.current = start;
 
-  const scrollViewRef = useRef<ScrollView>(null);
-
-  useEffect(() => {
-    const onStepChange = (step: any) => {
-      if (step?.name === 'addExercise') {
-        scrollViewRef.current?.scrollToEnd({ animated: true });
-      }
-    };
-
-    copilotEvents.on("stepChange", onStepChange);
-    return () => {
-      copilotEvents.off("stepChange", onStepChange);
-    };
-  }, [copilotEvents]);
+  // ★ スクロール処理はバグの元なので削除！
 
   const startTimeRef = React.useRef<number | null>(null);
 
@@ -1024,7 +1012,8 @@ const TrainingTabContent: React.FC<Props> = ({ navigation }) => {
 
         exercises.forEach((exercise) => {
           const exerciseName = exercise.name?.trim();
-          if (!exerciseName || hints[exerciseName]) return;
+          
+          if (!exerciseName) return; 
 
           const isCardio = (exercise.category ?? "").includes("有酸素");
           const mappedSets = (exercise.sets ?? []).map((set) =>
@@ -1041,7 +1030,37 @@ const TrainingTabContent: React.FC<Props> = ({ navigation }) => {
               }
           );
 
-          const cleanedSets = trimTrailingEmptySets(mappedSets, isCardio);
+          const existingSets: WorkoutSet[] = hints[exerciseName] ?? []; 
+          const maxLength = Math.max(existingSets.length, mappedSets.length);
+          
+          const mergedSets: WorkoutSet[] = Array.from({ length: maxLength }, (_, index) => {
+            const existing = existingSets[index];
+            const candidate = mappedSets[index];
+
+            if (!existing && candidate) return candidate;
+            if (existing && !candidate) return existing;
+            if (!existing && !candidate) return { done: false };
+
+            if (isCardio) {
+              return {
+                durationMinutes: hasInputValue(existing?.durationMinutes)
+                  ? String(existing?.durationMinutes)
+                  : String(candidate?.durationMinutes ?? ""),
+                distanceKm: hasInputValue(existing?.distanceKm)
+                  ? String(existing?.distanceKm)
+                  : String(candidate?.distanceKm ?? ""),
+                done: false,
+              };
+            }
+
+            return {
+              weight: hasInputValue(existing?.weight) ? String(existing?.weight) : String(candidate?.weight ?? ""),
+              reps: hasInputValue(existing?.reps) ? String(existing?.reps) : String(candidate?.reps ?? ""),
+              done: false,
+            };
+          });
+
+          const cleanedSets = trimTrailingEmptySets(mergedSets, isCardio);
           if (cleanedSets.length > 0) {
             hints[exerciseName] = cleanedSets;
           }
@@ -1054,7 +1073,6 @@ const TrainingTabContent: React.FC<Props> = ({ navigation }) => {
     }
   }, []);
 
-  // ★ 変更: 編集 or 新規追加の判断ロジックを追加
   useEffect(() => {
     if (editWorkoutId) {
       const isNewForPastDate = editWorkoutId.split('-').length === 3;
@@ -1063,7 +1081,6 @@ const TrainingTabContent: React.FC<Props> = ({ navigation }) => {
         setMenu([]);
         setCurrentRoutineName("自由メニュー");
         setTimerSeconds(0);
-        // YYYY-MM-DDをそのままDateに変換し、日本時間などに合わせて少し補正（※単純化）
         const newDate = new Date(editWorkoutId); 
         setOriginalDateData({ dateObj: newDate.toISOString() });
         setLoading(false);
@@ -1459,17 +1476,14 @@ const TrainingTabContent: React.FC<Props> = ({ navigation }) => {
               ? currentRoutineName.replace(/[\/]/g, "_")
               : "自由メニュー";
 
-            // ★ 追加: editWorkoutId が YYYY-MM-DD 形式かチェック
             const isNewForPastDate = editWorkoutId && editWorkoutId.split('-').length === 3;
             
-            // ★ 変更: 新規の場合は常に新しくIDを振り、既存ドキュメントの編集時だけ editWorkoutId を使う
             const targetDocId = (editWorkoutId && !isNewForPastDate) ? editWorkoutId : `${dateStr}_${timeStr}_${safeRoutineName}`;
 
             const saveData = {
               routineName: currentRoutineName,
               exercises: menu,
               durationSeconds: timerSeconds,
-              // originalDateData があればそれを使う（過去日付への新規追加や編集の場合）
               ...(originalDateData
                 ? { date: originalDateData.date || serverTimestamp(), dateObj: originalDateData.dateObj }
                 : { date: serverTimestamp(), dateObj: now.toISOString() }
@@ -1478,7 +1492,6 @@ const TrainingTabContent: React.FC<Props> = ({ navigation }) => {
 
             await setDoc(doc(db, "users", user.uid, "workouts", targetDocId), saveData, { merge: true });
             
-            // ★ 変更: 既存ドキュメントの編集時以外は下書きを消す
             if (!editWorkoutId || isNewForPastDate) {
               await clearTrainingDraft();
             }
@@ -1489,18 +1502,22 @@ const TrainingTabContent: React.FC<Props> = ({ navigation }) => {
                 onPress: () => {
                   void (async () => {
                     try {
-                      const { presentInterstitialWhenReady } = await import(
-                        "../../utils/interstitialAdPresenter"
-                      );
-                      await presentInterstitialWhenReady({ bypassCooldown: true });
+                      const adModule = await import("../../utils/interstitialAdPresenter");
+                      if (typeof adModule.presentInterstitialWhenReady === 'function') {
+                        await adModule.presentInterstitialWhenReady({ bypassCooldown: true });
+                      } else {
+                        console.warn("広告関数が見つかりませんでした");
+                      }
+                    } catch (e) {
+                      console.warn("広告の読み込みエラー:", e);
                     } finally {
                       setMenu([]);
                       startTimeRef.current = null;
 
-                      // ★ ここにリセット処理を追加！
-                      navigation?.setParams({ editWorkoutId: undefined });
-                      
-                      navigation?.navigate?.("home");
+                      router.setParams({ editWorkoutId: "" });
+                      setTimeout(() => {
+                        router.navigate('/home');
+                      }, 50);
                     }
                   })();
                 },
@@ -1518,7 +1535,8 @@ const TrainingTabContent: React.FC<Props> = ({ navigation }) => {
   };
 
   return (
-    <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
+    // ★ 変更: SafeAreaView は外側に移動したので、ここではただの View に変更
+    <View style={[styles.container, { flex: 1 }]}>
       {editWorkoutId && (
         <View style={{ backgroundColor: '#2ecc71', padding: 8, flexDirection: 'row', alignItems: 'center' }}>
           <Text style={{ color: '#000', fontWeight: 'bold', flex: 1, textAlign: 'center' }}>
@@ -1526,8 +1544,14 @@ const TrainingTabContent: React.FC<Props> = ({ navigation }) => {
           </Text>
           <TouchableOpacity 
             onPress={() => {
-              // ★ 変更：router ではなく navigation を使う！
-              navigation?.navigate?.("home");
+              setMenu([]);
+              setTimerSeconds(0);
+              startTimeRef.current = null;
+
+              router.setParams({ editWorkoutId: "" });
+              setTimeout(() => {
+                router.navigate('/home');
+              }, 50);
             }} 
             style={{ paddingHorizontal: 12, paddingVertical: 6, backgroundColor: '#000', borderRadius: 8 }}
           >
@@ -1538,16 +1562,23 @@ const TrainingTabContent: React.FC<Props> = ({ navigation }) => {
       
       <View style={styles.headerRow}>
         <View style={styles.headerContent}>
-          <View>
-            <Text style={styles.headerLabel}>Today&apos;s Workout</Text>
-            <TouchableOpacity
-              style={styles.routineSelector}
-              onPress={() => setRoutineModalVisible(true)}
-            >
-              <Text style={styles.routineText}>{currentRoutineName}</Text>
-              <ChevronDown color="#2ecc71" size={20} />
-            </TouchableOpacity>
-          </View>
+          {/* ★ トレーニングタブのチュートリアルステップ1: ルーティン選択 */}
+          <CopilotStep
+            text="ここをタップすると、保存したルーティンを呼び出せます。"
+            order={1}
+            name="routineSelect"
+          >
+            <WalkthroughableView>
+              <Text style={styles.headerLabel}>Today&apos;s Workout</Text>
+              <TouchableOpacity
+                style={styles.routineSelector}
+                onPress={() => setRoutineModalVisible(true)}
+              >
+                <Text style={styles.routineText}>{currentRoutineName}</Text>
+                <ChevronDown color="#2ecc71" size={20} />
+              </TouchableOpacity>
+            </WalkthroughableView>
+          </CopilotStep>
 
           <TouchableOpacity style={styles.timerButton}>
             <Clock color={isTimerActive ? "#2ecc71" : "#000"} size={20} />
@@ -1562,7 +1593,6 @@ const TrainingTabContent: React.FC<Props> = ({ navigation }) => {
         keyboardVerticalOffset={100}
       >
         <ScrollView
-          ref={scrollViewRef}
           contentContainerStyle={styles.scrollContent}
           keyboardShouldPersistTaps="handled"
           automaticallyAdjustKeyboardInsets
@@ -1663,9 +1693,10 @@ const TrainingTabContent: React.FC<Props> = ({ navigation }) => {
             );
           })}
 
+          {/* ★ トレーニングタブのチュートリアルステップ2: 種目追加ボタン */}
           <CopilotStep
             text="まずはここから種目を追加して、今日のトレーニングを始めましょう！"
-            order={1}
+            order={2}
             name="addExercise"
           >
             <WalkthroughableView
@@ -1707,21 +1738,23 @@ const TrainingTabContent: React.FC<Props> = ({ navigation }) => {
         autoCheck={autoCheck}
         onLoadRoutine={handleLoadRoutine}
       />
-    </SafeAreaView>
+    </View>
   );
 };
 
 export default function TrainingTabScreen(props: Props) {
   return (
-    <CopilotProvider
-      stopOnOutsideClick={false}
-      androidStatusBarVisible={true}
-      backdropColor="rgba(0, 0, 0, 0.85)"
-      tooltipStyle={{ backgroundColor: "#ffffff", borderRadius: 12, margin: 16, paddingTop: 16, paddingBottom: 16 }}
-      stepNumberComponent={() => null}
-      labels={{ skip: "スキップ", previous: "前へ", next: "次へ", finish: "OK" }}
-    >
-      <TrainingTabContent {...props} />
-    </CopilotProvider>
+    // ★ 変更: SafeAreaViewを外側に配置！これで座標ズレが直る
+    <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
+      <CopilotProvider
+        stopOnOutsideClick={false}
+        backdropColor="rgba(0, 0, 0, 0.85)"
+        tooltipStyle={{ backgroundColor: "#ffffff", borderRadius: 12, margin: 16, paddingTop: 16, paddingBottom: 16 }}
+        stepNumberComponent={() => null}
+        labels={{ skip: "スキップ", previous: "前へ", next: "次へ", finish: "OK" }}
+      >
+        <TrainingTabContent {...props} />
+      </CopilotProvider>
+    </SafeAreaView>
   );
 }

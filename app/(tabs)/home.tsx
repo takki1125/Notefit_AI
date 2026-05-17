@@ -77,7 +77,6 @@ const formatTime = (totalSeconds: number | undefined) => {
 
 const WalkthroughableView = walkthroughable(View);
 
-// --- 詳細モーダル ---
 const WorkoutDetailModal: React.FC<{
   visible: boolean;
   onClose: () => void;
@@ -89,10 +88,6 @@ const WorkoutDetailModal: React.FC<{
   onEditFood: (dateId: string) => void; 
 }> = ({ visible, onClose, workouts, foodLog, targetDateId, onDeleteWorkout, onEditWorkout, onEditFood }) => {
   
-  // ★ 変更: 記録がない日でも表示するため、以下のガード処理を削除
-  // if (workouts.length === 0 && !foodLog) return null;
-
-  // targetDateId (YYYY-MM-DD) を YYYY/MM/DD 形式に直して表示する
   const displayDateStr = targetDateId ? targetDateId.replace(/-/g, "/") : "記録詳細";
   const dateStr = workouts.length > 0 ? workouts[0].dateStr : displayDateStr;
 
@@ -106,14 +101,12 @@ const WorkoutDetailModal: React.FC<{
           </View>
 
           <ScrollView contentContainerStyle={{ padding: 20, paddingBottom: 50 }}>
-            {/* --- トレーニング セクション --- */}
             <View style={{ marginBottom: 35 }}>
               <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 15 }}>
                 <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                   <Dumbbell color="#2ecc71" size={20} style={{ marginRight: 10 }} />
                   <Text style={{ color: '#2ecc71', fontWeight: 'bold', letterSpacing: 1 }}>TRAINING LOG</Text>
                 </View>
-                {/* ★ 追加: トレーニング記録がない場合は「追加ボタン」を右上に表示 */}
                 {workouts.length === 0 && (
                   <TouchableOpacity 
                     onPress={() => onEditWorkout(targetDateId)} 
@@ -165,21 +158,18 @@ const WorkoutDetailModal: React.FC<{
                   </View>
                 ))
               ) : (
-                /* ★ 追加: 空の時の表示 */
                 <View style={{ backgroundColor: '#262626', borderRadius: 15, padding: 20, alignItems: 'center', borderStyle: 'dashed', borderWidth: 1, borderColor: '#444' }}>
                   <Text style={{ color: '#666', fontSize: 14 }}>トレーニングの記録がありません</Text>
                 </View>
               )}
             </View>
 
-            {/* --- 食事 セクション --- */}
             <View>
               <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 15 }}>
                 <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                   <Utensils color="#ff4757" size={20} style={{ marginRight: 10 }} />
                   <Text style={{ color: '#ff4757', fontWeight: 'bold', letterSpacing: 1 }}>NUTRITION LOG</Text>
                 </View>
-                {/* ★ 変更: データがない時は「追加(Plus)」、ある時は「編集(Pencil)」にする */}
                 <TouchableOpacity onPress={() => onEditFood(targetDateId)} style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#ff4757', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 10 }}>
                   {foodLog ? <Pencil color="#fff" size={16} style={{ marginRight: 4 }} /> : <Plus color="#fff" size={16} style={{ marginRight: 4 }} />}
                   <Text style={{ color: '#fff', fontSize: 12, fontWeight: 'bold' }}>{foodLog ? "編集" : "追加"}</Text>
@@ -204,7 +194,6 @@ const WorkoutDetailModal: React.FC<{
                     </View>
                   </>
                 ) : (
-                  /* ★ 追加: 空の時の表示 */
                   <View style={{ paddingVertical: 10, alignItems: 'center' }}>
                     <Text style={{ color: '#555' }}>食事の記録はありません</Text>
                   </View>
@@ -316,24 +305,7 @@ function HomeTabContent() {
   startTutorialRef.current = start;
   stopTutorialRef.current = stop;
 
-  const listRef = useRef<any>(null);
-
-  useEffect(() => {
-    const onStepChange = (step: any) => {
-      if (step?.name === 'homeIntro') {
-        listRef.current?.scrollToOffset?.({ offset: 0, animated: true });
-      } else if (step?.name === 'calendarTutorial') {
-        listRef.current?.scrollToOffset?.({ offset: 250, animated: true });
-      } else if (step?.name === 'shortcutTutorial') {
-        listRef.current?.scrollToEnd?.({ animated: true });
-      }
-    };
-
-    copilotEvents.on("stepChange", onStepChange);
-    return () => {
-      copilotEvents.off("stepChange", onStepChange);
-    };
-  }, [copilotEvents]);
+  // ★ スクロール処理はバグの元なので削除！
 
   const [isEditMode, setIsEditMode] = useState(false);
   const [addWidgetModalVisible, setAddWidgetModalVisible] = useState(false);
@@ -595,8 +567,9 @@ function HomeTabContent() {
       case "ai": return wrapIfEditEntry(<View pointerEvents={blockPointer}><DailyAIAdviceCard /></View>);
       case "calendar":
         return (
+          // ★ ホームのチュートリアルはここで終わり！
           <CopilotStep
-            text="カレンダーの日付をタップすると、その日のトレーニングや食事の記録を詳しく確認できます。"
+            text="カレンダーの日付をタップすると、その日の記録を確認・追加できます。"
             order={2}
             name="calendarTutorial"
           >
@@ -615,69 +588,62 @@ function HomeTabContent() {
         );
       case "workout":
         return (
-          <CopilotStep
-            text="ホーム画面の各ウィジェットは、詳細タブへのショートカットになっています。例えばこれをタップすると、トレーニング画面へ直接移動できます。（長押しで並べ替えも可能です）"
-            order={3}
-            name="shortcutTutorial"
+          // ★ CopilotStep を削除して、ただのコンポーネントに戻す
+          <TouchableOpacity
+            style={styles.card} activeOpacity={0.8} disabled={editMode}
+            onPress={() => router.push("/training")} onLongPress={!editMode && onLongPressEdit ? onLongPressEdit : undefined} delayLongPress={450}
           >
-            <WalkthroughableView>
-              <TouchableOpacity
-                style={styles.card} activeOpacity={0.8} disabled={editMode}
-                onPress={() => router.push("/training")} onLongPress={!editMode && onLongPressEdit ? onLongPressEdit : undefined} delayLongPress={450}
-              >
-                <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 15 }}>
-                  <View>
-                    <Text style={{ color: "#2ecc71", fontSize: 14, fontWeight: "bold", letterSpacing: 1, marginBottom: 4 }}>WORKOUT</Text>
-                    <View style={{ flexDirection: 'row', alignItems: 'baseline' }}>
-                      <Text style={{ color: "#fff", fontSize: 16, fontWeight: "bold" }}>{todaysWorkouts.length > 0 ? "TODAY" : "START WORKOUT"}</Text>
-                      {todaysWorkouts[0]?.durationSeconds && (
-                        <Text style={{ color: '#888', fontSize: 12, marginLeft: 10 }}>({formatTime(todaysWorkouts[0].durationSeconds)})</Text>
-                      )}
-                    </View>
-                  </View>
-                  <View style={{ backgroundColor: "#2ecc71", borderRadius: 20, width: 40, height: 40, justifyContent: "center", alignItems: "center" }}>
-                    <Dumbbell color="#000" size={20} />
-                  </View>
-                </View>
-                <View style={{ marginTop: 5, borderTopWidth: 1, borderTopColor: '#333', paddingTop: 12 }}>
-                  {todaysWorkouts.length > 0 ? (
-                    todaysWorkouts.map((workout, index) => (
-                      <View key={workout.id} style={{ marginBottom: index === todaysWorkouts.length - 1 ? 4 : 16 }}>
-                        {todaysWorkouts.length > 1 && <Text style={{ color: "#666", fontSize: 9, fontWeight: 'bold', marginBottom: 8, textAlign: 'right' }}>SESSION {todaysWorkouts.length - index}</Text>}
-                        <View style={{ gap: 10 }}>
-                          {workout.exercises.map((ex, i) => {
-                            const doneSets = ex.sets.filter(s => s.done || (s.weight !== undefined && s.weight !== "") || (s.durationMinutes !== undefined && s.durationMinutes !== ""));
-                            return (
-                              <View key={i} style={{ marginBottom: 10 }}>
-                                <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 4 }}>
-                                  <View style={{ width: 4, height: 4, borderRadius: 2, backgroundColor: "#2ecc71", marginRight: 10 }} />
-                                  <Text style={{ color: "#fff", fontSize: 15, fontWeight: 'bold' }}>{ex.name}</Text>
-                                </View>
-                                {doneSets.length > 0 ? (
-                                  <Text style={{ color: '#888', fontSize: 12, paddingLeft: 14 }}>
-                                    {doneSets.map(s => {
-                                      const isCardio = s.durationMinutes !== undefined || s.distanceKm !== undefined;
-                                      return isCardio 
-                                        ? `${s.durationMinutes || 0}分×${s.distanceKm || 0}km` 
-                                        : `${s.weight || 0}kg×${s.reps || 0}`;
-                                    }).join('  |  ')}
-                                  </Text>
-                                ) : (
-                                  <Text style={{ color: '#555', fontSize: 12, paddingLeft: 14 }}>未完了</Text>
-                                )}
-                              </View>
-                            );
-                          })}
-                        </View>
-                      </View>
-                    ))
-                  ) : (
-                    <Text style={{ color: "#666", textAlign: 'center', paddingVertical: 10 }}>タップして今日のトレーニングを開始</Text>
+            <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 15 }}>
+              <View>
+                <Text style={{ color: "#2ecc71", fontSize: 14, fontWeight: "bold", letterSpacing: 1, marginBottom: 4 }}>WORKOUT</Text>
+                <View style={{ flexDirection: 'row', alignItems: 'baseline' }}>
+                  <Text style={{ color: "#fff", fontSize: 16, fontWeight: "bold" }}>{todaysWorkouts.length > 0 ? "TODAY" : "START WORKOUT"}</Text>
+                  {todaysWorkouts[0]?.durationSeconds && (
+                    <Text style={{ color: '#888', fontSize: 12, marginLeft: 10 }}>({formatTime(todaysWorkouts[0].durationSeconds)})</Text>
                   )}
                 </View>
-              </TouchableOpacity>
-            </WalkthroughableView>
-          </CopilotStep>
+              </View>
+              <View style={{ backgroundColor: "#2ecc71", borderRadius: 20, width: 40, height: 40, justifyContent: "center", alignItems: "center" }}>
+                <Dumbbell color="#000" size={20} />
+              </View>
+            </View>
+            <View style={{ marginTop: 5, borderTopWidth: 1, borderTopColor: '#333', paddingTop: 12 }}>
+              {todaysWorkouts.length > 0 ? (
+                todaysWorkouts.map((workout, index) => (
+                  <View key={workout.id} style={{ marginBottom: index === todaysWorkouts.length - 1 ? 4 : 16 }}>
+                    {todaysWorkouts.length > 1 && <Text style={{ color: "#666", fontSize: 9, fontWeight: 'bold', marginBottom: 8, textAlign: 'right' }}>SESSION {todaysWorkouts.length - index}</Text>}
+                    <View style={{ gap: 10 }}>
+                      {workout.exercises.map((ex, i) => {
+                        const doneSets = ex.sets.filter(s => s.done || (s.weight !== undefined && s.weight !== "") || (s.durationMinutes !== undefined && s.durationMinutes !== ""));
+                        return (
+                          <View key={i} style={{ marginBottom: 10 }}>
+                            <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 4 }}>
+                              <View style={{ width: 4, height: 4, borderRadius: 2, backgroundColor: "#2ecc71", marginRight: 10 }} />
+                              <Text style={{ color: "#fff", fontSize: 15, fontWeight: 'bold' }}>{ex.name}</Text>
+                            </View>
+                            {doneSets.length > 0 ? (
+                              <Text style={{ color: '#888', fontSize: 12, paddingLeft: 14 }}>
+                                {doneSets.map(s => {
+                                  const isCardio = s.durationMinutes !== undefined || s.distanceKm !== undefined;
+                                  return isCardio 
+                                    ? `${s.durationMinutes || 0}分×${s.distanceKm || 0}km` 
+                                    : `${s.weight || 0}kg×${s.reps || 0}`;
+                                }).join('  |  ')}
+                              </Text>
+                            ) : (
+                              <Text style={{ color: '#555', fontSize: 12, paddingLeft: 14 }}>未完了</Text>
+                            )}
+                          </View>
+                        );
+                      })}
+                    </View>
+                  </View>
+                ))
+              ) : (
+                <Text style={{ color: "#666", textAlign: 'center', paddingVertical: 10 }}>タップして今日のトレーニングを開始</Text>
+              )}
+            </View>
+          </TouchableOpacity>
         );
       case "nutrition":
         return (
@@ -751,7 +717,7 @@ function HomeTabContent() {
     () => (
       <>
         <CopilotStep
-          text="こちらはホーム画面です。本日のトレーニング記録や摂取カロリー、現在のコイン残高などをひと目でご確認いただけます。"
+          text="こちらはホーム画面です。今日の記録や現在のコイン残高などをひと目でご確認いただけます。"
           order={1}
           name="homeIntro"
         >
@@ -820,11 +786,9 @@ function HomeTabContent() {
 
   if (uid && !hydrated) {
     return (
-      <SafeAreaView style={styles.container}>
-        <View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
-          <ActivityIndicator size="large" color="#2ecc71" />
-        </View>
-      </SafeAreaView>
+      <View style={[styles.container, { flex: 1, justifyContent: "center", alignItems: "center" }]}>
+        <ActivityIndicator size="large" color="#2ecc71" />
+      </View>
     );
   }
 
@@ -840,10 +804,9 @@ function HomeTabContent() {
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
-      <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
+      <View style={[styles.container, { flex: 1 }]}>
         {isEditMode ? (
           <DraggableFlatList 
-            ref={listRef} 
             {...listCommon} 
             onDragEnd={({ data }) => void persistOrder(data)} 
             renderItem={renderDraggableRow} 
@@ -851,7 +814,6 @@ function HomeTabContent() {
           />
         ) : (
           <FlatList 
-            ref={listRef} 
             {...listCommon} 
             renderItem={renderStaticRow} 
           />
@@ -889,28 +851,24 @@ function HomeTabContent() {
           onEditWorkout={handleEditWorkout}
           onEditFood={handleEditFood}
         />
-      </SafeAreaView>
+      </View>
     </GestureHandlerRootView>
   );
 }
 
 export default function HomeTabScreen() {
   return (
-    <CopilotProvider
-      stopOnOutsideClick={false} 
-      androidStatusBarVisible={true}
-      backdropColor="rgba(0, 0, 0, 0.85)" 
-      tooltipStyle={{ 
-        backgroundColor: "#ffffff", 
-        borderRadius: 12, 
-        margin: 16,
-        paddingTop: 16,
-        paddingBottom: 16,
-      }}
-      stepNumberComponent={() => null}
-      labels={{ skip: "スキップ", previous: "前へ", next: "次へ", finish: "OK" }}
-    >
-      <HomeTabContent />
-    </CopilotProvider>
+    // ★ 変更: SafeAreaViewを外側に配置
+    <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
+      <CopilotProvider
+        stopOnOutsideClick={false} 
+        backdropColor="rgba(0, 0, 0, 0.85)" 
+        tooltipStyle={{ backgroundColor: "#ffffff", borderRadius: 12, margin: 16, paddingTop: 16, paddingBottom: 16 }}
+        stepNumberComponent={() => null}
+        labels={{ skip: "スキップ", previous: "前へ", next: "次へ", finish: "OK" }}
+      >
+        <HomeTabContent />
+      </CopilotProvider>
+    </SafeAreaView>
   );
 }
