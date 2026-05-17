@@ -58,13 +58,27 @@ export default function SettingsScreen() {
     ]);
   };
 
-  const handleReplayHomeTutorial = async () => {
+  // ★ 変更：全てのチュートリアルをリセットする関数にパワーアップ！
+  const handleResetAllTutorials = async () => {
     const user = auth.currentUser;
     if (!user) return;
     try {
+      // 1. ホーム画面用の特別なリセットフラグ
       await clearHomeTutorialSeen(user.uid);
       await AsyncStorage.setItem(TUTORIAL_REPLAY_PENDING_KEY, user.uid);
-      router.back();
+
+      // 2. AsyncStorageの中にある「tutorial」と名のつく記録を全て消し飛ばす
+      const keys = await AsyncStorage.getAllKeys();
+      const tutorialKeys = keys.filter(key => key.includes('tutorial'));
+      if (tutorialKeys.length > 0) {
+        await AsyncStorage.multiRemove(tutorialKeys);
+      }
+
+      Alert.alert(
+        'リセット完了', 
+        'すべてのチュートリアルをリセットしました。\n各タブを開くと最初から案内が始まります！',
+        [{ text: 'OK', onPress: () => router.back() }] // OKを押したら前の画面に戻る
+      );
     } catch {
       Alert.alert('エラー', '操作に失敗しました。');
     }
@@ -191,21 +205,22 @@ export default function SettingsScreen() {
           <Text style={[styles.sectionHeaderText, { marginBottom: 10 }]}>ガイド</Text>
           <TouchableOpacity
             style={[styles.routineItem, { marginBottom: 10 }]}
-            onPress={handleReplayHomeTutorial}
+            onPress={handleResetAllTutorials} // ★ 変更：新しい関数を呼ぶ！
           >
             <View style={{ flexDirection: 'row', alignItems: 'center' }}>
               <View style={{ backgroundColor: '#333', padding: 8, borderRadius: 10, marginRight: 15 }}>
                 <BookOpen color="#2ecc71" size={20} />
               </View>
               <View style={{ flex: 1 }}>
-                <Text style={styles.routineNameText}>ホームのチュートリアルを再表示</Text>
-                <Text style={styles.routineDescText}>画面の案内をもう一度見る</Text>
+                {/* ★ 変更：テキストも分かりやすく変更 */}
+                <Text style={styles.routineNameText}>すべてのチュートリアルを再表示</Text>
+                <Text style={styles.routineDescText}>ホーム・食事・トレーニングの案内を見る</Text>
               </View>
               <ChevronRight color="#444" size={20} />
             </View>
           </TouchableOpacity>
         </View>
-
+        
         {/* セクション：記録 */}
         <View style={{ marginTop: 20 }}>
           <Text style={[styles.sectionHeaderText, { marginBottom: 10 }]}>TRACKING</Text>
