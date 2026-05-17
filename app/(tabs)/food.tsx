@@ -103,12 +103,14 @@ function FoodTabContent() {
   // ★ チュートリアル用のScrollRef
   const scrollViewRef = useRef<ScrollView>(null);
 
+  // FoodTabContent の中の useEffect
   useEffect(() => {
     const onStepChange = (step: any) => {
-      if (step?.name === 'foodTotal') scrollViewRef.current?.scrollTo({ y: 0, animated: true });
-      else if (step?.name === 'foodRoutine') scrollViewRef.current?.scrollTo({ y: 150, animated: true });
-      else if (step?.name === 'foodAi') scrollViewRef.current?.scrollTo({ y: 350, animated: true });
-      else if (step?.name === 'foodManual') scrollViewRef.current?.scrollToEnd({ animated: true });
+      // ★ 全部 animated: false に変更！
+      if (step?.name === 'foodTotal') scrollViewRef.current?.scrollTo({ y: 0, animated: false });
+      else if (step?.name === 'foodRoutine') scrollViewRef.current?.scrollTo({ y: 150, animated: false });
+      else if (step?.name === 'foodAi') scrollViewRef.current?.scrollTo({ y: 350, animated: false });
+      else if (step?.name === 'foodManual') scrollViewRef.current?.scrollToEnd({ animated: false });
     };
 
     copilotEvents.on("stepChange", onStepChange);
@@ -711,10 +713,13 @@ function FoodTabContent() {
           </Text>
           <TouchableOpacity 
             onPress={() => {
-              // ★ 追加：空っぽにして居残りバグを消す！
+              // 1. まずパラメータを空にしてリセット
               router.setParams({ editFoodDateId: "" });
-              // ホームに戻す
-              router.navigate('/home');
+              
+              // 2. リセット処理が完了するのを一瞬(50ms)待ってからホームへ！
+              setTimeout(() => {
+                router.navigate('/home');
+              }, 50);
             }} 
             style={{ paddingHorizontal: 12, paddingVertical: 6, backgroundColor: '#000', borderRadius: 8 }}
           >
