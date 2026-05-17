@@ -321,11 +321,11 @@ function HomeTabContent() {
   useEffect(() => {
     const onStepChange = (step: any) => {
       if (step?.name === 'homeIntro') {
-        listRef.current?.scrollToOffset?.({ offset: 0, animated: true });
+        listRef.current?.scrollToOffset?.({ offset: 0, animated: false }); // ★ false に変更
       } else if (step?.name === 'calendarTutorial') {
-        listRef.current?.scrollToOffset?.({ offset: 250, animated: true });
+        listRef.current?.scrollToOffset?.({ offset: 250, animated: false }); // ★ false に変更
       } else if (step?.name === 'shortcutTutorial') {
-        listRef.current?.scrollToEnd?.({ animated: true });
+        listRef.current?.scrollToEnd?.({ animated: false }); // ★ false に変更
       }
     };
 
