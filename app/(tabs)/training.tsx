@@ -30,7 +30,6 @@ import {
   query,
   serverTimestamp,
 } from "firebase/firestore";
-// ★ 追加: useRouter をインポート
 import { useLocalSearchParams, useRouter } from "expo-router";
 
 import { FREE_CUSTOM_EXERCISE_LIMIT } from "../../constants/subscriptionLimits";
@@ -917,7 +916,7 @@ type Props = {
 };
 
 const TrainingTabContent: React.FC<Props> = ({ navigation }) => {
-  const router = useRouter(); // ★ これを追加！
+  const router = useRouter(); 
   const [modalVisible, setModalVisible] = useState(false);
   const [routineModalVisible, setRoutineModalVisible] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -936,21 +935,7 @@ const TrainingTabContent: React.FC<Props> = ({ navigation }) => {
   const startTutorialRef = React.useRef(start);
   startTutorialRef.current = start;
 
-  const scrollViewRef = useRef<ScrollView>(null);
-
-  // TrainingTabContent の中の useEffect
-  useEffect(() => {
-    const onStepChange = (step: any) => {
-      if (step?.name === 'addExercise') {
-        scrollViewRef.current?.scrollToEnd({ animated: false }); // ★ false に変更
-      }
-    };
-
-    copilotEvents.on("stepChange", onStepChange);
-    return () => {
-      copilotEvents.off("stepChange", onStepChange);
-    };
-  }, [copilotEvents]);
+  // ★ スクロール処理はバグの元なので削除！
 
   const startTimeRef = React.useRef<number | null>(null);
 
@@ -1028,7 +1013,6 @@ const TrainingTabContent: React.FC<Props> = ({ navigation }) => {
         exercises.forEach((exercise) => {
           const exerciseName = exercise.name?.trim();
           
-          // ★修正: 余計な || hints[exerciseName] を削除！
           if (!exerciseName) return; 
 
           const isCardio = (exercise.category ?? "").includes("有酸素");
@@ -1046,7 +1030,6 @@ const TrainingTabContent: React.FC<Props> = ({ navigation }) => {
               }
           );
 
-          // ★修正: 型をしっかり教える
           const existingSets: WorkoutSet[] = hints[exerciseName] ?? []; 
           const maxLength = Math.max(existingSets.length, mappedSets.length);
           
@@ -1077,7 +1060,6 @@ const TrainingTabContent: React.FC<Props> = ({ navigation }) => {
             };
           });
 
-          // ★修正: ここも cleanedSets が mergedSets を使うように戻した！
           const cleanedSets = trimTrailingEmptySets(mergedSets, isCardio);
           if (cleanedSets.length > 0) {
             hints[exerciseName] = cleanedSets;
@@ -1553,7 +1535,8 @@ const TrainingTabContent: React.FC<Props> = ({ navigation }) => {
   };
 
   return (
-    <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
+    // ★ 変更: SafeAreaView は外側に移動したので、ここではただの View に変更
+    <View style={[styles.container, { flex: 1 }]}>
       {editWorkoutId && (
         <View style={{ backgroundColor: '#2ecc71', padding: 8, flexDirection: 'row', alignItems: 'center' }}>
           <Text style={{ color: '#000', fontWeight: 'bold', flex: 1, textAlign: 'center' }}>
@@ -1579,16 +1562,23 @@ const TrainingTabContent: React.FC<Props> = ({ navigation }) => {
       
       <View style={styles.headerRow}>
         <View style={styles.headerContent}>
-          <View>
-            <Text style={styles.headerLabel}>Today&apos;s Workout</Text>
-            <TouchableOpacity
-              style={styles.routineSelector}
-              onPress={() => setRoutineModalVisible(true)}
-            >
-              <Text style={styles.routineText}>{currentRoutineName}</Text>
-              <ChevronDown color="#2ecc71" size={20} />
-            </TouchableOpacity>
-          </View>
+          {/* ★ トレーニングタブのチュートリアルステップ1: ルーティン選択 */}
+          <CopilotStep
+            text="ここをタップすると、保存したルーティンを呼び出せます。"
+            order={1}
+            name="routineSelect"
+          >
+            <WalkthroughableView>
+              <Text style={styles.headerLabel}>Today&apos;s Workout</Text>
+              <TouchableOpacity
+                style={styles.routineSelector}
+                onPress={() => setRoutineModalVisible(true)}
+              >
+                <Text style={styles.routineText}>{currentRoutineName}</Text>
+                <ChevronDown color="#2ecc71" size={20} />
+              </TouchableOpacity>
+            </WalkthroughableView>
+          </CopilotStep>
 
           <TouchableOpacity style={styles.timerButton}>
             <Clock color={isTimerActive ? "#2ecc71" : "#000"} size={20} />
@@ -1603,7 +1593,6 @@ const TrainingTabContent: React.FC<Props> = ({ navigation }) => {
         keyboardVerticalOffset={100}
       >
         <ScrollView
-          ref={scrollViewRef}
           contentContainerStyle={styles.scrollContent}
           keyboardShouldPersistTaps="handled"
           automaticallyAdjustKeyboardInsets
@@ -1704,9 +1693,10 @@ const TrainingTabContent: React.FC<Props> = ({ navigation }) => {
             );
           })}
 
+          {/* ★ トレーニングタブのチュートリアルステップ2: 種目追加ボタン */}
           <CopilotStep
             text="まずはここから種目を追加して、今日のトレーニングを始めましょう！"
-            order={1}
+            order={2}
             name="addExercise"
           >
             <WalkthroughableView
@@ -1748,22 +1738,23 @@ const TrainingTabContent: React.FC<Props> = ({ navigation }) => {
         autoCheck={autoCheck}
         onLoadRoutine={handleLoadRoutine}
       />
-    </SafeAreaView>
+    </View>
   );
 };
 
 export default function TrainingTabScreen(props: Props) {
   return (
-    <CopilotProvider
-      stopOnOutsideClick={false}
-      androidStatusBarVisible={true}
-      backdropColor="rgba(0, 0, 0, 0.85)"
-      tooltipStyle={{ backgroundColor: "#ffffff", borderRadius: 12, margin: 16, paddingTop: 16, paddingBottom: 16 }}
-      stepNumberComponent={() => null}
-      labels={{ skip: "スキップ", previous: "前へ", next: "次へ", finish: "OK" }}
-    >
-      <TrainingTabContent {...props} />
-    </CopilotProvider>
+    // ★ 変更: SafeAreaViewを外側に配置！これで座標ズレが直る
+    <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
+      <CopilotProvider
+        stopOnOutsideClick={false}
+        backdropColor="rgba(0, 0, 0, 0.85)"
+        tooltipStyle={{ backgroundColor: "#ffffff", borderRadius: 12, margin: 16, paddingTop: 16, paddingBottom: 16 }}
+        stepNumberComponent={() => null}
+        labels={{ skip: "スキップ", previous: "前へ", next: "次へ", finish: "OK" }}
+      >
+        <TrainingTabContent {...props} />
+      </CopilotProvider>
+    </SafeAreaView>
   );
 }
-
