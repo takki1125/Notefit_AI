@@ -100,24 +100,7 @@ function FoodTabContent() {
   const startTutorialRef = useRef(start);
   startTutorialRef.current = start;
 
-  // ★ チュートリアル用のScrollRef
-  const scrollViewRef = useRef<ScrollView>(null);
-
-  // FoodTabContent の中の useEffect
-  useEffect(() => {
-    const onStepChange = (step: any) => {
-      // ★ 全部 animated: false に変更！
-      if (step?.name === 'foodTotal') scrollViewRef.current?.scrollTo({ y: 0, animated: false });
-      else if (step?.name === 'foodRoutine') scrollViewRef.current?.scrollTo({ y: 150, animated: false });
-      else if (step?.name === 'foodAi') scrollViewRef.current?.scrollTo({ y: 350, animated: false });
-      else if (step?.name === 'foodManual') scrollViewRef.current?.scrollToEnd({ animated: false });
-    };
-
-    copilotEvents.on("stepChange", onStepChange);
-    return () => {
-      copilotEvents.off("stepChange", onStepChange);
-    };
-  }, [copilotEvents]);
+  // ★ スクロール処理はバグの元なので削除！
 
   useFocusEffect(
     useCallback(() => {
@@ -705,7 +688,8 @@ function FoodTabContent() {
   });
 
   return (
-    <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
+    // ★ 変更: SafeAreaView は外側に移動したので、ここではただの View に変更
+    <View style={[styles.container, { flex: 1 }]}>
       {editFoodDateId && (
         <View style={{ backgroundColor: '#2ecc71', padding: 8, flexDirection: 'row', alignItems: 'center' }}>
           <Text style={{ color: '#000', fontWeight: 'bold', flex: 1, textAlign: 'center' }}>
@@ -713,10 +697,7 @@ function FoodTabContent() {
           </Text>
           <TouchableOpacity 
             onPress={() => {
-              // 1. まずパラメータを空にしてリセット
               router.setParams({ editFoodDateId: "" });
-              
-              // 2. リセット処理が完了するのを一瞬(50ms)待ってからホームへ！
               setTimeout(() => {
                 router.navigate('/home');
               }, 50);
@@ -735,10 +716,7 @@ function FoodTabContent() {
           </Text>
         </View>
       </View>
-      <ScrollView 
-        ref={scrollViewRef} // ★ Refを追加
-        contentContainerStyle={{ padding: 20 }}
-      >
+      <ScrollView contentContainerStyle={{ padding: 20 }}>
         
         <CopilotStep text="今日の総摂取カロリーと、PFC（タンパク質・脂質・炭水化物）のバランスをここで確認できます。" order={1} name="foodTotal">
           <WalkthroughableView style={{ backgroundColor: "#1a1a1a", padding: 20, borderRadius: 16, marginBottom: 20 }}>
@@ -842,6 +820,7 @@ function FoodTabContent() {
           </WalkthroughableView>
         </CopilotStep>
 
+        {/* ★ 食事タブのチュートリアルはここで終わり！ */}
         <CopilotStep text="『コンビニの牛丼』のように入力して検索するだけで、AIがカロリーと栄養素を自動で推測してくれます。" order={3} name="foodAi">
           <WalkthroughableView style={{ backgroundColor: "#2a2a2a", padding: 15, borderRadius: 12, marginBottom: 20, borderWidth: 1, borderColor: "#444" }}>
             <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 10 }}>
@@ -880,54 +859,54 @@ function FoodTabContent() {
           </View>
         )}
 
-        <CopilotStep text="自分で細かく数値を入力したい場合や、過去の履歴から選びたい時はここから追加しましょう。" order={4} name="foodManual">
-          <WalkthroughableView style={{ backgroundColor: '#1a1a1a', padding: 15, borderRadius: 12, marginBottom: 40 }}>
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 15 }}>
-              <Text style={{ color: '#2ecc71', fontSize: 16, fontWeight: 'bold' }}>食事を追加・修正</Text>
-              <TouchableOpacity 
-                style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#333', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 15 }}
-                onPress={() => setDictModalVisible(true)}
-              >
-                <BookOpen color="#4facfe" size={16} style={{ marginRight: 5 }} />
-                <Text style={{ color: '#4facfe', fontSize: 12, fontWeight: 'bold' }}>履歴から選ぶ</Text>
-              </TouchableOpacity>
-            </View>
-            
-            <Text style={{ color: '#888', fontSize: 12, marginBottom: 4, marginLeft: 4 }}>食べたもの</Text>
-            <TextInput style={[styles.inputField, { marginBottom: 10 }]} placeholder="例: 鶏むね肉" placeholderTextColor="#666" value={foodName} onChangeText={setFoodName} />
-            
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 10 }}>
-              <View style={{ flex: 1, marginRight: 5 }}>
-                <Text style={{ color: '#ccc', fontSize: 12, marginBottom: 4, marginLeft: 4 }}>カロリー (kcal)</Text>
-                <TextInput style={[styles.inputField, { marginBottom: 0 }]} keyboardType="numeric" placeholder="0" placeholderTextColor="#666" value={cal} onChangeText={setCal} />
-              </View>
-              <View style={{ flex: 1, marginLeft: 5 }}>
-                <Text style={{ color: '#4facfe', fontSize: 12, marginBottom: 4, marginLeft: 4 }}>タンパク質 P(g)</Text>
-                <TextInput style={[styles.inputField, { marginBottom: 0 }]} keyboardType="numeric" placeholder="0" placeholderTextColor="#666" value={pro} onChangeText={setPro} />
-              </View>
-            </View>
-            
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 15 }}>
-              <View style={{ flex: 1, marginRight: 5 }}>
-                <Text style={{ color: '#f6d365', fontSize: 12, marginBottom: 4, marginLeft: 4 }}>脂質 F(g)</Text>
-                <TextInput style={[styles.inputField, { marginBottom: 0 }]} keyboardType="numeric" placeholder="0" placeholderTextColor="#666" value={fat} onChangeText={setFat} />
-              </View>
-              <View style={{ flex: 1, marginLeft: 5 }}>
-                <Text style={{ color: '#ff0844', fontSize: 12, marginBottom: 4, marginLeft: 4 }}>炭水化物 C(g)</Text>
-                <TextInput style={[styles.inputField, { marginBottom: 0 }]} keyboardType="numeric" placeholder="0" placeholderTextColor="#666" value={carb} onChangeText={setCarb} />
-              </View>
-            </View>
-            
-            <TouchableOpacity style={[styles.loginButton, { marginTop: 0 }]} onPress={handleAddFood}>
-              <Text style={styles.loginButtonText}>リストに追加して保存</Text>
+        {/* ★ CopilotStep は削除し、ただの View に戻す */}
+        <View style={{ backgroundColor: '#1a1a1a', padding: 15, borderRadius: 12, marginBottom: 40 }}>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 15 }}>
+            <Text style={{ color: '#2ecc71', fontSize: 16, fontWeight: 'bold' }}>食事を追加・修正</Text>
+            <TouchableOpacity 
+              style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#333', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 15 }}
+              onPress={() => setDictModalVisible(true)}
+            >
+              <BookOpen color="#4facfe" size={16} style={{ marginRight: 5 }} />
+              <Text style={{ color: '#4facfe', fontSize: 12, fontWeight: 'bold' }}>履歴から選ぶ</Text>
             </TouchableOpacity>
-          </WalkthroughableView>
-        </CopilotStep>
+          </View>
+          
+          <Text style={{ color: '#888', fontSize: 12, marginBottom: 4, marginLeft: 4 }}>食べたもの</Text>
+          <TextInput style={[styles.inputField, { marginBottom: 10 }]} placeholder="例: 鶏むね肉" placeholderTextColor="#666" value={foodName} onChangeText={setFoodName} />
+          
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 10 }}>
+            <View style={{ flex: 1, marginRight: 5 }}>
+              <Text style={{ color: '#ccc', fontSize: 12, marginBottom: 4, marginLeft: 4 }}>カロリー (kcal)</Text>
+              <TextInput style={[styles.inputField, { marginBottom: 0 }]} keyboardType="numeric" placeholder="0" placeholderTextColor="#666" value={cal} onChangeText={setCal} />
+            </View>
+            <View style={{ flex: 1, marginLeft: 5 }}>
+              <Text style={{ color: '#4facfe', fontSize: 12, marginBottom: 4, marginLeft: 4 }}>タンパク質 P(g)</Text>
+              <TextInput style={[styles.inputField, { marginBottom: 0 }]} keyboardType="numeric" placeholder="0" placeholderTextColor="#666" value={pro} onChangeText={setPro} />
+            </View>
+          </View>
+          
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 15 }}>
+            <View style={{ flex: 1, marginRight: 5 }}>
+              <Text style={{ color: '#f6d365', fontSize: 12, marginBottom: 4, marginLeft: 4 }}>脂質 F(g)</Text>
+              <TextInput style={[styles.inputField, { marginBottom: 0 }]} keyboardType="numeric" placeholder="0" placeholderTextColor="#666" value={fat} onChangeText={setFat} />
+            </View>
+            <View style={{ flex: 1, marginLeft: 5 }}>
+              <Text style={{ color: '#ff0844', fontSize: 12, marginBottom: 4, marginLeft: 4 }}>炭水化物 C(g)</Text>
+              <TextInput style={[styles.inputField, { marginBottom: 0 }]} keyboardType="numeric" placeholder="0" placeholderTextColor="#666" value={carb} onChangeText={setCarb} />
+            </View>
+          </View>
+          
+          <TouchableOpacity style={[styles.loginButton, { marginTop: 0 }]} onPress={handleAddFood}>
+            <Text style={styles.loginButtonText}>リストに追加して保存</Text>
+          </TouchableOpacity>
+        </View>
 
       </ScrollView>
 
-      {/* 履歴から選ぶモーダル等のその他モーダルは省略せずそのまま */}
+      {/* モーダル等は変更なし */}
       <Modal visible={isDictModalVisible} transparent animationType="slide">
+        {/* 省略せずにそのまま */}
         <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.8)", justifyContent: "flex-end" }}>
           <View style={{ backgroundColor: "#2a2a2a", height: "85%", borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20 }}>
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', borderBottomWidth: 1, borderColor: '#444', paddingBottom: 15, marginBottom: 15 }}>
@@ -1307,21 +1286,23 @@ function FoodTabContent() {
         </View>
       </Modal>
 
-    </SafeAreaView>
+    </View>
   );
 }
 
 export default function FoodTabScreen() {
   return (
-    <CopilotProvider
-      stopOnOutsideClick={false}
-      androidStatusBarVisible={true}
-      backdropColor="rgba(0, 0, 0, 0.85)"
-      tooltipStyle={{ backgroundColor: "#ffffff", borderRadius: 12, margin: 16, paddingTop: 16, paddingBottom: 16 }}
-      stepNumberComponent={() => null}
-      labels={{ skip: "スキップ", previous: "前へ", next: "次へ", finish: "OK" }}
-    >
-      <FoodTabContent />
-    </CopilotProvider>
+    // ★ 変更: SafeAreaViewを外側に配置！これで座標ズレが直る
+    <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
+      <CopilotProvider
+        stopOnOutsideClick={false}
+        backdropColor="rgba(0, 0, 0, 0.85)"
+        tooltipStyle={{ backgroundColor: "#ffffff", borderRadius: 12, margin: 16, paddingTop: 16, paddingBottom: 16 }}
+        stepNumberComponent={() => null}
+        labels={{ skip: "スキップ", previous: "前へ", next: "次へ", finish: "OK" }}
+      >
+        <FoodTabContent />
+      </CopilotProvider>
+    </SafeAreaView>
   );
 }
