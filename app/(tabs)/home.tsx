@@ -803,7 +803,7 @@ function HomeTabContent() {
   };
 
   return (
-    <GestureHandlerRootView style={{ flex: 1 }}>
+    
       <View style={[styles.container, { flex: 1 }]}>
         {isEditMode ? (
           <DraggableFlatList 
@@ -852,14 +852,14 @@ function HomeTabContent() {
           onEditFood={handleEditFood}
         />
       </View>
-    </GestureHandlerRootView>
+    
   );
 }
 
 export default function HomeTabScreen() {
   return (
-    // ★ 変更: SafeAreaViewを外側に配置
-    <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
+    // ★ 変更: 一番外側を GestureHandlerRootView にする
+    <GestureHandlerRootView style={{ flex: 1 }}>
       <CopilotProvider
         stopOnOutsideClick={false} 
         backdropColor="rgba(0, 0, 0, 0.85)" 
@@ -867,8 +867,10 @@ export default function HomeTabScreen() {
         stepNumberComponent={() => null}
         labels={{ skip: "スキップ", previous: "前へ", next: "次へ", finish: "OK" }}
       >
-        <HomeTabContent />
+        <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
+          <HomeTabContent />
+        </SafeAreaView>
       </CopilotProvider>
-    </SafeAreaView>
+    </GestureHandlerRootView>
   );
 }
