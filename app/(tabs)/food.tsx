@@ -1,7 +1,7 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { getApp } from "firebase/app";
 import { getFunctions, httpsCallable } from "firebase/functions";
-import { doc, serverTimestamp, setDoc, getDoc, collection, query, getDocs } from "firebase/firestore";
+import { doc, serverTimestamp, setDoc, getDoc, collection, query, getDocs, Timestamp } from "firebase/firestore";
 import { Sparkles, Trash2, X, BookOpen, Search, Star, ClipboardList, Check, Plus } from "lucide-react-native";
 import React, { useState, useCallback, useEffect, useRef } from "react";
 import { useFocusEffect } from "@react-navigation/native";
@@ -96,6 +96,15 @@ function FoodTabContent() {
   const [searchQuery, setSearchQuery] = useState("");
   const [modalTab, setModalTab] = useState<'all' | 'favorites'>('all');
 
+  // 過去ログ読込中は誤書き込み（今日の値で過去ドキュメントを上書き／逆もまた然り）を防止する
+  const [isLoadingPast, setIsLoadingPast] = useState(false);
+  // 「保存ボタンを押した瞬間」の編集対象日付を確定するための ref。
+  // useLocalSearchParams 由来の editFoodDateId はクロージャで stale になり得るため。
+  const editingDateIdRef = useRef<string | "">("");
+  useEffect(() => {
+    editingDateIdRef.current = editFoodDateId ?? "";
+  }, [editFoodDateId]);
+
   const { start, copilotEvents } = useCopilot();
   const startTutorialRef = useRef(start);
   startTutorialRef.current = start;
@@ -152,6 +161,7 @@ function FoodTabContent() {
         if (!user) return;
 
         if (editFoodDateId) {
+          setIsLoadingPast(true);
           try {
             const docId = `${editFoodDateId}_Food`;
             const snap = await getDoc(doc(db, "users", user.uid, "food_logs", docId));
@@ -163,6 +173,9 @@ function FoodTabContent() {
             }
           } catch (e) {
             console.error("過去の食事ログ取得エラー:", e);
+            setMeals([]);
+          } finally {
+            setIsLoadingPast(false);
           }
         } else {
           const storageKey = `${STORAGE_KEY_BASE}${user.uid}`;
@@ -225,7 +238,29 @@ function FoodTabContent() {
     }, [editFoodDateId])
   );
 
+  // YYYY-MM-DD（過去日付ID）を、その日の正午(JST/ローカル)の Date に変換。
+  // 正午にすることでタイムゾーンずれによる「日跨ぎ」事故を防ぐ。
+  const dateIdToNoonDate = (dateId: string): Date | null => {
+    const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateId);
+    if (!m) return null;
+    const y = Number(m[1]);
+    const mo = Number(m[2]) - 1;
+    const d = Number(m[3]);
+    return new Date(y, mo, d, 12, 0, 0, 0);
+  };
+
   const saveMealsToAll = async (newMeals: Meal[]) => {
+    // ★ レース防止: 「保存ボタンが押された瞬間」のモードを ref から確定する。
+    //   useLocalSearchParams 由来の editFoodDateId は遷移直後に古い値を参照することがある。
+    const targetDateId = (editingDateIdRef.current || "").trim();
+    const isPastEdit = targetDateId.length > 0;
+
+    // ★ 過去データ読込中は保存させない（今日の値が過去ドキュメントへ漏れるのを防ぐ）
+    if (isPastEdit && isLoadingPast) {
+      Alert.alert("お待ちください", "過去の食事ログを読み込み中です。完了してから保存してください。");
+      return;
+    }
+
     setMeals(newMeals);
 
     const user = auth.currentUser;
@@ -236,20 +271,41 @@ function FoodTabContent() {
     const tFat = newMeals.reduce((s, i) => s + i.fat, 0);
     const tCarb = newMeals.reduce((s, i) => s + i.carb, 0);
 
-    if (editFoodDateId) {
+    if (isPastEdit) {
+      // ───── 過去日付の編集 ─────
+      // ★ 今日の AsyncStorage キャッシュには絶対に触らない（home の todayMeals を汚さない）。
+      // ★ 今日の food_logs ドキュメントには絶対に書き込まない。
+      // ★ date / dateObj は「対象の過去日付」を明示的に書き、今日の serverTimestamp() で上書きしない。
       try {
-        const docId = `${editFoodDateId}_Food`;
-        await setDoc(doc(db, 'users', user.uid, 'food_logs', docId), {
+        const docId = `${targetDateId}_Food`;
+        const ref = doc(db, 'users', user.uid, 'food_logs', docId);
+
+        const noon = dateIdToNoonDate(targetDateId);
+        const payload: Record<string, unknown> = {
           meals: newMeals,
           totalCal: tCal,
           totalPro: tPro,
           totalFat: tFat,
-          totalCarb: tCarb
-        }, { merge: true });
+          totalCarb: tCarb,
+          updatedAt: serverTimestamp(),
+        };
+        if (noon) {
+          // 既存の date を温存しつつ、未設定だった場合に備えて対象日付の Timestamp を入れる。
+          // ※ 既存ドキュメントに date があった場合はそれを優先するため、事前に getDoc で確認する。
+          const existing = await getDoc(ref);
+          const hasExistingDate = existing.exists() && existing.data()?.date != null;
+          if (!hasExistingDate) {
+            payload.date = Timestamp.fromDate(noon);
+            payload.dateObj = noon.toISOString();
+          }
+        }
+
+        await setDoc(ref, payload, { merge: true });
       } catch (e) {
         console.error("過去データの保存失敗:", e);
       }
     } else {
+      // ───── 今日の編集 ─────
       const storageKey = `${STORAGE_KEY_BASE}${user.uid}`;
       try {
         await AsyncStorage.setItem(storageKey, JSON.stringify(newMeals));
