@@ -13,7 +13,10 @@ import {
   TextInput,
   TouchableOpacity,
   View,
-  Modal
+  Modal,
+  FlatList,
+  Dimensions,
+  Image,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
@@ -25,8 +28,6 @@ import { useSubscriptionEntitlements } from "../../hooks/useSubscriptionEntitlem
 import { styles } from "../../theme/styles";
 import { callableCreateMealRoutine, callableDeleteMealRoutine } from "../../utils/aiUserContentCallables";
 import { sanitizeDocId } from "../../utils/firestoreUtils";
-
-import { CopilotProvider, CopilotStep, walkthroughable, useCopilot } from "react-native-copilot";
 
 type Meal = {
   id: string;
@@ -57,8 +58,7 @@ type ScratchMealDraft = {
 
 const STORAGE_KEY_BASE = "@food_meals_today_";
 const DATE_KEY_BASE = '@food_last_opened_date_';
-
-const WalkthroughableView = walkthroughable(View);
+const { width } = Dimensions.get("window");
 
 function foodAiSearchErrorMessage(err: unknown): string {
   const e = err as { message?: string; code?: string };
@@ -67,6 +67,93 @@ function foodAiSearchErrorMessage(err: unknown): string {
   }
   return e?.message || e?.code || "AIでの解析に失敗しました。";
 }
+
+// --- スライドチュートリアル用コンポーネント ---
+const FOOD_SLIDES = [
+  {
+    id: '1',
+    title: '1日の合計を把握',
+    description: '今日の総摂取カロリーと、PFC（タンパク質・脂質・炭水化物）のバランスをここで確認できます。',
+    // image: require('../../assets/tutorial-food-total.png'),
+  },
+  {
+    id: '2',
+    title: 'ルーティンでサクッと記録',
+    description: '毎日食べる決まったメニューは、ルーティンに登録しておけばワンタップで記録できます。',
+    // image: require('../../assets/tutorial-food-routine.png'),
+  },
+  {
+    id: '3',
+    title: 'AI＆辞書で簡単入力',
+    description: '『コンビニの牛丼』のように入力して検索するだけで、AIがカロリーと栄養素を自動で推測してくれます。',
+    // image: require('../../assets/tutorial-food-ai.png'),
+  }
+];
+
+const SlideTutorialModal: React.FC<{ visible: boolean; onFinish: () => void }> = ({ visible, onFinish }) => {
+  const [currentIndex, setCurrentIndex] = useState(0);
+  const flatListRef = useRef<FlatList>(null);
+
+  const onViewableItemsChanged = useRef(({ viewableItems }: any) => {
+    if (viewableItems.length > 0) {
+      setCurrentIndex(viewableItems[0].index);
+    }
+  }).current;
+  const viewConfig = useRef({ viewAreaCoveragePercentThreshold: 50 }).current;
+
+  const handleNext = () => {
+    if (currentIndex < FOOD_SLIDES.length - 1) {
+      flatListRef.current?.scrollToIndex({ index: currentIndex + 1 });
+    } else {
+      onFinish();
+    }
+  };
+
+  if (!visible) return null;
+
+  return (
+    <Modal visible={visible} animationType="fade" transparent>
+      <View style={{ flex: 1, backgroundColor: 'rgba(26, 26, 26, 0.95)' }}>
+        <SafeAreaView style={{ flex: 1 }}>
+          <FlatList
+            ref={flatListRef}
+            data={FOOD_SLIDES}
+            keyExtractor={(item) => item.id}
+            horizontal
+            pagingEnabled
+            showsHorizontalScrollIndicator={false}
+            bounces={false}
+            onViewableItemsChanged={onViewableItemsChanged}
+            viewabilityConfig={viewConfig}
+            renderItem={({ item }) => (
+              <View style={{ width, alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+                <View style={{ width: width * 0.8, height: width * 1.2, backgroundColor: '#333', borderRadius: 20, justifyContent: 'center', alignItems: 'center', marginBottom: 30 }}>
+                  <Text style={{ color: '#666' }}>スクショ用 ({item.id})</Text>
+                  {/* <Image source={item.image} style={{ width: '100%', height: '100%', borderRadius: 20 }} resizeMode="contain" /> */}
+                </View>
+                <Text style={{ color: '#fff', fontSize: 24, fontWeight: 'bold', marginBottom: 15, textAlign: 'center' }}>{item.title}</Text>
+                <Text style={{ color: '#aaa', fontSize: 16, textAlign: 'center', lineHeight: 24, paddingHorizontal: 10 }}>{item.description}</Text>
+              </View>
+            )}
+          />
+          <View style={{ padding: 20, paddingBottom: 40, alignItems: 'center' }}>
+            <View style={{ flexDirection: 'row', marginBottom: 30 }}>
+              {FOOD_SLIDES.map((_, index) => (
+                <View key={index} style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: currentIndex === index ? '#2ecc71' : '#555', marginHorizontal: 4, ...(currentIndex === index && { width: 24 }) }} />
+              ))}
+            </View>
+            <TouchableOpacity onPress={handleNext} style={{ backgroundColor: '#2ecc71', paddingVertical: 15, paddingHorizontal: 40, borderRadius: 30, width: '90%', alignItems: 'center' }}>
+              <Text style={{ color: '#000', fontSize: 18, fontWeight: 'bold' }}>
+                {currentIndex === FOOD_SLIDES.length - 1 ? 'はじめる' : '次へ'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </SafeAreaView>
+      </View>
+    </Modal>
+  );
+};
+// --- チュートリアルコンポーネントここまで ---
 
 function FoodTabContent() {
   const router = useRouter();
@@ -96,6 +183,9 @@ function FoodTabContent() {
   const [searchQuery, setSearchQuery] = useState("");
   const [modalTab, setModalTab] = useState<'all' | 'favorites'>('all');
 
+  // スライドチュートリアル用ステート
+  const [showSlideTutorial, setShowSlideTutorial] = useState(false);
+
   // 過去ログ読込中は誤書き込み（今日の値で過去ドキュメントを上書き／逆もまた然り）を防止する
   const [isLoadingPast, setIsLoadingPast] = useState(false);
   // 「保存ボタンを押した瞬間」の編集対象日付を確定するための ref。
@@ -104,12 +194,6 @@ function FoodTabContent() {
   useEffect(() => {
     editingDateIdRef.current = editFoodDateId ?? "";
   }, [editFoodDateId]);
-
-  const { start, copilotEvents } = useCopilot();
-  const startTutorialRef = useRef(start);
-  startTutorialRef.current = start;
-
-  // ★ スクロール処理はバグの元なので削除！
 
   useFocusEffect(
     useCallback(() => {
@@ -123,7 +207,7 @@ function FoodTabContent() {
           const hasSeen = await AsyncStorage.getItem(`@tutorial_food_${user.uid}`);
           if (!hasSeen && !cancelled) {
             timer = setTimeout(() => {
-              if (!cancelled) void startTutorialRef.current();
+              if (!cancelled) setShowSlideTutorial(true);
             }, 500);
           }
         } catch (e) {}
@@ -137,18 +221,13 @@ function FoodTabContent() {
     }, [])
   );
 
-  useEffect(() => {
-    const onStop = async () => {
-      const user = auth.currentUser;
-      if (user) {
-        await AsyncStorage.setItem(`@tutorial_food_${user.uid}`, "true");
-      }
-    };
-    copilotEvents.on("stop", onStop);
-    return () => {
-      copilotEvents.off("stop", onStop);
-    };
-  }, [copilotEvents]);
+  const handleFinishTutorial = async () => {
+    setShowSlideTutorial(false);
+    const user = auth.currentUser;
+    if (user) {
+      await AsyncStorage.setItem(`@tutorial_food_${user.uid}`, "true");
+    }
+  };
 
   const sortDictMeals = (data: Meal[]) => {
     return [...data].sort((a, b) => a.name.localeCompare(b.name, 'ja'));
@@ -238,8 +317,6 @@ function FoodTabContent() {
     }, [editFoodDateId])
   );
 
-  // YYYY-MM-DD（過去日付ID）を、その日の正午(JST/ローカル)の Date に変換。
-  // 正午にすることでタイムゾーンずれによる「日跨ぎ」事故を防ぐ。
   const dateIdToNoonDate = (dateId: string): Date | null => {
     const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateId);
     if (!m) return null;
@@ -250,12 +327,9 @@ function FoodTabContent() {
   };
 
   const saveMealsToAll = async (newMeals: Meal[]) => {
-    // ★ レース防止: 「保存ボタンが押された瞬間」のモードを ref から確定する。
-    //   useLocalSearchParams 由来の editFoodDateId は遷移直後に古い値を参照することがある。
     const targetDateId = (editingDateIdRef.current || "").trim();
     const isPastEdit = targetDateId.length > 0;
 
-    // ★ 過去データ読込中は保存させない（今日の値が過去ドキュメントへ漏れるのを防ぐ）
     if (isPastEdit && isLoadingPast) {
       Alert.alert("お待ちください", "過去の食事ログを読み込み中です。完了してから保存してください。");
       return;
@@ -272,10 +346,6 @@ function FoodTabContent() {
     const tCarb = newMeals.reduce((s, i) => s + i.carb, 0);
 
     if (isPastEdit) {
-      // ───── 過去日付の編集 ─────
-      // ★ 今日の AsyncStorage キャッシュには絶対に触らない（home の todayMeals を汚さない）。
-      // ★ 今日の food_logs ドキュメントには絶対に書き込まない。
-      // ★ date / dateObj は「対象の過去日付」を明示的に書き、今日の serverTimestamp() で上書きしない。
       try {
         const docId = `${targetDateId}_Food`;
         const ref = doc(db, 'users', user.uid, 'food_logs', docId);
@@ -290,8 +360,6 @@ function FoodTabContent() {
           updatedAt: serverTimestamp(),
         };
         if (noon) {
-          // 既存の date を温存しつつ、未設定だった場合に備えて対象日付の Timestamp を入れる。
-          // ※ 既存ドキュメントに date があった場合はそれを優先するため、事前に getDoc で確認する。
           const existing = await getDoc(ref);
           const hasExistingDate = existing.exists() && existing.data()?.date != null;
           if (!hasExistingDate) {
@@ -305,7 +373,6 @@ function FoodTabContent() {
         console.error("過去データの保存失敗:", e);
       }
     } else {
-      // ───── 今日の編集 ─────
       const storageKey = `${STORAGE_KEY_BASE}${user.uid}`;
       try {
         await AsyncStorage.setItem(storageKey, JSON.stringify(newMeals));
@@ -744,7 +811,6 @@ function FoodTabContent() {
   });
 
   return (
-    // ★ 変更: SafeAreaView は外側に移動したので、ここではただの View に変更
     <View style={[styles.container, { flex: 1 }]}>
       {editFoodDateId && (
         <View style={{ backgroundColor: '#2ecc71', padding: 8, flexDirection: 'row', alignItems: 'center' }}>
@@ -774,129 +840,122 @@ function FoodTabContent() {
       </View>
       <ScrollView contentContainerStyle={{ padding: 20 }}>
         
-        <CopilotStep text="今日の総摂取カロリーと、PFC（タンパク質・脂質・炭水化物）のバランスをここで確認できます。" order={1} name="foodTotal">
-          <WalkthroughableView style={{ backgroundColor: "#1a1a1a", padding: 20, borderRadius: 16, marginBottom: 20 }}>
-            <Text style={{ color: "#fff", fontSize: 18, fontWeight: "bold", marginBottom: 15, textAlign: "center" }}>1日の合計摂取量</Text>
-            <View style={{ alignItems: "center", marginBottom: 20 }}>
-              <Text style={{ color: "#666", fontSize: 14, marginBottom: 5 }}>カロリー</Text>
-              <Text style={{ color: "#2ecc71", fontSize: 32, fontWeight: "bold" }}>{totalCal} <Text style={{ fontSize: 16 }}>kcal</Text></Text>
+        <View style={{ backgroundColor: "#1a1a1a", padding: 20, borderRadius: 16, marginBottom: 20 }}>
+          <Text style={{ color: "#fff", fontSize: 18, fontWeight: "bold", marginBottom: 15, textAlign: "center" }}>1日の合計摂取量</Text>
+          <View style={{ alignItems: "center", marginBottom: 20 }}>
+            <Text style={{ color: "#666", fontSize: 14, marginBottom: 5 }}>カロリー</Text>
+            <Text style={{ color: "#2ecc71", fontSize: 32, fontWeight: "bold" }}>{totalCal} <Text style={{ fontSize: 16 }}>kcal</Text></Text>
+          </View>
+          <View style={{ flexDirection: "row", justifyContent: "space-around" }}>
+            <View style={{ alignItems: "center" }}>
+              <Text style={{ color: "#666", fontSize: 12 }}>タンパク質</Text>
+              <Text style={{ color: "#4facfe", fontSize: 20, fontWeight: "bold" }}>{totalPro}g</Text>
             </View>
-            <View style={{ flexDirection: "row", justifyContent: "space-around" }}>
-              <View style={{ alignItems: "center" }}>
-                <Text style={{ color: "#666", fontSize: 12 }}>タンパク質</Text>
-                <Text style={{ color: "#4facfe", fontSize: 20, fontWeight: "bold" }}>{totalPro}g</Text>
-              </View>
-              <View style={{ alignItems: "center" }}>
-                <Text style={{ color: "#666", fontSize: 12 }}>脂質</Text>
-                <Text style={{ color: "#f6d365", fontSize: 20, fontWeight: "bold" }}>{totalFat}g</Text>
-              </View>
-              <View style={{ alignItems: "center" }}>
-                <Text style={{ color: "#666", fontSize: 12 }}>炭水化物</Text>
-                <Text style={{ color: "#ff0844", fontSize: 20, fontWeight: "bold" }}>{totalCarb}g</Text>
-              </View>
+            <View style={{ alignItems: "center" }}>
+              <Text style={{ color: "#666", fontSize: 12 }}>脂質</Text>
+              <Text style={{ color: "#f6d365", fontSize: 20, fontWeight: "bold" }}>{totalFat}g</Text>
             </View>
-          </WalkthroughableView>
-        </CopilotStep>
+            <View style={{ alignItems: "center" }}>
+              <Text style={{ color: "#666", fontSize: 12 }}>炭水化物</Text>
+              <Text style={{ color: "#ff0844", fontSize: 20, fontWeight: "bold" }}>{totalCarb}g</Text>
+            </View>
+          </View>
+        </View>
 
-        <CopilotStep text="毎日食べる決まったメニューは、ルーティンに登録しておけばワンタップでサクッと記録できます。" order={2} name="foodRoutine">
-          <WalkthroughableView style={{ backgroundColor: "#252525", padding: 16, borderRadius: 14, marginBottom: 20, borderWidth: 1, borderColor: "#333" }}>
-            <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 10 }}>
-              <ClipboardList color="#f1c40f" size={20} style={{ marginRight: 8 }} />
-              <Text style={{ color: "#fff", fontSize: 16, fontWeight: "bold", flex: 1 }}>食事ルーティーン</Text>
-              <Text style={{ color: "#888", fontSize: 12 }}>
-                {mealRoutineUnlimited
-                  ? "無制限"
-                  : `${mealRoutines.length} / ${FREE_MEAL_ROUTINE_LIMIT}`}
-              </Text>
-            </View>
-            <Text style={{ color: "#888", fontSize: 12, marginBottom: 12, lineHeight: 18 }}>
-              定番の組み合わせをワンタップで今日のリストに追加できます。無料は {FREE_MEAL_ROUTINE_LIMIT} 件まで保存可能です。
+        <View style={{ backgroundColor: "#252525", padding: 16, borderRadius: 14, marginBottom: 20, borderWidth: 1, borderColor: "#333" }}>
+          <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 10 }}>
+            <ClipboardList color="#f1c40f" size={20} style={{ marginRight: 8 }} />
+            <Text style={{ color: "#fff", fontSize: 16, fontWeight: "bold", flex: 1 }}>食事ルーティーン</Text>
+            <Text style={{ color: "#888", fontSize: 12 }}>
+              {mealRoutineUnlimited
+                ? "無制限"
+                : `${mealRoutines.length} / ${FREE_MEAL_ROUTINE_LIMIT}`}
             </Text>
-            <View style={{ gap: 10, marginBottom: 12 }}>
-              <TouchableOpacity
-                style={{ backgroundColor: "#333", paddingVertical: 12, borderRadius: 10, alignItems: "center" }}
-                onPress={() => {
-                  if (!mealRoutineUnlimited && mealRoutines.length >= FREE_MEAL_ROUTINE_LIMIT) {
-                    promptRoutineUpgrade();
-                    return;
-                  }
-                  openRoutineFromToday();
+          </View>
+          <Text style={{ color: "#888", fontSize: 12, marginBottom: 12, lineHeight: 18 }}>
+            定番の組み合わせをワンタップで今日のリストに追加できます。無料は {FREE_MEAL_ROUTINE_LIMIT} 件まで保存可能です。
+          </Text>
+          <View style={{ gap: 10, marginBottom: 12 }}>
+            <TouchableOpacity
+              style={{ backgroundColor: "#333", paddingVertical: 12, borderRadius: 10, alignItems: "center" }}
+              onPress={() => {
+                if (!mealRoutineUnlimited && mealRoutines.length >= FREE_MEAL_ROUTINE_LIMIT) {
+                  promptRoutineUpgrade();
+                  return;
+                }
+                openRoutineFromToday();
+              }}
+            >
+              <Text style={{ color: "#4facfe", fontWeight: "700" }}>今日の食事から作成</Text>
+              <Text style={{ color: "#666", fontSize: 11, marginTop: 4 }}>一覧から品目を選んで保存</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={{ backgroundColor: "#333", paddingVertical: 12, borderRadius: 10, alignItems: "center" }}
+              onPress={() => {
+                if (!mealRoutineUnlimited && mealRoutines.length >= FREE_MEAL_ROUTINE_LIMIT) {
+                  promptRoutineUpgrade();
+                  return;
+                }
+                openRoutineFromScratch();
+              }}
+            >
+              <Text style={{ color: "#f1c40f", fontWeight: "700" }}>ゼロから作成</Text>
+              <Text style={{ color: "#666", fontSize: 11, marginTop: 4 }}>品目を自由に入力してルーティーン化</Text>
+            </TouchableOpacity>
+          </View>
+          {mealRoutines.length === 0 ? (
+            <Text style={{ color: "#666", fontSize: 13 }}>まだルーティーンがありません</Text>
+          ) : (
+            mealRoutines.map((r) => (
+              <View
+                key={r.id}
+                style={{
+                  backgroundColor: "#1a1a1a",
+                  borderRadius: 10,
+                  padding: 12,
+                  marginBottom: 10,
+                  flexDirection: "row",
+                  alignItems: "center",
                 }}
               >
-                <Text style={{ color: "#4facfe", fontWeight: "700" }}>今日の食事から作成</Text>
-                <Text style={{ color: "#666", fontSize: 11, marginTop: 4 }}>一覧から品目を選んで保存</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={{ backgroundColor: "#333", paddingVertical: 12, borderRadius: 10, alignItems: "center" }}
-                onPress={() => {
-                  if (!mealRoutineUnlimited && mealRoutines.length >= FREE_MEAL_ROUTINE_LIMIT) {
-                    promptRoutineUpgrade();
-                    return;
-                  }
-                  openRoutineFromScratch();
-                }}
-              >
-                <Text style={{ color: "#f1c40f", fontWeight: "700" }}>ゼロから作成</Text>
-                <Text style={{ color: "#666", fontSize: 11, marginTop: 4 }}>品目を自由に入力してルーティーン化</Text>
-              </TouchableOpacity>
-            </View>
-            {mealRoutines.length === 0 ? (
-              <Text style={{ color: "#666", fontSize: 13 }}>まだルーティーンがありません</Text>
-            ) : (
-              mealRoutines.map((r) => (
-                <View
-                  key={r.id}
-                  style={{
-                    backgroundColor: "#1a1a1a",
-                    borderRadius: 10,
-                    padding: 12,
-                    marginBottom: 10,
-                    flexDirection: "row",
-                    alignItems: "center",
-                  }}
-                >
-                  <View style={{ flex: 1 }}>
-                    <Text style={{ color: "#fff", fontWeight: "700", marginBottom: 4 }}>{r.name}</Text>
-                    <Text style={{ color: "#888", fontSize: 11 }}>
-                      {r.meals.length} 品（計 {r.meals.reduce((s, m) => s + m.cal, 0)} kcal）
-                    </Text>
-                  </View>
-                  <TouchableOpacity
-                    style={{ backgroundColor: "#2ecc71", paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8, marginRight: 8 }}
-                    onPress={() => void applyMealRoutine(r)}
-                  >
-                    <Text style={{ color: "#000", fontWeight: "800", fontSize: 12 }}>追加</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity onPress={() => removeMealRoutine(r.id)} style={{ padding: 8 }}>
-                    <Trash2 color="#ff4444" size={20} />
-                  </TouchableOpacity>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ color: "#fff", fontWeight: "700", marginBottom: 4 }}>{r.name}</Text>
+                  <Text style={{ color: "#888", fontSize: 11 }}>
+                    {r.meals.length} 品（計 {r.meals.reduce((s, m) => s + m.cal, 0)} kcal）
+                  </Text>
                 </View>
-              ))
-            )}
-          </WalkthroughableView>
-        </CopilotStep>
+                <TouchableOpacity
+                  style={{ backgroundColor: "#2ecc71", paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8, marginRight: 8 }}
+                  onPress={() => void applyMealRoutine(r)}
+                >
+                  <Text style={{ color: "#000", fontWeight: "800", fontSize: 12 }}>追加</Text>
+                </TouchableOpacity>
+                <TouchableOpacity onPress={() => removeMealRoutine(r.id)} style={{ padding: 8 }}>
+                  <Trash2 color="#ff4444" size={20} />
+                </TouchableOpacity>
+              </View>
+            ))
+          )}
+        </View>
 
-        {/* ★ 食事タブのチュートリアルはここで終わり！ */}
-        <CopilotStep text="『コンビニの牛丼』のように入力して検索するだけで、AIがカロリーと栄養素を自動で推測してくれます。" order={3} name="foodAi">
-          <WalkthroughableView style={{ backgroundColor: "#2a2a2a", padding: 15, borderRadius: 12, marginBottom: 20, borderWidth: 1, borderColor: "#444" }}>
-            <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 10 }}>
-              <Sparkles color="#4facfe" size={20} style={{ marginRight: 8 }} />
-              <Text style={{ color: "#fff", fontSize: 16, fontWeight: "bold" }}>AI ＆ 辞書検索</Text>
-            </View>
-            <View style={{ flexDirection: "row", gap: 10 }}>
-              <TextInput
-                style={[styles.inputField, { flex: 1, marginBottom: 0 }]}
-                placeholder="例: コンビニの牛丼 並盛"
-                placeholderTextColor="#666"
-                value={aiInput}
-                onChangeText={setAiInput}
-              />
-              <TouchableOpacity style={[styles.loginButton, { marginTop: 0, width: 60, justifyContent: "center" }]} onPress={handleAIGenerate} disabled={isAiLoading}>
-                {isAiLoading ? <ActivityIndicator color="#000" /> : <Text style={{ color: "#000", fontWeight: "bold" }}>検索</Text>}
-              </TouchableOpacity>
-            </View>
-          </WalkthroughableView>
-        </CopilotStep>
+        <View style={{ backgroundColor: "#2a2a2a", padding: 15, borderRadius: 12, marginBottom: 20, borderWidth: 1, borderColor: "#444" }}>
+          <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 10 }}>
+            <Sparkles color="#4facfe" size={20} style={{ marginRight: 8 }} />
+            <Text style={{ color: "#fff", fontSize: 16, fontWeight: "bold" }}>AI ＆ 辞書検索</Text>
+          </View>
+          <View style={{ flexDirection: "row", gap: 10 }}>
+            <TextInput
+              style={[styles.inputField, { flex: 1, marginBottom: 0 }]}
+              placeholder="例: コンビニの牛丼 並盛"
+              placeholderTextColor="#666"
+              value={aiInput}
+              onChangeText={setAiInput}
+            />
+            <TouchableOpacity style={[styles.loginButton, { marginTop: 0, width: 60, justifyContent: "center" }]} onPress={handleAIGenerate} disabled={isAiLoading}>
+              {isAiLoading ? <ActivityIndicator color="#000" /> : <Text style={{ color: "#000", fontWeight: "bold" }}>検索</Text>}
+            </TouchableOpacity>
+          </View>
+        </View>
 
         {meals.length > 0 && (
           <View style={{ marginBottom: 20 }}>
@@ -915,7 +974,6 @@ function FoodTabContent() {
           </View>
         )}
 
-        {/* ★ CopilotStep は削除し、ただの View に戻す */}
         <View style={{ backgroundColor: '#1a1a1a', padding: 15, borderRadius: 12, marginBottom: 40 }}>
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 15 }}>
             <Text style={{ color: '#2ecc71', fontSize: 16, fontWeight: 'bold' }}>食事を追加・修正</Text>
@@ -960,9 +1018,7 @@ function FoodTabContent() {
 
       </ScrollView>
 
-      {/* モーダル等は変更なし */}
       <Modal visible={isDictModalVisible} transparent animationType="slide">
-        {/* 省略せずにそのまま */}
         <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.8)", justifyContent: "flex-end" }}>
           <View style={{ backgroundColor: "#2a2a2a", height: "85%", borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20 }}>
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', borderBottomWidth: 1, borderColor: '#444', paddingBottom: 15, marginBottom: 15 }}>
@@ -1342,23 +1398,20 @@ function FoodTabContent() {
         </View>
       </Modal>
 
+      {/* スライドチュートリアル */}
+      <SlideTutorialModal 
+        visible={showSlideTutorial} 
+        onFinish={handleFinishTutorial} 
+      />
+
     </View>
   );
 }
 
 export default function FoodTabScreen() {
   return (
-    // ★ 変更: SafeAreaViewを外側に配置！これで座標ズレが直る
     <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
-      <CopilotProvider
-        stopOnOutsideClick={false}
-        backdropColor="rgba(0, 0, 0, 0.85)"
-        tooltipStyle={{ backgroundColor: "#ffffff", borderRadius: 12, margin: 16, paddingTop: 16, paddingBottom: 16 }}
-        stepNumberComponent={() => null}
-        labels={{ skip: "スキップ", previous: "前へ", next: "次へ", finish: "OK" }}
-      >
-        <FoodTabContent />
-      </CopilotProvider>
+      <FoodTabContent />
     </SafeAreaView>
   );
 }
