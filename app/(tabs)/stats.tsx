@@ -8,7 +8,9 @@ import {
   TouchableOpacity,
   Modal,
   SectionList,
-  TouchableWithoutFeedback
+  TouchableWithoutFeedback,
+  FlatList,
+  Image
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
@@ -21,9 +23,6 @@ import { auth, db } from '../../firebaseConfig';
 import { styles } from '../../theme/styles';
 import GoalProgressCard from '../../components/goal/GoalProgressCard';
 import WeightTrendCard from '../../components/metrics/WeightTrendCard';
-
-// ★追加：Copilotのインポート
-import { CopilotProvider, CopilotStep, walkthroughable, useCopilot } from "react-native-copilot";
 
 const screenWidth = Dimensions.get("window").width;
 
@@ -55,11 +54,89 @@ function partSubLabel(full: string): string {
   return m?.[1]?.trim() ?? "";
 }
 
-// ★追加：ラップ用コンポーネントの定義
-const WalkthroughableView = walkthroughable(View);
-
 const PART_GRID_GAP = 10;
 const H_PAD = 20;
+
+// --- スライドチュートリアル用コンポーネント ---
+const STATS_SLIDES = [
+  {
+    id: '1',
+    title: '成長を振り返る',
+    description: '過去のトレーニングや体重、食事の記録を振り返り、日々の成長を実感しましょう。',
+    // image: require('../../assets/tutorial-stats-overall.png'),
+  },
+  {
+    id: '2',
+    title: '部位・種目ごとの分析',
+    description: '部位ごとに推定1RMの推移を見たり、特定の種目の成長グラフを確認できます。',
+    // image: require('../../assets/tutorial-stats-detail.png'),
+  }
+];
+
+const SlideTutorialModal: React.FC<{ visible: boolean; onFinish: () => void }> = ({ visible, onFinish }) => {
+  const [currentIndex, setCurrentIndex] = useState(0);
+  const flatListRef = useRef<FlatList>(null);
+
+  const onViewableItemsChanged = useRef(({ viewableItems }: any) => {
+    if (viewableItems.length > 0) {
+      setCurrentIndex(viewableItems[0].index);
+    }
+  }).current;
+  const viewConfig = useRef({ viewAreaCoveragePercentThreshold: 50 }).current;
+
+  const handleNext = () => {
+    if (currentIndex < STATS_SLIDES.length - 1) {
+      flatListRef.current?.scrollToIndex({ index: currentIndex + 1 });
+    } else {
+      onFinish();
+    }
+  };
+
+  if (!visible) return null;
+
+  return (
+    <Modal visible={visible} animationType="fade" transparent>
+      <View style={{ flex: 1, backgroundColor: 'rgba(26, 26, 26, 0.95)' }}>
+        <SafeAreaView style={{ flex: 1 }}>
+          <FlatList
+            ref={flatListRef}
+            data={STATS_SLIDES}
+            keyExtractor={(item) => item.id}
+            horizontal
+            pagingEnabled
+            showsHorizontalScrollIndicator={false}
+            bounces={false}
+            onViewableItemsChanged={onViewableItemsChanged}
+            viewabilityConfig={viewConfig}
+            renderItem={({ item }) => (
+              <View style={{ width: screenWidth, alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+                <View style={{ width: screenWidth * 0.8, height: screenWidth * 1.2, backgroundColor: '#333', borderRadius: 20, justifyContent: 'center', alignItems: 'center', marginBottom: 30 }}>
+                  <Text style={{ color: '#666' }}>スクショ用 ({item.id})</Text>
+                  {/* <Image source={item.image} style={{ width: '100%', height: '100%', borderRadius: 20 }} resizeMode="contain" /> */}
+                </View>
+                <Text style={{ color: '#fff', fontSize: 24, fontWeight: 'bold', marginBottom: 15, textAlign: 'center' }}>{item.title}</Text>
+                <Text style={{ color: '#aaa', fontSize: 16, textAlign: 'center', lineHeight: 24, paddingHorizontal: 10 }}>{item.description}</Text>
+              </View>
+            )}
+          />
+          <View style={{ padding: 20, paddingBottom: 40, alignItems: 'center' }}>
+            <View style={{ flexDirection: 'row', marginBottom: 30 }}>
+              {STATS_SLIDES.map((_, index) => (
+                <View key={index} style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: currentIndex === index ? '#2ecc71' : '#555', marginHorizontal: 4, ...(currentIndex === index && { width: 24 }) }} />
+              ))}
+            </View>
+            <TouchableOpacity onPress={handleNext} style={{ backgroundColor: '#2ecc71', paddingVertical: 15, paddingHorizontal: 40, borderRadius: 30, width: '90%', alignItems: 'center' }}>
+              <Text style={{ color: '#000', fontSize: 18, fontWeight: 'bold' }}>
+                {currentIndex === STATS_SLIDES.length - 1 ? 'はじめる' : '次へ'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </SafeAreaView>
+      </View>
+    </Modal>
+  );
+};
+// --- チュートリアルコンポーネントここまで ---
 
 function StatsTabContent() {
   const [loading, setLoading] = useState(true);
@@ -78,13 +155,10 @@ function StatsTabContent() {
   const [exerciseProgress, setExerciseProgress] = useState<{ labels: string[], values: number[] }>({ labels: [], values: [] });
   const [isDropdownVisible, setDropdownVisible] = useState(false);
 
-  // ★ 追加：選んだ種目が有酸素かどうかでグラフの単位を変えるState
   const [exerciseUnit, setExerciseUnit] = useState<string>("kg");
 
-  // ★追加：CopilotのHooksとタイマー管理
-  const { start, copilotEvents } = useCopilot();
-  const startTutorialRef = useRef(start);
-  startTutorialRef.current = start;
+  // スライドチュートリアル用ステート
+  const [showSlideTutorial, setShowSlideTutorial] = useState(false);
 
   useFocusEffect(
     useCallback(() => {
@@ -98,7 +172,7 @@ function StatsTabContent() {
           const hasSeen = await AsyncStorage.getItem(`@tutorial_stats_${user.uid}`);
           if (!hasSeen && !cancelled) {
             timer = setTimeout(() => {
-              if (!cancelled) void startTutorialRef.current();
+              if (!cancelled) setShowSlideTutorial(true);
             }, 500);
           }
         } catch (e) {}
@@ -112,18 +186,13 @@ function StatsTabContent() {
     }, [])
   );
 
-  useEffect(() => {
-    const onStop = async () => {
-      const user = auth.currentUser;
-      if (user) {
-        await AsyncStorage.setItem(`@tutorial_stats_${user.uid}`, "true");
-      }
-    };
-    copilotEvents.on("stop", onStop);
-    return () => {
-      copilotEvents.off("stop", onStop);
-    };
-  }, [copilotEvents]);
+  const handleFinishTutorial = async () => {
+    setShowSlideTutorial(false);
+    const user = auth.currentUser;
+    if (user) {
+      await AsyncStorage.setItem(`@tutorial_stats_${user.uid}`, "true");
+    }
+  };
 
   const fetchStatsData = useCallback(async () => {
     const user = auth.currentUser;
@@ -170,7 +239,6 @@ function StatsTabContent() {
       const exLabelsArr: string[] = [];
       const exValuesArr: number[] = [];
       
-      // ★ 変更：SetからMapに変えて、カテゴリー（部位）も一緒に記憶する
       const uniqueExercises = new Map<string, string>();
 
       wSnapshot.docs.forEach(docSnap => {
@@ -185,10 +253,8 @@ function StatsTabContent() {
           data.exercises.forEach((ex: any) => {
             if (ex.name) uniqueExercises.set(ex.name, ex.category || "他");
             
-            // ★ 有酸素かどうか判定
             const isCardio = (ex.category || "").includes("有酸素");
 
-            // 部位グラフの集計（有酸素は除外し、完了チェックがついてるものだけ）
             if (ex.category === currentTargetPart && !isCardio) {
               (ex.sets ?? []).forEach((set: any) => {
                 if (set.done && set.weight && set.reps) {
@@ -198,19 +264,15 @@ function StatsTabContent() {
               });
             }
 
-            // 種目グラフの集計（★ オリジナル種目・有酸素に対応！）
             if (ex.name === selectedExercise) {
               (ex.sets ?? []).forEach((set: any) => {
-                // done(完了)がtrueのものだけ計算する
                 if (set.done) {
                   if (isCardio) {
-                    // 有酸素の場合は距離か時間を使う
                     const dist = parseFloat(set.distanceKm || "0");
                     const mins = parseFloat(set.durationMinutes || "0");
-                    const val = dist > 0 ? dist : mins; // 距離があれば優先
+                    const val = dist > 0 ? dist : mins; 
                     if (val > maxExRmForThisDay) maxExRmForThisDay = val;
                   } else {
-                    // 筋トレの場合は推定1RM
                     if (set.weight && set.reps) {
                       const estimatedRM = parseFloat(set.weight) * (1 + parseInt(set.reps) / 30);
                       if (estimatedRM > maxExRmForThisDay) maxExRmForThisDay = Math.round(estimatedRM);
@@ -268,7 +330,6 @@ function StatsTabContent() {
         }
       }
 
-      // 3. 食事データの取得
       const fQuery = query(collection(db, "users", user.uid, "food_logs"), orderBy("date", "desc"), limit(5));
       const fSnapshot = await getDocs(fQuery);
       setRecentFoods(fSnapshot.docs.map(d => {
@@ -342,20 +403,13 @@ function StatsTabContent() {
   };
 
   return (
-    <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
+    <View style={[styles.container, { flex: 1 }]}>
       
-      {/* ★STEP 1: ヘッダーを光らせて画面全体を説明 */}
-      <CopilotStep
-        text="ここでは過去のトレーニングや体重、食事の記録を振り返ることができます。日々の成長をチェックしましょう！"
-        order={1}
-        name="statsIntro"
-      >
-        <WalkthroughableView style={styles.headerRow}>
-          <View style={styles.headerContent}>
-            <Text style={styles.headerLabel}>Analytics</Text>
-          </View>
-        </WalkthroughableView>
-      </CopilotStep>
+      <View style={styles.headerRow}>
+        <View style={styles.headerContent}>
+          <Text style={styles.headerLabel}>Analytics</Text>
+        </View>
+      </View>
 
       <ScrollView 
         contentContainerStyle={{ paddingVertical: 20 }}
@@ -608,7 +662,6 @@ function StatsTabContent() {
 
             <View style={{ backgroundColor: '#1a1a1a', borderRadius: 16, paddingVertical: 15, alignItems: 'center', marginBottom: 35, minHeight: 200, justifyContent: 'center', borderWidth: 1, borderColor: '#333' }}>
               {exerciseProgress.values.length > 1 ? (
-                // ★ yAxisSuffix に単位をセット
                 <LineChart data={{ labels: exerciseProgress.labels, datasets: [{ data: exerciseProgress.values }] }} width={screenWidth - 40} height={220} chartConfig={chartConfigPink} yAxisSuffix={exerciseUnit === "kg" ? "" : ` ${exerciseUnit}`} bezier style={{ borderRadius: 16 }} />
               ) : exerciseProgress.values.length === 1 ? (
                 <BarChart data={{ labels: exerciseProgress.labels, datasets: [{ data: exerciseProgress.values }] }} width={screenWidth - 40} height={220} chartConfig={chartConfigPink} yAxisLabel="" yAxisSuffix={exerciseUnit} fromZero showValuesOnTopOfBars style={{ borderRadius: 16 }} />
@@ -707,20 +760,19 @@ function StatsTabContent() {
         </TouchableWithoutFeedback>
       </Modal>
 
-    </SafeAreaView>
+      {/* スライドチュートリアル */}
+      <SlideTutorialModal 
+        visible={showSlideTutorial} 
+        onFinish={handleFinishTutorial} 
+      />
+    </View>
   );
 }
 
 export default function StatsTabScreen() {
   return (
-    <CopilotProvider
-      stopOnOutsideClick={true}
-      androidStatusBarVisible={true}
-      tooltipStyle={{ backgroundColor: "#ffffff", borderRadius: 12, margin: 16 }}
-      stepNumberComponent={() => null}
-      labels={{ skip: "スキップ", previous: "前へ", next: "次へ", finish: "OK" }}
-    >
+    <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
       <StatsTabContent />
-    </CopilotProvider>
+    </SafeAreaView>
   );
 }
