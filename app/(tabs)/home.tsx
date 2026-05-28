@@ -28,6 +28,7 @@ import {
   ActivityIndicator,
   Alert,
   FlatList,
+  Dimensions,
   InteractionManager,
   Modal,
   Platform,
@@ -42,7 +43,6 @@ import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaView } from "react-native-safe-area-context";
 import * as Haptics from "expo-haptics";
 import { usePathname, useRouter } from "expo-router";
-import { CopilotProvider, CopilotStep, walkthroughable, useCopilot } from "react-native-copilot";
 
 import { HOME_WIDGET_LABELS, type HomeWidgetId, hiddenWidgetIds } from "../../constants/homeWidgets";
 import { auth, db } from "../../firebaseConfig";
@@ -58,8 +58,9 @@ import {
   hasSeenHomeTutorial,
   markHomeTutorialSeen,
   TUTORIAL_REPLAY_PENDING_KEY,
-  tutorialHomeKeyForUser,
 } from "../../utils/homeTutorialStorage";
+
+const { width } = Dimensions.get('window');
 
 type WorkoutSet = { weight?: number | string; reps?: number | string; durationMinutes?: number | string; distanceKm?: number | string; done: boolean; };
 type WorkoutExercise = { name: string; sets: WorkoutSet[]; category?: string; };
@@ -75,7 +76,93 @@ const formatTime = (totalSeconds: number | undefined) => {
   return h > 0 ? `${h}:${m}:${s}` : `${m}:${s}`;
 };
 
-const WalkthroughableView = walkthroughable(View);
+// --- スライドチュートリアル用コンポーネント ---
+const SLIDES = [
+  {
+    id: '1',
+    title: 'ホーム画面',
+    description: 'ここで今日のトレーニングや食事の記録を一目で確認できます。',
+    // image: require('../../assets/tutorial-home.png'),
+  },
+  {
+    id: '2',
+    title: 'カレンダー機能',
+    description: '日付をタップすると、その日の詳しい記録を確認・追加できます。',
+    // image: require('../../assets/tutorial-calendar.png'),
+  },
+  {
+    id: '3',
+    title: 'さあ、始めよう',
+    description: 'まずは今日のトレーニングを記録してみましょう！各ウィジェットの長押しで配置の編集も可能です。',
+    // image: require('../../assets/tutorial-start.png'),
+  }
+];
+
+const SlideTutorialModal: React.FC<{ visible: boolean; onFinish: () => void }> = ({ visible, onFinish }) => {
+  const [currentIndex, setCurrentIndex] = useState(0);
+  const flatListRef = useRef<FlatList>(null);
+
+  const onViewableItemsChanged = useRef(({ viewableItems }: any) => {
+    if (viewableItems.length > 0) {
+      setCurrentIndex(viewableItems[0].index);
+    }
+  }).current;
+  const viewConfig = useRef({ viewAreaCoveragePercentThreshold: 50 }).current;
+
+  const handleNext = () => {
+    if (currentIndex < SLIDES.length - 1) {
+      flatListRef.current?.scrollToIndex({ index: currentIndex + 1 });
+    } else {
+      onFinish();
+    }
+  };
+
+  if (!visible) return null;
+
+  return (
+    <Modal visible={visible} animationType="fade" transparent>
+      <View style={{ flex: 1, backgroundColor: 'rgba(26, 26, 26, 0.95)' }}>
+        <SafeAreaView style={{ flex: 1 }}>
+          <FlatList
+            ref={flatListRef}
+            data={SLIDES}
+            keyExtractor={(item) => item.id}
+            horizontal
+            pagingEnabled
+            showsHorizontalScrollIndicator={false}
+            bounces={false}
+            onViewableItemsChanged={onViewableItemsChanged}
+            viewabilityConfig={viewConfig}
+            renderItem={({ item }) => (
+              <View style={{ width, alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+                <View style={{ width: width * 0.8, height: width * 1.2, backgroundColor: '#333', borderRadius: 20, justifyContent: 'center', alignItems: 'center', marginBottom: 30 }}>
+                  <Text style={{ color: '#666' }}>スクショ用プレースホルダー ({item.id})</Text>
+                  {/* 画像を入れる時は↑のViewの中身を消して↓を有効にする */}
+                  {/* <Image source={item.image} style={{ width: '100%', height: '100%', borderRadius: 20 }} resizeMode="contain" /> */}
+                </View>
+                <Text style={{ color: '#fff', fontSize: 24, fontWeight: 'bold', marginBottom: 15, textAlign: 'center' }}>{item.title}</Text>
+                <Text style={{ color: '#aaa', fontSize: 16, textAlign: 'center', lineHeight: 24, paddingHorizontal: 10 }}>{item.description}</Text>
+              </View>
+            )}
+          />
+          <View style={{ padding: 20, paddingBottom: 40, alignItems: 'center' }}>
+            <View style={{ flexDirection: 'row', marginBottom: 30 }}>
+              {SLIDES.map((_, index) => (
+                <View key={index} style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: currentIndex === index ? '#2ecc71' : '#555', marginHorizontal: 4, ...(currentIndex === index && { width: 24 }) }} />
+              ))}
+            </View>
+            <TouchableOpacity onPress={handleNext} style={{ backgroundColor: '#2ecc71', paddingVertical: 15, paddingHorizontal: 40, borderRadius: 30, width: '90%', alignItems: 'center' }}>
+              <Text style={{ color: '#000', fontSize: 18, fontWeight: 'bold' }}>
+                {currentIndex === SLIDES.length - 1 ? 'はじめる' : '次へ'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </SafeAreaView>
+      </View>
+    </Modal>
+  );
+};
+// --- チュートリアルコンポーネントここまで ---
 
 const WorkoutDetailModal: React.FC<{
   visible: boolean;
@@ -299,14 +386,6 @@ function HomeTabContent() {
   const coinBalance = useCoinBalance();
   const { order, persistOrder, addWidget, hydrated } = useHomeWidgetOrder(uid);
 
-  const { start, stop, copilotEvents } = useCopilot();
-  const startTutorialRef = useRef(start);
-  const stopTutorialRef = useRef(stop);
-  startTutorialRef.current = start;
-  stopTutorialRef.current = stop;
-
-  // ★ スクロール処理はバグの元なので削除！
-
   const [isEditMode, setIsEditMode] = useState(false);
   const [addWidgetModalVisible, setAddWidgetModalVisible] = useState(false);
   const [history, setHistory] = useState<Workout[]>([]);
@@ -319,6 +398,9 @@ function HomeTabContent() {
   
   const [todayMeals, setTodayMeals] = useState<Meal[]>([]);
   const [displayName, setDisplayName] = useState("");
+
+  // ★ 追加: スライドチュートリアルの表示状態
+  const [showSlideTutorial, setShowSlideTutorial] = useState(false);
 
   const fetchHistory = useCallback(async () => {
     const user = auth.currentUser;
@@ -368,85 +450,43 @@ function HomeTabContent() {
     }
   }, []);
 
-  const tutorialStorageKey = uid ? tutorialHomeKeyForUser(uid) : null;
-  const skipTutorialPersistOnNextStopRef = useRef(false);
-  const replayBusyRef = useRef(false);
-
-  useEffect(() => {
-    if (!tutorialStorageKey || !uid) return;
-    const onStop = () => {
-      if (skipTutorialPersistOnNextStopRef.current) {
-        skipTutorialPersistOnNextStopRef.current = false;
-        return;
-      }
-      void markHomeTutorialSeen(uid).catch(() => { });
-    };
-    copilotEvents.on("stop", onStop);
-    return () => {
-      copilotEvents.off("stop", onStop);
-    };
-  }, [copilotEvents, tutorialStorageKey, uid]);
-
+  // ★ 変更: Copilotの代わりにSlideTutorialを出すロジックに変更
   useEffect(() => {
     if (!uid || !hydrated || !isFocused) return;
     if ((pathname ?? "").includes("settings")) return;
 
     let cancelled = false;
-    let timer: ReturnType<typeof setTimeout> | undefined;
 
     void (async () => {
       try {
+        // 設定画面からの「もう一度見る」リクエスト処理
         const pending = await AsyncStorage.getItem(TUTORIAL_REPLAY_PENDING_KEY);
-        if (cancelled || pending !== uid) return;
+        if (pending === uid) {
+          if (!cancelled) {
+            setShowSlideTutorial(true);
+          }
+          await AsyncStorage.removeItem(TUTORIAL_REPLAY_PENDING_KEY);
+          return;
+        }
 
-        timer = setTimeout(() => {
-          if (cancelled || replayBusyRef.current) return;
-          void (async () => {
-            replayBusyRef.current = true;
-            try {
-              skipTutorialPersistOnNextStopRef.current = true;
-              try { await stopTutorialRef.current(); } catch { }
-              await new Promise<void>((resolve) => {
-                InteractionManager.runAfterInteractions(() => { setTimeout(resolve, 550); });
-              });
-              await startTutorialRef.current();
-              await AsyncStorage.removeItem(TUTORIAL_REPLAY_PENDING_KEY);
-            } catch (e) {
-              await AsyncStorage.removeItem(TUTORIAL_REPLAY_PENDING_KEY).catch(() => { });
-            } finally {
-              replayBusyRef.current = false;
-            }
-          })();
-        }, 750);
-      } catch { }
+        // 初回起動判定
+        const hasSeen = await hasSeenHomeTutorial(uid);
+        if (!cancelled && !hasSeen) {
+          setShowSlideTutorial(true);
+        }
+      } catch (e) { console.error(e); }
     })();
 
-    return () => {
-      cancelled = true;
-      if (timer) clearTimeout(timer);
-    };
+    return () => { cancelled = true; };
   }, [uid, hydrated, isFocused, pathname]);
 
-  useEffect(() => {
-    if (!hydrated || !uid) return;
-    let cancelled = false;
-    let timer: ReturnType<typeof setTimeout> | undefined;
-
-    void (async () => {
-      try {
-        const hasSeen = await hasSeenHomeTutorial(uid);
-        if (cancelled || hasSeen) return;
-        timer = setTimeout(() => {
-          if (!cancelled) void startTutorialRef.current();
-        }, 500);
-      } catch (error) { }
-    })();
-
-    return () => {
-      cancelled = true;
-      if (timer) clearTimeout(timer);
-    };
-  }, [hydrated, uid]);
+  // ★ 追加: チュートリアル完了時の処理
+  const handleFinishTutorial = async () => {
+    setShowSlideTutorial(false);
+    if (uid) {
+      await markHomeTutorialSeen(uid).catch(() => {});
+    }
+  };
 
   useFocusEffect(
     useCallback(() => {
@@ -567,28 +607,18 @@ function HomeTabContent() {
       case "ai": return wrapIfEditEntry(<View pointerEvents={blockPointer}><DailyAIAdviceCard /></View>);
       case "calendar":
         return (
-          // ★ ホームのチュートリアルはここで終わり！
-          <CopilotStep
-            text="カレンダーの日付をタップすると、その日の記録を確認・追加できます。"
-            order={2}
-            name="calendarTutorial"
-          >
-            <WalkthroughableView>
-              <CalendarSection
-                viewedDate={viewedDate}
-                trainedDays={trainedDays}
-                onDayPress={handleDayPress}
-                onPrevMonth={() => setViewedDate(new Date(viewedDate.getFullYear(), viewedDate.getMonth() - 1, 1))}
-                onNextMonth={() => setViewedDate(new Date(viewedDate.getFullYear(), viewedDate.getMonth() + 1, 1))}
-                editMode={editMode}
-                onLongPressEdit={!editMode ? onLongPressEdit : undefined}
-              />
-            </WalkthroughableView>
-          </CopilotStep>
+          <CalendarSection
+            viewedDate={viewedDate}
+            trainedDays={trainedDays}
+            onDayPress={handleDayPress}
+            onPrevMonth={() => setViewedDate(new Date(viewedDate.getFullYear(), viewedDate.getMonth() - 1, 1))}
+            onNextMonth={() => setViewedDate(new Date(viewedDate.getFullYear(), viewedDate.getMonth() + 1, 1))}
+            editMode={editMode}
+            onLongPressEdit={!editMode ? onLongPressEdit : undefined}
+          />
         );
       case "workout":
         return (
-          // ★ CopilotStep を削除して、ただのコンポーネントに戻す
           <TouchableOpacity
             style={styles.card} activeOpacity={0.8} disabled={editMode}
             onPress={() => router.push("/training")} onLongPress={!editMode && onLongPressEdit ? onLongPressEdit : undefined} delayLongPress={450}
@@ -716,47 +746,41 @@ function HomeTabContent() {
   const listHeader = useMemo(
     () => (
       <>
-        <CopilotStep
-          text="こちらはホーム画面です。今日の記録や現在のコイン残高などをひと目でご確認いただけます。"
-          order={1}
-          name="homeIntro"
-        >
-          <WalkthroughableView style={styles.homeHeader}>
-            {isEditMode ? (
-              <>
-                <TouchableOpacity onPress={() => { setIsEditMode(false); setAddWidgetModalVisible(false); }} style={{ paddingVertical: 8, paddingRight: 12 }} hitSlop={{ top: 12, bottom: 12, left: 8, right: 8 }}>
-                  <Text style={{ color: "#2ecc71", fontSize: 17, fontWeight: "600" }}>完了</Text>
+        <View style={styles.homeHeader}>
+          {isEditMode ? (
+            <>
+              <TouchableOpacity onPress={() => { setIsEditMode(false); setAddWidgetModalVisible(false); }} style={{ paddingVertical: 8, paddingRight: 12 }} hitSlop={{ top: 12, bottom: 12, left: 8, right: 8 }}>
+                <Text style={{ color: "#2ecc71", fontSize: 17, fontWeight: "600" }}>完了</Text>
+              </TouchableOpacity>
+              <View style={{ flex: 1 }}>
+                <Text style={{ color: "#888", fontSize: 12, marginBottom: 2 }}>ホームを編集</Text>
+                <Text style={[styles.routineText, { fontSize: 18 }]}>並べ替え・削除</Text>
+              </View>
+              {hiddenIds.length > 0 && (
+                <TouchableOpacity onPress={() => setAddWidgetModalVisible(true)} style={styles.iconButton} accessibilityLabel="ウィジェットを追加">
+                  <Plus color="#2ecc71" size={26} strokeWidth={2.5} />
                 </TouchableOpacity>
-                <View style={{ flex: 1 }}>
-                  <Text style={{ color: "#888", fontSize: 12, marginBottom: 2 }}>ホームを編集</Text>
-                  <Text style={[styles.routineText, { fontSize: 18 }]}>並べ替え・削除</Text>
-                </View>
-                {hiddenIds.length > 0 && (
-                  <TouchableOpacity onPress={() => setAddWidgetModalVisible(true)} style={styles.iconButton} accessibilityLabel="ウィジェットを追加">
-                    <Plus color="#2ecc71" size={26} strokeWidth={2.5} />
-                  </TouchableOpacity>
-                )}
+              )}
+              <CoinHubSummary balance={coinBalance} compact onPress={() => router.push("/settings/monetization")} />
+              <TouchableOpacity onPress={() => router.push("/settings")} style={styles.iconButton}>
+                <SettingsIcon color="#fff" size={24} />
+              </TouchableOpacity>
+            </>
+          ) : (
+            <>
+              <View>
+                <Text style={styles.homeWelcomeText}>Welcome back,</Text>
+                <Text style={styles.routineText}>{displayName}</Text>
+              </View>
+              <View style={{ flexDirection: "row", alignItems: "center" }}>
                 <CoinHubSummary balance={coinBalance} compact onPress={() => router.push("/settings/monetization")} />
                 <TouchableOpacity onPress={() => router.push("/settings")} style={styles.iconButton}>
                   <SettingsIcon color="#fff" size={24} />
                 </TouchableOpacity>
-              </>
-            ) : (
-              <>
-                <View>
-                  <Text style={styles.homeWelcomeText}>Welcome back,</Text>
-                  <Text style={styles.routineText}>{displayName}</Text>
-                </View>
-                <View style={{ flexDirection: "row", alignItems: "center" }}>
-                  <CoinHubSummary balance={coinBalance} compact onPress={() => router.push("/settings/monetization")} />
-                  <TouchableOpacity onPress={() => router.push("/settings")} style={styles.iconButton}>
-                    <SettingsIcon color="#fff" size={24} />
-                  </TouchableOpacity>
-                </View>
-              </>
-            )}
-          </WalkthroughableView>
-        </CopilotStep>
+              </View>
+            </>
+          )}
+        </View>
 
         {!isEditMode && (
           <>
@@ -803,74 +827,70 @@ function HomeTabContent() {
   };
 
   return (
-    
-      <View style={[styles.container, { flex: 1 }]}>
-        {isEditMode ? (
-          <DraggableFlatList 
-            {...listCommon} 
-            onDragEnd={({ data }) => void persistOrder(data)} 
-            renderItem={renderDraggableRow} 
-            containerStyle={{ flex: 1 }} 
-          />
-        ) : (
-          <FlatList 
-            {...listCommon} 
-            renderItem={renderStaticRow} 
-          />
-        )}
-
-        <Modal visible={addWidgetModalVisible} transparent animationType="slide" onRequestClose={() => setAddWidgetModalVisible(false)}>
-          <View style={{ flex: 1, justifyContent: "flex-end" }}>
-            <Pressable style={{ flex: 1 }} onPress={() => setAddWidgetModalVisible(false)} />
-            <View style={{ backgroundColor: "#262626", borderTopLeftRadius: 22, borderTopRightRadius: 22, paddingHorizontal: 20, paddingTop: 18, paddingBottom: 28 }}>
-              <Text style={{ color: "#fff", fontSize: 18, fontWeight: "700", marginBottom: 4 }}>ウィジェットを追加</Text>
-              <Text style={{ color: "#888", fontSize: 13, marginBottom: 12 }}>ホームに表示する項目を選んでください</Text>
-              {hiddenIds.length === 0 ? (
-                <Text style={{ color: "#888", fontSize: 14, paddingVertical: 8 }}>追加できるウィジェットはありません</Text>
-              ) : (
-                hiddenIds.map((id) => (
-                  <TouchableOpacity key={id} onPress={() => { addWidget(id); setAddWidgetModalVisible(false); }} style={{ paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: "#333" }}>
-                    <Text style={{ color: "#fff", fontSize: 16 }}>{HOME_WIDGET_LABELS[id]}</Text>
-                  </TouchableOpacity>
-                ))
-              )}
-              <TouchableOpacity onPress={() => setAddWidgetModalVisible(false)} style={{ marginTop: 14, alignItems: "center", paddingVertical: 10 }}>
-                <Text style={{ color: "#888", fontSize: 15 }}>キャンセル</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </Modal>
-
-        <WorkoutDetailModal 
-          visible={modalVisible} 
-          onClose={() => setModalVisible(false)} 
-          workouts={selectedDateWorkouts} 
-          foodLog={selectedDateFoodLog} 
-          targetDateId={targetDateId} 
-          onDeleteWorkout={handleDeleteWorkout} 
-          onEditWorkout={handleEditWorkout}
-          onEditFood={handleEditFood}
+    <View style={[styles.container, { flex: 1 }]}>
+      {isEditMode ? (
+        <DraggableFlatList 
+          {...listCommon} 
+          onDragEnd={({ data }) => void persistOrder(data)} 
+          renderItem={renderDraggableRow} 
+          containerStyle={{ flex: 1 }} 
         />
-      </View>
-    
+      ) : (
+        <FlatList 
+          {...listCommon} 
+          renderItem={renderStaticRow} 
+        />
+      )}
+
+      <Modal visible={addWidgetModalVisible} transparent animationType="slide" onRequestClose={() => setAddWidgetModalVisible(false)}>
+        <View style={{ flex: 1, justifyContent: "flex-end" }}>
+          <Pressable style={{ flex: 1 }} onPress={() => setAddWidgetModalVisible(false)} />
+          <View style={{ backgroundColor: "#262626", borderTopLeftRadius: 22, borderTopRightRadius: 22, paddingHorizontal: 20, paddingTop: 18, paddingBottom: 28 }}>
+            <Text style={{ color: "#fff", fontSize: 18, fontWeight: "700", marginBottom: 4 }}>ウィジェットを追加</Text>
+            <Text style={{ color: "#888", fontSize: 13, marginBottom: 12 }}>ホームに表示する項目を選んでください</Text>
+            {hiddenIds.length === 0 ? (
+              <Text style={{ color: "#888", fontSize: 14, paddingVertical: 8 }}>追加できるウィジェットはありません</Text>
+            ) : (
+              hiddenIds.map((id) => (
+                <TouchableOpacity key={id} onPress={() => { addWidget(id); setAddWidgetModalVisible(false); }} style={{ paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: "#333" }}>
+                  <Text style={{ color: "#fff", fontSize: 16 }}>{HOME_WIDGET_LABELS[id]}</Text>
+                </TouchableOpacity>
+              ))
+            )}
+            <TouchableOpacity onPress={() => setAddWidgetModalVisible(false)} style={{ marginTop: 14, alignItems: "center", paddingVertical: 10 }}>
+              <Text style={{ color: "#888", fontSize: 15 }}>キャンセル</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      <WorkoutDetailModal 
+        visible={modalVisible} 
+        onClose={() => setModalVisible(false)} 
+        workouts={selectedDateWorkouts} 
+        foodLog={selectedDateFoodLog} 
+        targetDateId={targetDateId} 
+        onDeleteWorkout={handleDeleteWorkout} 
+        onEditWorkout={handleEditWorkout}
+        onEditFood={handleEditFood}
+      />
+
+      {/* ★ 追加: スライドチュートリアルをここに配置 */}
+      <SlideTutorialModal 
+        visible={showSlideTutorial} 
+        onFinish={handleFinishTutorial} 
+      />
+    </View>
   );
 }
 
 export default function HomeTabScreen() {
   return (
-    // ★ 変更: 一番外側を GestureHandlerRootView にする
+    // ★ CopilotProviderを削除してスッキリ
     <GestureHandlerRootView style={{ flex: 1 }}>
-      <CopilotProvider
-        stopOnOutsideClick={false} 
-        backdropColor="rgba(0, 0, 0, 0.85)" 
-        tooltipStyle={{ backgroundColor: "#ffffff", borderRadius: 12, margin: 16, paddingTop: 16, paddingBottom: 16 }}
-        stepNumberComponent={() => null}
-        labels={{ skip: "スキップ", previous: "前へ", next: "次へ", finish: "OK" }}
-      >
-        <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
-          <HomeTabContent />
-        </SafeAreaView>
-      </CopilotProvider>
+      <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
+        <HomeTabContent />
+      </SafeAreaView>
     </GestureHandlerRootView>
   );
 }
