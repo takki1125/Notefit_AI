@@ -12,6 +12,9 @@ import {
   TextInput,
   TouchableOpacity,
   View,
+  FlatList,
+  Dimensions,
+  Image,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useFocusEffect } from "@react-navigation/native";
@@ -41,7 +44,6 @@ import {
   callableDeleteCustomExercise,
   callableUpdateCustomExercise,
 } from "../../utils/aiUserContentCallables";
-import { CopilotProvider, CopilotStep, walkthroughable, useCopilot } from "react-native-copilot";
 
 type ExerciseSectionRow = { title: string; data: (string | CustomExerciseListItem)[] };
 type ExerciseCategoryRow = { id: string; label: string; sections: ExerciseSectionRow[] };
@@ -77,6 +79,7 @@ type TrainingDraft = {
 };
 
 const TRAINING_DRAFT_KEY_PREFIX = "@training_draft_v1_";
+const { width } = Dimensions.get("window");
 
 type ExerciseSelectorModalProps = {
   visible: boolean;
@@ -91,8 +94,6 @@ type RoutineModalProps = {
   autoCheck: boolean;
   onLoadRoutine: (routine: Routine) => void;
 };
-
-const WalkthroughableView = walkthroughable(TouchableOpacity);
 
 const confirmAction = (
   title: string,
@@ -155,6 +156,87 @@ const SetValueInput: React.FC<SetValueInputProps> = ({
     </View>
   );
 };
+
+// --- スライドチュートリアル用コンポーネント ---
+const TRAINING_SLIDES = [
+  {
+    id: '1',
+    title: 'トレーニングの記録',
+    description: 'まずは「種目を追加する」から、今日行うメニューを選びましょう。',
+    // image: require('../../assets/tutorial-training-add.png'),
+  },
+  {
+    id: '2',
+    title: 'ルーティンの活用',
+    description: 'よく行うメニューは、上部の「Today\'s Workout」からルーティンとして保存・読み込みができます。',
+    // image: require('../../assets/tutorial-training-routine.png'),
+  }
+];
+
+const SlideTutorialModal: React.FC<{ visible: boolean; onFinish: () => void }> = ({ visible, onFinish }) => {
+  const [currentIndex, setCurrentIndex] = useState(0);
+  const flatListRef = useRef<FlatList>(null);
+
+  const onViewableItemsChanged = useRef(({ viewableItems }: any) => {
+    if (viewableItems.length > 0) {
+      setCurrentIndex(viewableItems[0].index);
+    }
+  }).current;
+  const viewConfig = useRef({ viewAreaCoveragePercentThreshold: 50 }).current;
+
+  const handleNext = () => {
+    if (currentIndex < TRAINING_SLIDES.length - 1) {
+      flatListRef.current?.scrollToIndex({ index: currentIndex + 1 });
+    } else {
+      onFinish();
+    }
+  };
+
+  if (!visible) return null;
+
+  return (
+    <Modal visible={visible} animationType="fade" transparent>
+      <View style={{ flex: 1, backgroundColor: 'rgba(26, 26, 26, 0.95)' }}>
+        <SafeAreaView style={{ flex: 1 }}>
+          <FlatList
+            ref={flatListRef}
+            data={TRAINING_SLIDES}
+            keyExtractor={(item) => item.id}
+            horizontal
+            pagingEnabled
+            showsHorizontalScrollIndicator={false}
+            bounces={false}
+            onViewableItemsChanged={onViewableItemsChanged}
+            viewabilityConfig={viewConfig}
+            renderItem={({ item }) => (
+              <View style={{ width, alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+                <View style={{ width: width * 0.8, height: width * 1.2, backgroundColor: '#333', borderRadius: 20, justifyContent: 'center', alignItems: 'center', marginBottom: 30 }}>
+                  <Text style={{ color: '#666' }}>スクショ用 ({item.id})</Text>
+                  {/* <Image source={item.image} style={{ width: '100%', height: '100%', borderRadius: 20 }} resizeMode="contain" /> */}
+                </View>
+                <Text style={{ color: '#fff', fontSize: 24, fontWeight: 'bold', marginBottom: 15, textAlign: 'center' }}>{item.title}</Text>
+                <Text style={{ color: '#aaa', fontSize: 16, textAlign: 'center', lineHeight: 24, paddingHorizontal: 10 }}>{item.description}</Text>
+              </View>
+            )}
+          />
+          <View style={{ padding: 20, paddingBottom: 40, alignItems: 'center' }}>
+            <View style={{ flexDirection: 'row', marginBottom: 30 }}>
+              {TRAINING_SLIDES.map((_, index) => (
+                <View key={index} style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: currentIndex === index ? '#2ecc71' : '#555', marginHorizontal: 4, ...(currentIndex === index && { width: 24 }) }} />
+              ))}
+            </View>
+            <TouchableOpacity onPress={handleNext} style={{ backgroundColor: '#2ecc71', paddingVertical: 15, paddingHorizontal: 40, borderRadius: 30, width: '90%', alignItems: 'center' }}>
+              <Text style={{ color: '#000', fontSize: 18, fontWeight: 'bold' }}>
+                {currentIndex === TRAINING_SLIDES.length - 1 ? 'はじめる' : '次へ'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </SafeAreaView>
+      </View>
+    </Modal>
+  );
+};
+// --- チュートリアルコンポーネントここまで ---
 
 const ExerciseSelectorModal: React.FC<ExerciseSelectorModalProps> = ({
   visible,
@@ -931,11 +1013,8 @@ const TrainingTabContent: React.FC<Props> = ({ navigation }) => {
 
   const [autoCheck, setAutoCheck] = useState(false);
 
-  const { start, copilotEvents } = useCopilot();
-  const startTutorialRef = React.useRef(start);
-  startTutorialRef.current = start;
-
-  // ★ スクロール処理はバグの元なので削除！
+  // スライドチュートリアル用ステート
+  const [showSlideTutorial, setShowSlideTutorial] = useState(false);
 
   const startTimeRef = React.useRef<number | null>(null);
 
@@ -1180,7 +1259,7 @@ const TrainingTabContent: React.FC<Props> = ({ navigation }) => {
           const hasSeen = await AsyncStorage.getItem(`@tutorial_training_${user.uid}`);
           if (!hasSeen && !cancelled) {
             timer = setTimeout(() => {
-              if (!cancelled) void startTutorialRef.current();
+              if (!cancelled) setShowSlideTutorial(true);
             }, 500);
           }
         } catch (e) { }
@@ -1194,6 +1273,14 @@ const TrainingTabContent: React.FC<Props> = ({ navigation }) => {
     }, [fetchPreviousExerciseHints, restoreTrainingDraft])
   );
 
+  const handleFinishTutorial = async () => {
+    setShowSlideTutorial(false);
+    const user = auth.currentUser;
+    if (user) {
+      await AsyncStorage.setItem(`@tutorial_training_${user.uid}`, "true");
+    }
+  };
+
   useEffect(() => {
     const subscription = AppState.addEventListener('change', nextAppState => {
       if (nextAppState === 'active' && startTimeRef.current && menu.length > 0) {
@@ -1205,19 +1292,6 @@ const TrainingTabContent: React.FC<Props> = ({ navigation }) => {
       subscription.remove();
     };
   }, [menu.length]);
-
-  useEffect(() => {
-    const onStop = async () => {
-      const user = auth.currentUser;
-      if (user) {
-        await AsyncStorage.setItem(`@tutorial_training_${user.uid}`, "true");
-      }
-    };
-    copilotEvents.on("stop", onStop);
-    return () => {
-      copilotEvents.off("stop", onStop);
-    };
-  }, [copilotEvents]);
 
   useEffect(() => {
     navigation?.setOptions?.({
@@ -1535,7 +1609,6 @@ const TrainingTabContent: React.FC<Props> = ({ navigation }) => {
   };
 
   return (
-    // ★ 変更: SafeAreaView は外側に移動したので、ここではただの View に変更
     <View style={[styles.container, { flex: 1 }]}>
       {editWorkoutId && (
         <View style={{ backgroundColor: '#2ecc71', padding: 8, flexDirection: 'row', alignItems: 'center' }}>
@@ -1562,23 +1635,16 @@ const TrainingTabContent: React.FC<Props> = ({ navigation }) => {
       
       <View style={styles.headerRow}>
         <View style={styles.headerContent}>
-          {/* ★ トレーニングタブのチュートリアルステップ1: ルーティン選択 */}
-          <CopilotStep
-            text="ここをタップすると、保存したルーティンを呼び出せます。"
-            order={1}
-            name="routineSelect"
-          >
-            <WalkthroughableView>
-              <Text style={styles.headerLabel}>Today&apos;s Workout</Text>
-              <TouchableOpacity
-                style={styles.routineSelector}
-                onPress={() => setRoutineModalVisible(true)}
-              >
-                <Text style={styles.routineText}>{currentRoutineName}</Text>
-                <ChevronDown color="#2ecc71" size={20} />
-              </TouchableOpacity>
-            </WalkthroughableView>
-          </CopilotStep>
+          <View>
+            <Text style={styles.headerLabel}>Today&apos;s Workout</Text>
+            <TouchableOpacity
+              style={styles.routineSelector}
+              onPress={() => setRoutineModalVisible(true)}
+            >
+              <Text style={styles.routineText}>{currentRoutineName}</Text>
+              <ChevronDown color="#2ecc71" size={20} />
+            </TouchableOpacity>
+          </View>
 
           <TouchableOpacity style={styles.timerButton}>
             <Clock color={isTimerActive ? "#2ecc71" : "#000"} size={20} />
@@ -1693,20 +1759,13 @@ const TrainingTabContent: React.FC<Props> = ({ navigation }) => {
             );
           })}
 
-          {/* ★ トレーニングタブのチュートリアルステップ2: 種目追加ボタン */}
-          <CopilotStep
-            text="まずはここから種目を追加して、今日のトレーニングを始めましょう！"
-            order={2}
-            name="addExercise"
+          <TouchableOpacity
+            style={styles.addExerciseBtn}
+            onPress={() => setModalVisible(true)}
           >
-            <WalkthroughableView
-              style={styles.addExerciseBtn}
-              onPress={() => setModalVisible(true)}
-            >
-              <Plus color="#000" size={20} />
-              <Text style={styles.addExerciseBtnText}>種目を追加する</Text>
-            </WalkthroughableView>
-          </CopilotStep>
+            <Plus color="#000" size={20} />
+            <Text style={styles.addExerciseBtnText}>種目を追加する</Text>
+          </TouchableOpacity>
 
           {menu.length > 0 && (
             <TouchableOpacity
@@ -1738,23 +1797,20 @@ const TrainingTabContent: React.FC<Props> = ({ navigation }) => {
         autoCheck={autoCheck}
         onLoadRoutine={handleLoadRoutine}
       />
+
+      {/* スライドチュートリアル */}
+      <SlideTutorialModal 
+        visible={showSlideTutorial} 
+        onFinish={handleFinishTutorial} 
+      />
     </View>
   );
 };
 
 export default function TrainingTabScreen(props: Props) {
   return (
-    // ★ 変更: SafeAreaViewを外側に配置！これで座標ズレが直る
     <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
-      <CopilotProvider
-        stopOnOutsideClick={false}
-        backdropColor="rgba(0, 0, 0, 0.85)"
-        tooltipStyle={{ backgroundColor: "#ffffff", borderRadius: 12, margin: 16, paddingTop: 16, paddingBottom: 16 }}
-        stepNumberComponent={() => null}
-        labels={{ skip: "スキップ", previous: "前へ", next: "次へ", finish: "OK" }}
-      >
-        <TrainingTabContent {...props} />
-      </CopilotProvider>
+      <TrainingTabContent {...props} />
     </SafeAreaView>
   );
 }
