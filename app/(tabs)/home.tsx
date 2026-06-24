@@ -82,19 +82,19 @@ const SLIDES = [
     id: '1',
     title: 'ホーム画面',
     description: 'ここで今日のトレーニングや食事の記録を一目で確認できます。',
-    // image: require('../../assets/tutorial-home.png'),
+    image: require('../../assets/images/tutorial/slide_home1.png'),
   },
   {
     id: '2',
     title: 'カレンダー機能',
     description: '日付をタップすると、その日の詳しい記録を確認・追加できます。',
-    // image: require('../../assets/tutorial-calendar.png'),
+    image: require('../../assets/images/tutorial/slide_home2.png'),
   },
   {
     id: '3',
     title: 'さあ、始めよう',
     description: '下にスクロールして、まずは今日のトレーニングを記録してみましょう！各ウィジェットの長押しで配置の編集も可能です。',
-    // image: require('../../assets/tutorial-start.png'),
+    image: require('../../assets/images/tutorial/slide_home3.png'),
   }
 ];
 
