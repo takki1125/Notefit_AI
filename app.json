@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "NoteFit AI",
-    "slug": "notefit-ai",
+    "name": "NoteFit AI_dev",
+    "slug": "notefit-AI_dev",
     "scheme": "fitness-app",
     "version": "1.0.3",
     "orientation": "portrait",
