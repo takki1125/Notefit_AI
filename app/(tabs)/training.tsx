@@ -163,13 +163,13 @@ const TRAINING_SLIDES = [
     id: '1',
     title: 'トレーニングの記録',
     description: 'まずは「種目を追加する」から、今日行うメニューを選びましょう。',
-    // image: require('../../assets/tutorial-training-add.png'),
+    image: require('../../assets/images/tutorial/slide_training1.png'),
   },
   {
     id: '2',
     title: 'ルーティンの活用',
     description: 'よく行うメニューは、上部の「Today\'s Workout」からルーティンとして保存・読み込みができます。',
-    // image: require('../../assets/tutorial-training-routine.png'),
+    image: require('../../assets/images/tutorial/slide_training2.png'),
   }
 ];
 
