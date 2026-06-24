@@ -93,7 +93,7 @@ const SLIDES = [
   {
     id: '3',
     title: 'さあ、始めよう',
-    description: 'まずは今日のトレーニングを記録してみましょう！各ウィジェットの長押しで配置の編集も可能です。',
+    description: '下にスクロールして、まずは今日のトレーニングを記録してみましょう！各ウィジェットの長押しで配置の編集も可能です。',
     // image: require('../../assets/tutorial-start.png'),
   }
 ];
