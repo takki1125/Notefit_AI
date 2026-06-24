@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "311390133774",
+    "project_id": "kennkoukannri-kari",
+    "storage_bucket": "kennkoukannri-kari.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:311390133774:android:771ec27eac37c23314665f",
+        "android_client_info": {
+          "package_name": "com.takimoto.shoa.notefitai.dev"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyB5mwjC3p2cHmGJzl0E06El4DWQkK_lzM4"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
