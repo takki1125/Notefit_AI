@@ -29,6 +29,7 @@ import {
   Alert,
   FlatList,
   Dimensions,
+  Image, // ★ 追加
   InteractionManager,
   Modal,
   Platform,
@@ -76,31 +77,58 @@ const formatTime = (totalSeconds: number | undefined) => {
   return h > 0 ? `${h}:${m}:${s}` : `${m}:${s}`;
 };
 
-// --- スライドチュートリアル用コンポーネント ---
+// --- スライドチュートリアル用データ ---
 const SLIDES = [
   {
     id: '1',
     title: 'ホーム画面',
     description: 'ここで今日のトレーニングや食事の記録を一目で確認できます。',
-    // image: require('../../assets/tutorial-home.png'),
+    // image: require('../../assets/images/tutorial/slide_home1.png'),
+    detailSlides: [
+      {
+        id: '1-1',
+        title: '自分好みにカスタマイズ',
+        description: 'ウィジェットを長押しすると、表示する項目の追加や削除、並び替えが自由にできます。',
+        // image: require('../../assets/images/tutorial/slide_home1_detail1.png'),
+      }
+    ]
   },
   {
     id: '2',
     title: 'カレンダー機能',
     description: '日付をタップすると、その日の詳しい記録を確認・追加できます。',
-    // image: require('../../assets/tutorial-calendar.png'),
+    // image: require('../../assets/images/tutorial/slide_home2.png'),
+    detailSlides: [
+      {
+        id: '2-1',
+        title: '1日の詳細画面',
+        description: '日付をタップして開いた画面では、その日のトレーニングと食事の確認、新しい記録の追加、間違えた記録の削除がまとめて行えます。',
+        // image: require('../../assets/images/tutorial/slide_home2_detail1.png'),
+      }
+    ]
   },
   {
     id: '3',
     title: 'さあ、始めよう',
-    description: '下にスクロールして、まずは今日のトレーニングを記録してみましょう！各ウィジェットの長押しで配置の編集も可能です。',
-    // image: require('../../assets/tutorial-start.png'),
+    description: 'まずは今日のトレーニングを記録してみましょう！👇',
+    // image: require('../../assets/images/tutorial/slide_home3.png'),
+    detailSlides: [
+      {
+        id: '3-1',
+        title: '便利なリンクウィジェット',
+        description: 'ホーム画面には「カレンダー」「トレーニング」「食事」「AIアドバイス」へ一発で飛べるボタンも配置されています。どんどん活用していきましょう！',
+        // image: require('../../assets/images/tutorial/slide_home3_detail1.png'),
+      }
+    ]
   }
 ];
 
 const SlideTutorialModal: React.FC<{ visible: boolean; onFinish: () => void }> = ({ visible, onFinish }) => {
   const [currentIndex, setCurrentIndex] = useState(0);
   const flatListRef = useRef<FlatList>(null);
+  
+  // ★ 詳しく見る用のステート（nullなら本編、データが入っていれば詳細モード）
+  const [activeDetailSlides, setActiveDetailSlides] = useState<any[] | null>(null);
 
   const onViewableItemsChanged = useRef(({ viewableItems }: any) => {
     if (viewableItems.length > 0) {
@@ -119,44 +147,110 @@ const SlideTutorialModal: React.FC<{ visible: boolean; onFinish: () => void }> =
 
   if (!visible) return null;
 
+  // ▼ 本編スライド1枚のレンダリング
+  const renderMainSlide = ({ item }: { item: any }) => (
+    <View style={{ width, alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+      <View style={{ width: width * 0.8, height: width * 1.2, backgroundColor: '#333', borderRadius: 20, justifyContent: 'center', alignItems: 'center', marginBottom: 20 }}>
+        {/* 画像が準備できたら下をコメントアウト外す */}
+        <Text style={{ color: '#666' }}>画像プレースホルダー ({item.id})</Text>
+        {/* <Image source={item.image} style={{ width: '100%', height: '100%', borderRadius: 20 }} resizeMode="contain" /> */}
+      </View>
+      <Text style={{ color: '#fff', fontSize: 24, fontWeight: 'bold', marginBottom: 15, textAlign: 'center' }}>{item.title}</Text>
+      <Text style={{ color: '#aaa', fontSize: 16, textAlign: 'center', lineHeight: 24, paddingHorizontal: 10 }}>{item.description}</Text>
+
+      {/* 派生スライドがあればボタンを表示 */}
+      {item.detailSlides && (
+        <TouchableOpacity
+          onPress={() => setActiveDetailSlides(item.detailSlides)}
+          style={{ marginTop: 25, paddingVertical: 12, paddingHorizontal: 24, backgroundColor: '#333', borderRadius: 25, borderWidth: 1, borderColor: '#4facfe' }}
+        >
+          <Text style={{ color: '#4facfe', fontWeight: 'bold', fontSize: 15 }}>もっと詳しく見る ＞</Text>
+        </TouchableOpacity>
+      )}
+    </View>
+  );
+
+  // ▼ 詳細スライド1枚のレンダリング
+  const renderDetailSlide = ({ item }: { item: any }) => (
+    <View style={{ width, alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+      <View style={{ width: width * 0.8, height: width * 1.2, backgroundColor: '#333', borderRadius: 20, justifyContent: 'center', alignItems: 'center', marginBottom: 20 }}>
+        <Text style={{ color: '#666' }}>詳細画像プレースホルダー ({item.id})</Text>
+        {/* <Image source={item.image} style={{ width: '100%', height: '100%', borderRadius: 20 }} resizeMode="contain" /> */}
+      </View>
+      <Text style={{ color: '#4facfe', fontSize: 24, fontWeight: 'bold', marginBottom: 15, textAlign: 'center' }}>{item.title}</Text>
+      <Text style={{ color: '#aaa', fontSize: 16, textAlign: 'center', lineHeight: 24, paddingHorizontal: 10 }}>{item.description}</Text>
+    </View>
+  );
+
   return (
     <Modal visible={visible} animationType="fade" transparent>
       <View style={{ flex: 1, backgroundColor: 'rgba(26, 26, 26, 0.95)' }}>
         <SafeAreaView style={{ flex: 1 }}>
-          <FlatList
-            ref={flatListRef}
-            data={SLIDES}
-            keyExtractor={(item) => item.id}
-            horizontal
-            pagingEnabled
-            showsHorizontalScrollIndicator={false}
-            bounces={false}
-            onViewableItemsChanged={onViewableItemsChanged}
-            viewabilityConfig={viewConfig}
-            renderItem={({ item }) => (
-              <View style={{ width, alignItems: 'center', justifyContent: 'center', padding: 20 }}>
-                <View style={{ width: width * 0.8, height: width * 1.2, backgroundColor: '#333', borderRadius: 20, justifyContent: 'center', alignItems: 'center', marginBottom: 30 }}>
-                  <Text style={{ color: '#666' }}>スクショ用プレースホルダー ({item.id})</Text>
-                  {/* 画像を入れる時は↑のViewの中身を消して↓を有効にする */}
-                  {/* <Image source={item.image} style={{ width: '100%', height: '100%', borderRadius: 20 }} resizeMode="contain" /> */}
-                </View>
-                <Text style={{ color: '#fff', fontSize: 24, fontWeight: 'bold', marginBottom: 15, textAlign: 'center' }}>{item.title}</Text>
-                <Text style={{ color: '#aaa', fontSize: 16, textAlign: 'center', lineHeight: 24, paddingHorizontal: 10 }}>{item.description}</Text>
-              </View>
-            )}
-          />
-          <View style={{ padding: 20, paddingBottom: 40, alignItems: 'center' }}>
-            <View style={{ flexDirection: 'row', marginBottom: 30 }}>
-              {SLIDES.map((_, index) => (
-                <View key={index} style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: currentIndex === index ? '#2ecc71' : '#555', marginHorizontal: 4, ...(currentIndex === index && { width: 24 }) }} />
-              ))}
+          
+          {activeDetailSlides ? (
+            /* ================================= */
+            /* ▼ 詳細モードの時 ▼                 */
+            /* ================================= */
+            <View style={{ flex: 1 }}>
+              <TouchableOpacity
+                onPress={() => setActiveDetailSlides(null)}
+                style={{ position: 'absolute', top: 10, left: 10, zIndex: 10, padding: 15, flexDirection: 'row', alignItems: 'center' }}
+              >
+                <ChevronLeft color="#fff" size={24} />
+                <Text style={{ color: '#fff', fontSize: 16, fontWeight: 'bold' }}>戻る</Text>
+              </TouchableOpacity>
+
+              <FlatList
+                data={activeDetailSlides}
+                renderItem={renderDetailSlide}
+                horizontal
+                pagingEnabled
+                showsHorizontalScrollIndicator={false}
+                bounces={false}
+                keyExtractor={(item) => item.id}
+                style={{ marginTop: 40 }}
+              />
             </View>
-            <TouchableOpacity onPress={handleNext} style={{ backgroundColor: '#2ecc71', paddingVertical: 15, paddingHorizontal: 40, borderRadius: 30, width: '90%', alignItems: 'center' }}>
-              <Text style={{ color: '#000', fontSize: 18, fontWeight: 'bold' }}>
-                {currentIndex === SLIDES.length - 1 ? 'はじめる' : '次へ'}
-              </Text>
-            </TouchableOpacity>
-          </View>
+          ) : (
+            /* ================================= */
+            /* ▼ 通常の本編モード ▼               */
+            /* ================================= */
+            <View style={{ flex: 1 }}>
+              <TouchableOpacity
+                onPress={onFinish}
+                style={{ position: 'absolute', top: 10, right: 10, zIndex: 10, padding: 15 }}
+              >
+                <Text style={{ color: '#aaa', fontSize: 16 }}>スキップ</Text>
+              </TouchableOpacity>
+
+              <FlatList
+                ref={flatListRef}
+                data={SLIDES}
+                keyExtractor={(item) => item.id}
+                horizontal
+                pagingEnabled
+                showsHorizontalScrollIndicator={false}
+                bounces={false}
+                onViewableItemsChanged={onViewableItemsChanged}
+                viewabilityConfig={viewConfig}
+                renderItem={renderMainSlide}
+              />
+              
+              <View style={{ padding: 20, paddingBottom: 40, alignItems: 'center' }}>
+                <View style={{ flexDirection: 'row', marginBottom: 30 }}>
+                  {SLIDES.map((_, index) => (
+                    <View key={index} style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: currentIndex === index ? '#2ecc71' : '#555', marginHorizontal: 4, ...(currentIndex === index && { width: 24 }) }} />
+                  ))}
+                </View>
+                <TouchableOpacity onPress={handleNext} style={{ backgroundColor: '#2ecc71', paddingVertical: 15, paddingHorizontal: 40, borderRadius: 30, width: '90%', alignItems: 'center' }}>
+                  <Text style={{ color: '#000', fontSize: 18, fontWeight: 'bold' }}>
+                    {currentIndex === SLIDES.length - 1 ? 'はじめる' : '次へ'}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          )}
+
         </SafeAreaView>
       </View>
     </Modal>
@@ -399,7 +493,6 @@ function HomeTabContent() {
   const [todayMeals, setTodayMeals] = useState<Meal[]>([]);
   const [displayName, setDisplayName] = useState("");
 
-  // ★ 追加: スライドチュートリアルの表示状態
   const [showSlideTutorial, setShowSlideTutorial] = useState(false);
 
   const fetchHistory = useCallback(async () => {
@@ -450,7 +543,6 @@ function HomeTabContent() {
     }
   }, []);
 
-  // ★ 変更: Copilotの代わりにSlideTutorialを出すロジックに変更
   useEffect(() => {
     if (!uid || !hydrated || !isFocused) return;
     if ((pathname ?? "").includes("settings")) return;
@@ -459,7 +551,6 @@ function HomeTabContent() {
 
     void (async () => {
       try {
-        // 設定画面からの「もう一度見る」リクエスト処理
         const pending = await AsyncStorage.getItem(TUTORIAL_REPLAY_PENDING_KEY);
         if (pending === uid) {
           if (!cancelled) {
@@ -469,7 +560,6 @@ function HomeTabContent() {
           return;
         }
 
-        // 初回起動判定
         const hasSeen = await hasSeenHomeTutorial(uid);
         if (!cancelled && !hasSeen) {
           setShowSlideTutorial(true);
@@ -480,7 +570,6 @@ function HomeTabContent() {
     return () => { cancelled = true; };
   }, [uid, hydrated, isFocused, pathname]);
 
-  // ★ 追加: チュートリアル完了時の処理
   const handleFinishTutorial = async () => {
     setShowSlideTutorial(false);
     if (uid) {
@@ -875,7 +964,7 @@ function HomeTabContent() {
         onEditFood={handleEditFood}
       />
 
-      {/* ★ 追加: スライドチュートリアルをここに配置 */}
+      {/* スライドチュートリアル */}
       <SlideTutorialModal 
         visible={showSlideTutorial} 
         onFinish={handleFinishTutorial} 
@@ -886,7 +975,6 @@ function HomeTabContent() {
 
 export default function HomeTabScreen() {
   return (
-    // ★ CopilotProviderを削除してスッキリ
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
         <HomeTabContent />

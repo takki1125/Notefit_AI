@@ -74,19 +74,19 @@ const FOOD_SLIDES = [
     id: '1',
     title: '1日の合計を把握',
     description: '今日の総摂取カロリーと、PFC（タンパク質・脂質・炭水化物）のバランスをここで確認できます。',
-    // image: require('../../assets/tutorial-food-total.png'),
+    image: require('../../assets/images/tutorial/slide_food1.png'),
   },
   {
     id: '2',
     title: 'ルーティンでサクッと記録',
     description: '毎日食べる決まったメニューは、ルーティンに登録しておけばワンタップで記録できます。',
-    // image: require('../../assets/tutorial-food-routine.png'),
+    image: require('../../assets/images/tutorial/slide_food2.png'),
   },
   {
     id: '3',
     title: 'AI＆辞書で簡単入力',
     description: '『コンビニの牛丼』のように入力して検索するだけで、AIがカロリーと栄養素を自動で推測してくれます。',
-    // image: require('../../assets/tutorial-food-ai.png'),
+    image: require('../../assets/images/tutorial/slide_food3.png'),
   }
 ];
 

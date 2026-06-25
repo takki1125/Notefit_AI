@@ -99,13 +99,13 @@ const AI_SLIDES = [
     id: '1',
     title: 'AIコーチに相談',
     description: 'トレーニングメニューの作成や食事の悩みなど、何でも気軽に聞いてみましょう。',
-    // image: require('../../assets/tutorial-ai-chat.png'),
+    image: require('../../assets/images/tutorial/slide_ai.png'),
   },
   {
     id: '2',
     title: '会話の管理',
     description: '左上のメニューから過去の会話を開けます。長押しでピン留めや名前の変更も可能です。',
-    // image: require('../../assets/tutorial-ai-drawer.png'),
+    image: require('../../assets/images/tutorial/slide_ai.png'),
   }
 ];
 

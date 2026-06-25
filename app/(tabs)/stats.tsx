@@ -63,13 +63,13 @@ const STATS_SLIDES = [
     id: '1',
     title: '成長を振り返る',
     description: '過去のトレーニングや体重、食事の記録を振り返り、日々の成長を実感しましょう。',
-    // image: require('../../assets/tutorial-stats-overall.png'),
+    image: require('../../assets/images/tutorial/slide_stats1.png'),
   },
   {
     id: '2',
     title: '部位・種目ごとの分析',
     description: '部位ごとに推定1RMの推移を見たり、特定の種目の成長グラフを確認できます。',
-    // image: require('../../assets/tutorial-stats-detail.png'),
+    image: require('../../assets/images/tutorial/slide_stats2.png'),
   }
 ];
 
