@@ -77,6 +77,8 @@ web-build/
 expo-env.d.ts
 
 # Native
+.gradle-home/
+.gradle/
 .kotlin/
 *.orig.*
 *.jks
