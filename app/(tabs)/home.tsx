@@ -83,13 +83,13 @@ const SLIDES = [
     id: '1',
     title: 'ホーム画面',
     description: 'ここで今日のトレーニングや食事の記録を一目で確認できます。',
-    // image: require('../../assets/images/tutorial/slide_home1.png'),
+    image: require('../../assets/images/tutorial/slide_home1.png'),
     detailSlides: [
       {
         id: '1-1',
         title: '自分好みにカスタマイズ',
         description: 'ウィジェットを長押しすると、表示する項目の追加や削除、並び替えが自由にできます。',
-        // image: require('../../assets/images/tutorial/slide_home1_detail1.png'),
+        image: require('../../assets/images/tutorial/slide_home1_detail1.png'),
       }
     ]
   },
@@ -97,13 +97,13 @@ const SLIDES = [
     id: '2',
     title: 'カレンダー機能',
     description: '日付をタップすると、その日の詳しい記録を確認・追加できます。',
-    // image: require('../../assets/images/tutorial/slide_home2.png'),
+    image: require('../../assets/images/tutorial/slide_home2.png'),
     detailSlides: [
       {
         id: '2-1',
         title: '1日の詳細画面',
         description: '日付をタップして開いた画面では、その日のトレーニングと食事の確認、新しい記録の追加、間違えた記録の削除がまとめて行えます。',
-        // image: require('../../assets/images/tutorial/slide_home2_detail1.png'),
+        image: require('../../assets/images/tutorial/slide_home2_detail1.png'),
       }
     ]
   },
@@ -111,13 +111,13 @@ const SLIDES = [
     id: '3',
     title: 'さあ、始めよう',
     description: 'まずは今日のトレーニングを記録してみましょう！👇',
-    // image: require('../../assets/images/tutorial/slide_home3.png'),
+    image: require('../../assets/images/tutorial/slide_home3.png'),
     detailSlides: [
       {
         id: '3-1',
         title: '便利なリンクウィジェット',
         description: 'ホーム画面には「カレンダー」「トレーニング」「食事」「AIアドバイス」へ一発で飛べるボタンも配置されています。どんどん活用していきましょう！',
-        // image: require('../../assets/images/tutorial/slide_home3_detail1.png'),
+        image: require('../../assets/images/tutorial/slide_home3_detail1.png'),
       }
     ]
   }
@@ -127,15 +127,20 @@ const SlideTutorialModal: React.FC<{ visible: boolean; onFinish: () => void }> =
   const [currentIndex, setCurrentIndex] = useState(0);
   const flatListRef = useRef<FlatList>(null);
   
-  // ★ 詳しく見る用のステート（nullなら本編、データが入っていれば詳細モード）
+  // 詳しく見る用のステート
   const [activeDetailSlides, setActiveDetailSlides] = useState<any[] | null>(null);
 
+  // 本編用ハンドラー
   const onViewableItemsChanged = useRef(({ viewableItems }: any) => {
     if (viewableItems.length > 0) {
       setCurrentIndex(viewableItems[0].index);
     }
   }).current;
+  
   const viewConfig = useRef({ viewAreaCoveragePercentThreshold: 50 }).current;
+
+  // 詳細用の空ハンドラー（エラー回避のため）
+  const onDetailViewableItemsChanged = useRef(() => {}).current;
 
   const handleNext = () => {
     if (currentIndex < SLIDES.length - 1) {
@@ -147,18 +152,16 @@ const SlideTutorialModal: React.FC<{ visible: boolean; onFinish: () => void }> =
 
   if (!visible) return null;
 
-  // ▼ 本編スライド1枚のレンダリング
+  // ▼ 本編スライドのレンダリング
   const renderMainSlide = ({ item }: { item: any }) => (
     <View style={{ width, alignItems: 'center', justifyContent: 'center', padding: 20 }}>
       <View style={{ width: width * 0.8, height: width * 1.2, backgroundColor: '#333', borderRadius: 20, justifyContent: 'center', alignItems: 'center', marginBottom: 20 }}>
-        {/* 画像が準備できたら下をコメントアウト外す */}
+         {/* ここに画像を入れる */}
         <Text style={{ color: '#666' }}>画像プレースホルダー ({item.id})</Text>
-        {/* <Image source={item.image} style={{ width: '100%', height: '100%', borderRadius: 20 }} resizeMode="contain" /> */}
       </View>
       <Text style={{ color: '#fff', fontSize: 24, fontWeight: 'bold', marginBottom: 15, textAlign: 'center' }}>{item.title}</Text>
       <Text style={{ color: '#aaa', fontSize: 16, textAlign: 'center', lineHeight: 24, paddingHorizontal: 10 }}>{item.description}</Text>
 
-      {/* 派生スライドがあればボタンを表示 */}
       {item.detailSlides && (
         <TouchableOpacity
           onPress={() => setActiveDetailSlides(item.detailSlides)}
@@ -170,12 +173,11 @@ const SlideTutorialModal: React.FC<{ visible: boolean; onFinish: () => void }> =
     </View>
   );
 
-  // ▼ 詳細スライド1枚のレンダリング
+  // ▼ 詳細スライドのレンダリング
   const renderDetailSlide = ({ item }: { item: any }) => (
     <View style={{ width, alignItems: 'center', justifyContent: 'center', padding: 20 }}>
       <View style={{ width: width * 0.8, height: width * 1.2, backgroundColor: '#333', borderRadius: 20, justifyContent: 'center', alignItems: 'center', marginBottom: 20 }}>
         <Text style={{ color: '#666' }}>詳細画像プレースホルダー ({item.id})</Text>
-        {/* <Image source={item.image} style={{ width: '100%', height: '100%', borderRadius: 20 }} resizeMode="contain" /> */}
       </View>
       <Text style={{ color: '#4facfe', fontSize: 24, fontWeight: 'bold', marginBottom: 15, textAlign: 'center' }}>{item.title}</Text>
       <Text style={{ color: '#aaa', fontSize: 16, textAlign: 'center', lineHeight: 24, paddingHorizontal: 10 }}>{item.description}</Text>
@@ -188,9 +190,7 @@ const SlideTutorialModal: React.FC<{ visible: boolean; onFinish: () => void }> =
         <SafeAreaView style={{ flex: 1 }}>
           
           {activeDetailSlides ? (
-            /* ================================= */
-            /* ▼ 詳細モードの時 ▼                 */
-            /* ================================= */
+            // ▼ 詳細モード（keyを指定して完全に別物にする）
             <View style={{ flex: 1 }}>
               <TouchableOpacity
                 onPress={() => setActiveDetailSlides(null)}
@@ -201,6 +201,7 @@ const SlideTutorialModal: React.FC<{ visible: boolean; onFinish: () => void }> =
               </TouchableOpacity>
 
               <FlatList
+                key="detail"
                 data={activeDetailSlides}
                 renderItem={renderDetailSlide}
                 horizontal
@@ -208,13 +209,12 @@ const SlideTutorialModal: React.FC<{ visible: boolean; onFinish: () => void }> =
                 showsHorizontalScrollIndicator={false}
                 bounces={false}
                 keyExtractor={(item) => item.id}
+                onViewableItemsChanged={onDetailViewableItemsChanged} // ★ここにも渡す
                 style={{ marginTop: 40 }}
               />
             </View>
           ) : (
-            /* ================================= */
-            /* ▼ 通常の本編モード ▼               */
-            /* ================================= */
+            // ▼ 通常モード（keyを指定）
             <View style={{ flex: 1 }}>
               <TouchableOpacity
                 onPress={onFinish}
@@ -224,6 +224,7 @@ const SlideTutorialModal: React.FC<{ visible: boolean; onFinish: () => void }> =
               </TouchableOpacity>
 
               <FlatList
+                key="main"
                 ref={flatListRef}
                 data={SLIDES}
                 keyExtractor={(item) => item.id}
@@ -255,8 +256,7 @@ const SlideTutorialModal: React.FC<{ visible: boolean; onFinish: () => void }> =
       </View>
     </Modal>
   );
-};
-// --- チュートリアルコンポーネントここまで ---
+};// --- チュートリアルコンポーネントここまで ---
 
 const WorkoutDetailModal: React.FC<{
   visible: boolean;
