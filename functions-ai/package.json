@@ -3,7 +3,8 @@
   "version": "1.0.0",
   "main": "lib/index.js",
   "scripts": {
-    "build": "tsc"
+    "build": "tsc",
+    "seed:test-accounts": "node ../scripts/seed-test-accounts.mjs"
   },
   "engines": {
     "node": "20"

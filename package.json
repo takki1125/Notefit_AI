@@ -3,7 +3,7 @@
   "main": "expo-router/entry",
   "version": "1.0.2",
   "scripts": {
-    "start": "cross-env APP_VARIANT=development expo start",
+    "start": "node ./scripts/free-metro-port.mjs 8081 && cross-env APP_VARIANT=development expo start --lan --scheme fitness-app-dev --port 8081",
     "reset-project": "node ./scripts/reset-project.js",
     "android": "cross-env APP_VARIANT=development expo run:android",
     "ios": "cross-env APP_VARIANT=development expo run:ios",
