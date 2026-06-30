@@ -1,6 +1,7 @@
-// Loads environment variables from `.env` for local development.
-// In EAS/CI, these should be supplied via environment variables / secrets.
-require("dotenv").config();
+// Loads `.env*` files without overriding shell-provided vars (e.g. REACT_NATIVE_PACKAGER_HOSTNAME).
+// Uses Expo's loader instead of dotenv to avoid duplicate injection logs during `expo start`.
+const { loadProjectEnv } = require("@expo/env");
+loadProjectEnv(__dirname, { silent: true });
 
 const fs = require("node:fs");
 const path = require("node:path");

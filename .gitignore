@@ -109,4 +109,7 @@ serviceAccountKey.json
 serviceaccountkey.json
 **/serviceAccountKey.json
 **/serviceaccountkey.json
+# Firebase Console からダウンロードしたデフォルト名（*firebase-adminsdk-*.json）
+*firebase-adminsdk*.json
+**/firebase-adminsdk*.json
 pc-api-service-account.json
