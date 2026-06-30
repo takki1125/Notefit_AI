@@ -13,7 +13,7 @@ import {
   Dumbbell,
   GripVertical,
   Minus,
-  Pencil, 
+  Pencil,
   Plus,
   Settings as SettingsIcon,
   Trash2,
@@ -89,7 +89,7 @@ const SLIDES = [
         id: '1-1',
         title: '自分好みにカスタマイズ',
         description: 'ウィジェットを長押しすると、表示する項目の追加や削除、並び替えが自由にできます。',
-        image: require('../../assets/images/tutorial/slide_home1_detail1.png'),
+        // image: require('../../assets/images/tutorial/slide_home1_detail1.png'),
       }
     ]
   },
@@ -103,7 +103,7 @@ const SLIDES = [
         id: '2-1',
         title: '1日の詳細画面',
         description: '日付をタップして開いた画面では、その日のトレーニングと食事の確認、新しい記録の追加、間違えた記録の削除がまとめて行えます。',
-        image: require('../../assets/images/tutorial/slide_home2_detail1.png'),
+        // image: require('../../assets/images/tutorial/slide_home2_detail1.png'),
       }
     ]
   },
@@ -117,7 +117,7 @@ const SLIDES = [
         id: '3-1',
         title: '便利なリンクウィジェット',
         description: 'ホーム画面には「カレンダー」「トレーニング」「食事」「AIアドバイス」へ一発で飛べるボタンも配置されています。どんどん活用していきましょう！',
-        image: require('../../assets/images/tutorial/slide_home3_detail1.png'),
+        // image: require('../../assets/images/tutorial/slide_home3_detail1.png'),
       }
     ]
   }
@@ -126,7 +126,7 @@ const SLIDES = [
 const SlideTutorialModal: React.FC<{ visible: boolean; onFinish: () => void }> = ({ visible, onFinish }) => {
   const [currentIndex, setCurrentIndex] = useState(0);
   const flatListRef = useRef<FlatList>(null);
-  
+
   // 詳しく見る用のステート
   const [activeDetailSlides, setActiveDetailSlides] = useState<any[] | null>(null);
 
@@ -136,11 +136,11 @@ const SlideTutorialModal: React.FC<{ visible: boolean; onFinish: () => void }> =
       setCurrentIndex(viewableItems[0].index);
     }
   }).current;
-  
+
   const viewConfig = useRef({ viewAreaCoveragePercentThreshold: 50 }).current;
 
   // 詳細用の空ハンドラー（エラー回避のため）
-  const onDetailViewableItemsChanged = useRef(() => {}).current;
+  const onDetailViewableItemsChanged = useRef(() => { }).current;
 
   const handleNext = () => {
     if (currentIndex < SLIDES.length - 1) {
@@ -156,8 +156,11 @@ const SlideTutorialModal: React.FC<{ visible: boolean; onFinish: () => void }> =
   const renderMainSlide = ({ item }: { item: any }) => (
     <View style={{ width, alignItems: 'center', justifyContent: 'center', padding: 20 }}>
       <View style={{ width: width * 0.8, height: width * 1.2, backgroundColor: '#333', borderRadius: 20, justifyContent: 'center', alignItems: 'center', marginBottom: 20 }}>
-         {/* ここに画像を入れる */}
-        <Text style={{ color: '#666' }}>画像プレースホルダー ({item.id})</Text>
+        <Image
+          source={item.image}
+          style={{ width: '100%', height: '100%', borderRadius: 20 }}
+          resizeMode="contain"
+        />
       </View>
       <Text style={{ color: '#fff', fontSize: 24, fontWeight: 'bold', marginBottom: 15, textAlign: 'center' }}>{item.title}</Text>
       <Text style={{ color: '#aaa', fontSize: 16, textAlign: 'center', lineHeight: 24, paddingHorizontal: 10 }}>{item.description}</Text>
@@ -188,7 +191,7 @@ const SlideTutorialModal: React.FC<{ visible: boolean; onFinish: () => void }> =
     <Modal visible={visible} animationType="fade" transparent>
       <View style={{ flex: 1, backgroundColor: 'rgba(26, 26, 26, 0.95)' }}>
         <SafeAreaView style={{ flex: 1 }}>
-          
+
           {activeDetailSlides ? (
             // ▼ 詳細モード（keyを指定して完全に別物にする）
             <View style={{ flex: 1 }}>
@@ -236,7 +239,7 @@ const SlideTutorialModal: React.FC<{ visible: boolean; onFinish: () => void }> =
                 viewabilityConfig={viewConfig}
                 renderItem={renderMainSlide}
               />
-              
+
               <View style={{ padding: 20, paddingBottom: 40, alignItems: 'center' }}>
                 <View style={{ flexDirection: 'row', marginBottom: 30 }}>
                   {SLIDES.map((_, index) => (
@@ -263,12 +266,12 @@ const WorkoutDetailModal: React.FC<{
   onClose: () => void;
   workouts: Workout[];
   foodLog: DailyFoodLog | null;
-  targetDateId: string; 
+  targetDateId: string;
   onDeleteWorkout: (id: string) => void;
-  onEditWorkout: (id: string) => void; 
-  onEditFood: (dateId: string) => void; 
+  onEditWorkout: (id: string) => void;
+  onEditFood: (dateId: string) => void;
 }> = ({ visible, onClose, workouts, foodLog, targetDateId, onDeleteWorkout, onEditWorkout, onEditFood }) => {
-  
+
   const displayDateStr = targetDateId ? targetDateId.replace(/-/g, "/") : "記録詳細";
   const dateStr = workouts.length > 0 ? workouts[0].dateStr : displayDateStr;
 
@@ -289,8 +292,8 @@ const WorkoutDetailModal: React.FC<{
                   <Text style={{ color: '#2ecc71', fontWeight: 'bold', letterSpacing: 1 }}>TRAINING LOG</Text>
                 </View>
                 {workouts.length === 0 && (
-                  <TouchableOpacity 
-                    onPress={() => onEditWorkout(targetDateId)} 
+                  <TouchableOpacity
+                    onPress={() => onEditWorkout(targetDateId)}
                     style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#2ecc71', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 10 }}
                   >
                     <Plus color="#000" size={16} style={{ marginRight: 4 }} />
@@ -298,7 +301,7 @@ const WorkoutDetailModal: React.FC<{
                   </TouchableOpacity>
                 )}
               </View>
-              
+
               {workouts.length > 0 ? (
                 workouts.map((workout) => (
                   <View key={workout.id} style={{ backgroundColor: '#262626', borderRadius: 15, padding: 15, marginBottom: 15 }}>
@@ -320,11 +323,11 @@ const WorkoutDetailModal: React.FC<{
                     {workout.exercises.map((ex, i) => (
                       <View key={i} style={{ marginTop: 10, borderLeftWidth: 2, borderColor: '#2ecc71', paddingLeft: 12, marginBottom: 5 }}>
                         <Text style={{ color: '#eee', fontWeight: 'bold', fontSize: 15, marginBottom: 6 }}>{ex.name}</Text>
-                        
+
                         {ex.sets.filter(s => s.done || (s.weight !== undefined && s.weight !== "") || (s.durationMinutes !== undefined && s.durationMinutes !== "")).map((set, k) => {
                           const isCardio = set.durationMinutes !== undefined || set.distanceKm !== undefined;
-                          const displayStr = isCardio 
-                            ? `${set.durationMinutes || 0}分 × ${set.distanceKm || 0}km` 
+                          const displayStr = isCardio
+                            ? `${set.durationMinutes || 0}分 × ${set.distanceKm || 0}km`
                             : `${set.weight || 0}kg × ${set.reps || 0}reps`;
 
                           return (
@@ -356,7 +359,7 @@ const WorkoutDetailModal: React.FC<{
                   <Text style={{ color: '#fff', fontSize: 12, fontWeight: 'bold' }}>{foodLog ? "編集" : "追加"}</Text>
                 </TouchableOpacity>
               </View>
-              
+
               <View style={{ backgroundColor: '#262626', borderRadius: 15, padding: 15 }}>
                 {foodLog && foodLog.meals && foodLog.meals.length > 0 ? (
                   <>
@@ -484,12 +487,12 @@ function HomeTabContent() {
   const [addWidgetModalVisible, setAddWidgetModalVisible] = useState(false);
   const [history, setHistory] = useState<Workout[]>([]);
   const [viewedDate, setViewedDate] = useState(new Date());
-  
+
   const [modalVisible, setModalVisible] = useState(false);
   const [selectedDateWorkouts, setSelectedDateWorkouts] = useState<Workout[]>([]);
   const [selectedDateFoodLog, setSelectedDateFoodLog] = useState<DailyFoodLog | null>(null);
-  const [targetDateId, setTargetDateId] = useState(""); 
-  
+  const [targetDateId, setTargetDateId] = useState("");
+
   const [todayMeals, setTodayMeals] = useState<Meal[]>([]);
   const [displayName, setDisplayName] = useState("");
 
@@ -573,7 +576,7 @@ function HomeTabContent() {
   const handleFinishTutorial = async () => {
     setShowSlideTutorial(false);
     if (uid) {
-      await markHomeTutorialSeen(uid).catch(() => {});
+      await markHomeTutorialSeen(uid).catch(() => { });
     }
   };
 
@@ -606,7 +609,7 @@ function HomeTabContent() {
     const mStr = String(month).padStart(2, '0');
     const dStr = String(day).padStart(2, '0');
     const docId = `${year}-${mStr}-${dStr}`;
-    setTargetDateId(docId); 
+    setTargetDateId(docId);
 
     const user = auth.currentUser;
     if (user) {
@@ -744,8 +747,8 @@ function HomeTabContent() {
                               <Text style={{ color: '#888', fontSize: 12, paddingLeft: 14 }}>
                                 {doneSets.map(s => {
                                   const isCardio = s.durationMinutes !== undefined || s.distanceKm !== undefined;
-                                  return isCardio 
-                                    ? `${s.durationMinutes || 0}分×${s.distanceKm || 0}km` 
+                                  return isCardio
+                                    ? `${s.durationMinutes || 0}分×${s.distanceKm || 0}km`
                                     : `${s.weight || 0}kg×${s.reps || 0}`;
                                 }).join('  |  ')}
                               </Text>
@@ -918,16 +921,16 @@ function HomeTabContent() {
   return (
     <View style={[styles.container, { flex: 1 }]}>
       {isEditMode ? (
-        <DraggableFlatList 
-          {...listCommon} 
-          onDragEnd={({ data }) => void persistOrder(data)} 
-          renderItem={renderDraggableRow} 
-          containerStyle={{ flex: 1 }} 
+        <DraggableFlatList
+          {...listCommon}
+          onDragEnd={({ data }) => void persistOrder(data)}
+          renderItem={renderDraggableRow}
+          containerStyle={{ flex: 1 }}
         />
       ) : (
-        <FlatList 
-          {...listCommon} 
-          renderItem={renderStaticRow} 
+        <FlatList
+          {...listCommon}
+          renderItem={renderStaticRow}
         />
       )}
 
@@ -953,21 +956,21 @@ function HomeTabContent() {
         </View>
       </Modal>
 
-      <WorkoutDetailModal 
-        visible={modalVisible} 
-        onClose={() => setModalVisible(false)} 
-        workouts={selectedDateWorkouts} 
-        foodLog={selectedDateFoodLog} 
-        targetDateId={targetDateId} 
-        onDeleteWorkout={handleDeleteWorkout} 
+      <WorkoutDetailModal
+        visible={modalVisible}
+        onClose={() => setModalVisible(false)}
+        workouts={selectedDateWorkouts}
+        foodLog={selectedDateFoodLog}
+        targetDateId={targetDateId}
+        onDeleteWorkout={handleDeleteWorkout}
         onEditWorkout={handleEditWorkout}
         onEditFood={handleEditFood}
       />
 
       {/* スライドチュートリアル */}
-      <SlideTutorialModal 
-        visible={showSlideTutorial} 
-        onFinish={handleFinishTutorial} 
+      <SlideTutorialModal
+        visible={showSlideTutorial}
+        onFinish={handleFinishTutorial}
       />
     </View>
   );
