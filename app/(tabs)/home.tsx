@@ -29,7 +29,7 @@ import {
   Alert,
   FlatList,
   Dimensions,
-  Image, // ★ 追加
+  Image,
   InteractionManager,
   Modal,
   Platform,
@@ -39,6 +39,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import { Video, ResizeMode } from 'expo-av';
 import DraggableFlatList, { RenderItemParams, ScaleDecorator } from "react-native-draggable-flatlist";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -78,6 +79,7 @@ const formatTime = (totalSeconds: number | undefined) => {
 };
 
 // --- スライドチュートリアル用データ ---
+// 動画を入れるときは、コメントアウトを外して video: require('パス.mp4') を設定してね
 const SLIDES = [
   {
     id: '1',
@@ -90,6 +92,7 @@ const SLIDES = [
         title: '自分好みにカスタマイズ',
         description: 'ウィジェットを長押しすると、表示する項目の追加や削除、並び替えが自由にできます。',
         // image: require('../../assets/images/tutorial/slide_home1_detail1.png'),
+        // video: require('../../assets/videos/tutorial/slide_home1_detail1.mp4'),
       }
     ]
   },
@@ -104,6 +107,7 @@ const SLIDES = [
         title: '1日の詳細画面',
         description: '日付をタップして開いた画面では、その日のトレーニングと食事の確認、新しい記録の追加、間違えた記録の削除がまとめて行えます。',
         // image: require('../../assets/images/tutorial/slide_home2_detail1.png'),
+        // video: require('../../assets/videos/tutorial/slide_home2_detail1.mp4'),
       }
     ]
   },
@@ -118,19 +122,18 @@ const SLIDES = [
         title: '便利なリンクウィジェット',
         description: 'ホーム画面には「カレンダー」「トレーニング」「食事」「AIアドバイス」へ一発で飛べるボタンも配置されています。どんどん活用していきましょう！',
         // image: require('../../assets/images/tutorial/slide_home3_detail1.png'),
+        // video: require('../../assets/videos/tutorial/slide_home3_detail1.mp4'),
       }
     ]
   }
 ];
 
+// --- チュートリアルモーダル本体 ---
 const SlideTutorialModal: React.FC<{ visible: boolean; onFinish: () => void }> = ({ visible, onFinish }) => {
   const [currentIndex, setCurrentIndex] = useState(0);
   const flatListRef = useRef<FlatList>(null);
-
-  // 詳しく見る用のステート
   const [activeDetailSlides, setActiveDetailSlides] = useState<any[] | null>(null);
 
-  // 本編用ハンドラー
   const onViewableItemsChanged = useRef(({ viewableItems }: any) => {
     if (viewableItems.length > 0) {
       setCurrentIndex(viewableItems[0].index);
@@ -138,8 +141,6 @@ const SlideTutorialModal: React.FC<{ visible: boolean; onFinish: () => void }> =
   }).current;
 
   const viewConfig = useRef({ viewAreaCoveragePercentThreshold: 50 }).current;
-
-  // 詳細用の空ハンドラー（エラー回避のため）
   const onDetailViewableItemsChanged = useRef(() => { }).current;
 
   const handleNext = () => {
@@ -152,38 +153,53 @@ const SlideTutorialModal: React.FC<{ visible: boolean; onFinish: () => void }> =
 
   if (!visible) return null;
 
-  // ▼ 本編スライドのレンダリング
+  // ▼ 本編スライド
   const renderMainSlide = ({ item }: { item: any }) => (
-    <View style={{ width, alignItems: 'center', justifyContent: 'center', padding: 20 }}>
-      <View style={{ width: width * 0.8, height: width * 1.2, backgroundColor: '#333', borderRadius: 20, justifyContent: 'center', alignItems: 'center', marginBottom: 20 }}>
-        <Image
-          source={item.image}
-          style={{ width: '100%', height: '100%', borderRadius: 20 }}
-          resizeMode="contain"
-        />
-      </View>
-      <Text style={{ color: '#fff', fontSize: 24, fontWeight: 'bold', marginBottom: 15, textAlign: 'center' }}>{item.title}</Text>
-      <Text style={{ color: '#aaa', fontSize: 16, textAlign: 'center', lineHeight: 24, paddingHorizontal: 10 }}>{item.description}</Text>
+    <View style={{ width, flex: 1 }}>
+      <ScrollView contentContainerStyle={{ alignItems: 'center', padding: 20, paddingBottom: 50 }} showsVerticalScrollIndicator={false}>
+        <View style={{ width: width * 0.8, height: width * 1.6, borderRadius: 20, justifyContent: 'center', alignItems: 'center', marginBottom: 20 }}>
+          <Image source={item.image} style={{ width: '100%', height: '100%', borderRadius: 20 }} resizeMode="contain" />
+        </View>
+        <Text style={{ color: '#fff', fontSize: 24, fontWeight: 'bold', marginBottom: 15, textAlign: 'center' }}>{item.title}</Text>
+        <Text style={{ color: '#aaa', fontSize: 16, textAlign: 'center', lineHeight: 24, paddingHorizontal: 10 }}>{item.description}</Text>
 
-      {item.detailSlides && (
-        <TouchableOpacity
-          onPress={() => setActiveDetailSlides(item.detailSlides)}
-          style={{ marginTop: 25, paddingVertical: 12, paddingHorizontal: 24, backgroundColor: '#333', borderRadius: 25, borderWidth: 1, borderColor: '#4facfe' }}
-        >
-          <Text style={{ color: '#4facfe', fontWeight: 'bold', fontSize: 15 }}>もっと詳しく見る ＞</Text>
-        </TouchableOpacity>
-      )}
+        {item.detailSlides && (
+          <TouchableOpacity
+            onPress={() => setActiveDetailSlides(item.detailSlides)}
+            style={{ marginTop: 25, paddingVertical: 12, paddingHorizontal: 24, borderRadius: 25, borderWidth: 1, borderColor: '#4facfe' }}
+          >
+            <Text style={{ color: '#4facfe', fontWeight: 'bold', fontSize: 15 }}>もっと詳しく見る ＞</Text>
+          </TouchableOpacity>
+        )}
+      </ScrollView>
     </View>
   );
 
-  // ▼ 詳細スライドのレンダリング
+  // ▼ 詳細スライド（動画と画像両方対応）
   const renderDetailSlide = ({ item }: { item: any }) => (
-    <View style={{ width, alignItems: 'center', justifyContent: 'center', padding: 20 }}>
-      <View style={{ width: width * 0.8, height: width * 1.2, backgroundColor: '#333', borderRadius: 20, justifyContent: 'center', alignItems: 'center', marginBottom: 20 }}>
-        <Text style={{ color: '#666' }}>詳細画像プレースホルダー ({item.id})</Text>
-      </View>
-      <Text style={{ color: '#4facfe', fontSize: 24, fontWeight: 'bold', marginBottom: 15, textAlign: 'center' }}>{item.title}</Text>
-      <Text style={{ color: '#aaa', fontSize: 16, textAlign: 'center', lineHeight: 24, paddingHorizontal: 10 }}>{item.description}</Text>
+    <View style={{ width, flex: 1 }}>
+      <ScrollView contentContainerStyle={{ alignItems: 'center', padding: 20, paddingBottom: 50 }} showsVerticalScrollIndicator={false}>
+        <View style={{ width: width * 0.8, height: width * 1.6, backgroundColor: '#000', borderRadius: 20, justifyContent: 'center', alignItems: 'center', marginBottom: 20, overflow: 'hidden' }}>
+          
+          {item.video ? (
+            <Video
+              source={item.video}
+              style={{ width: '100%', height: '100%' }}
+              resizeMode={ResizeMode.CONTAIN}
+              shouldPlay
+              isLooping
+              isMuted
+            />
+          ) : item.image ? (
+            <Image source={item.image} style={{ width: '100%', height: '100%', borderRadius: 20 }} resizeMode="contain" />
+          ) : (
+            <Text style={{ color: '#666' }}>メディアがありません</Text>
+          )}
+
+        </View>
+        <Text style={{ color: '#4facfe', fontSize: 24, fontWeight: 'bold', marginBottom: 15, textAlign: 'center' }}>{item.title}</Text>
+        <Text style={{ color: '#aaa', fontSize: 16, textAlign: 'center', lineHeight: 24, paddingHorizontal: 10 }}>{item.description}</Text>
+      </ScrollView>
     </View>
   );
 
@@ -191,18 +207,13 @@ const SlideTutorialModal: React.FC<{ visible: boolean; onFinish: () => void }> =
     <Modal visible={visible} animationType="fade" transparent>
       <View style={{ flex: 1, backgroundColor: 'rgba(26, 26, 26, 0.95)' }}>
         <SafeAreaView style={{ flex: 1 }}>
-
+          
           {activeDetailSlides ? (
-            // ▼ 詳細モード（keyを指定して完全に別物にする）
             <View style={{ flex: 1 }}>
-              <TouchableOpacity
-                onPress={() => setActiveDetailSlides(null)}
-                style={{ position: 'absolute', top: 10, left: 10, zIndex: 10, padding: 15, flexDirection: 'row', alignItems: 'center' }}
-              >
+              <TouchableOpacity onPress={() => setActiveDetailSlides(null)} style={{ position: 'absolute', top: 10, left: 10, zIndex: 10, padding: 15, flexDirection: 'row', alignItems: 'center' }}>
                 <ChevronLeft color="#fff" size={24} />
                 <Text style={{ color: '#fff', fontSize: 16, fontWeight: 'bold' }}>戻る</Text>
               </TouchableOpacity>
-
               <FlatList
                 key="detail"
                 data={activeDetailSlides}
@@ -212,20 +223,15 @@ const SlideTutorialModal: React.FC<{ visible: boolean; onFinish: () => void }> =
                 showsHorizontalScrollIndicator={false}
                 bounces={false}
                 keyExtractor={(item) => item.id}
-                onViewableItemsChanged={onDetailViewableItemsChanged} // ★ここにも渡す
+                onViewableItemsChanged={onDetailViewableItemsChanged}
                 style={{ marginTop: 40 }}
               />
             </View>
           ) : (
-            // ▼ 通常モード（keyを指定）
             <View style={{ flex: 1 }}>
-              <TouchableOpacity
-                onPress={onFinish}
-                style={{ position: 'absolute', top: 10, right: 10, zIndex: 10, padding: 15 }}
-              >
+              <TouchableOpacity onPress={onFinish} style={{ position: 'absolute', top: 10, right: 10, zIndex: 10, padding: 15 }}>
                 <Text style={{ color: '#aaa', fontSize: 16 }}>スキップ</Text>
               </TouchableOpacity>
-
               <FlatList
                 key="main"
                 ref={flatListRef}
@@ -239,7 +245,6 @@ const SlideTutorialModal: React.FC<{ visible: boolean; onFinish: () => void }> =
                 viewabilityConfig={viewConfig}
                 renderItem={renderMainSlide}
               />
-
               <View style={{ padding: 20, paddingBottom: 40, alignItems: 'center' }}>
                 <View style={{ flexDirection: 'row', marginBottom: 30 }}>
                   {SLIDES.map((_, index) => (
@@ -259,7 +264,7 @@ const SlideTutorialModal: React.FC<{ visible: boolean; onFinish: () => void }> =
       </View>
     </Modal>
   );
-};// --- チュートリアルコンポーネントここまで ---
+};
 
 const WorkoutDetailModal: React.FC<{
   visible: boolean;
