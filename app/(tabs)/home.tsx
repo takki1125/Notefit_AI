@@ -91,7 +91,7 @@ const SLIDES = [
         id: '1-1',
         title: '自分好みにカスタマイズ',
         description: 'ウィジェットを長押しすると、表示する項目の追加や削除、並び替えが自由にできます。',
-        video: require('../../assets/images/tutorial/video_home1_1.mp4'),
+        video: require('../../assets/images/tutorial/video_home1.mp4'),
       }
     ]
   },
@@ -119,7 +119,7 @@ const SLIDES = [
         id: '3-1',
         title: '便利なリンクウィジェット',
         description: 'ホーム画面には「カレンダー」「トレーニング」「食事」「AIアドバイス」へ一発で飛べるボタンも配置されています。どんどん活用していきましょう！',
-        video: require('../../assets/images/tutorial/video_home3_1.mp4'),
+        video: require('../../assets/images/tutorial/video_home3.mp4'),
       }
     ]
   }
