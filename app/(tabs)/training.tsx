@@ -170,7 +170,7 @@ const TRAINING_SLIDES = [
         id: '1-1',
         title: 'セットの記録と完了',
         description: '重量と回数を入力し、右側のチェックボタンを押すとセット完了です。',
-        video: require('../../assets/images/tutorial/video_training1_1.mp4'),
+        video: require('../../assets/images/tutorial/video_training1.mp4'),
       }
     ]
   },
@@ -184,7 +184,7 @@ const TRAINING_SLIDES = [
         id: '2-1',
         title: 'オリジナルメニューの作成',
         description: '「ゼロから作成する」を選ぶと、あらかじめ好きな種目を組み合わせたルーティンを作っておくことも可能です。',
-        video: require('../../assets/images/tutorial/video_training2_1.mp4'),
+        video: require('../../assets/images/tutorial/video_training2.mp4'),
       }
     ]
   }
