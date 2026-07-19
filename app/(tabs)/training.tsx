@@ -19,7 +19,7 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useFocusEffect } from "@react-navigation/native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { Check, ChevronDown, Clock, Dumbbell, Pencil, Plus, Trash2, X } from "lucide-react-native";
+import { Check, ChevronDown, ChevronLeft, Clock, Dumbbell, Pencil, Plus, Trash2, X } from "lucide-react-native";
 import {
   addDoc,
   setDoc,
@@ -34,7 +34,7 @@ import {
   serverTimestamp,
 } from "firebase/firestore";
 import { useLocalSearchParams, useRouter } from "expo-router";
-
+import { Video, ResizeMode } from 'expo-av';
 import { FREE_CUSTOM_EXERCISE_LIMIT } from "../../constants/subscriptionLimits";
 import { type CustomExerciseListItem } from "../../hooks/useExerciseMaster";
 import { auth, db } from "../../firebaseConfig";
@@ -158,31 +158,51 @@ const SetValueInput: React.FC<SetValueInputProps> = ({
 };
 
 // --- スライドチュートリアル用コンポーネント ---
+// --- スライドチュートリアル用データ ---
 const TRAINING_SLIDES = [
   {
     id: '1',
     title: 'トレーニングの記録',
     description: 'まずは「種目を追加する」から、今日行うメニューを選びましょう。',
     image: require('../../assets/images/tutorial/slide_training1.png'),
+    detailSlides: [
+      {
+        id: '1-1',
+        title: 'セットの記録と完了',
+        description: '重量と回数を入力し、右側のチェックボタンを押すとセット完了です。',
+        video: require('../../assets/images/tutorial/video_training1.mp4'),
+      }
+    ]
   },
   {
     id: '2',
     title: 'ルーティンの活用',
     description: 'よく行うメニューは、上部の「Today\'s Workout」からルーティンとして保存・読み込みができます。',
     image: require('../../assets/images/tutorial/slide_training2.png'),
+    detailSlides: [
+      {
+        id: '2-1',
+        title: 'オリジナルメニューの作成',
+        description: '「ゼロから作成する」を選ぶと、あらかじめ好きな種目を組み合わせたルーティンを作っておくことも可能です。',
+        video: require('../../assets/images/tutorial/video_training2.mp4'),
+      }
+    ]
   }
 ];
 
 const SlideTutorialModal: React.FC<{ visible: boolean; onFinish: () => void }> = ({ visible, onFinish }) => {
   const [currentIndex, setCurrentIndex] = useState(0);
   const flatListRef = useRef<FlatList>(null);
+  const [activeDetailSlides, setActiveDetailSlides] = useState<any[] | null>(null);
 
   const onViewableItemsChanged = useRef(({ viewableItems }: any) => {
     if (viewableItems.length > 0) {
       setCurrentIndex(viewableItems[0].index);
     }
   }).current;
+
   const viewConfig = useRef({ viewAreaCoveragePercentThreshold: 50 }).current;
+  const onDetailViewableItemsChanged = useRef(() => { }).current;
 
   const handleNext = () => {
     if (currentIndex < TRAINING_SLIDES.length - 1) {
@@ -194,49 +214,115 @@ const SlideTutorialModal: React.FC<{ visible: boolean; onFinish: () => void }> =
 
   if (!visible) return null;
 
+  // ▼ 本編スライド
+  const renderMainSlide = ({ item }: { item: any }) => (
+    <View style={{ width, flex: 1 }}>
+      <ScrollView contentContainerStyle={{ alignItems: 'center', padding: 20, paddingBottom: 50 }} showsVerticalScrollIndicator={false}>
+        <View style={{ width: width * 0.7, height: width * 1.3, borderRadius: 20, justifyContent: 'center', alignItems: 'center', marginBottom: 20, overflow: 'hidden' }}>
+          {item.video ? (
+            <Video source={item.video} style={{ width: '100%', height: '100%' }} resizeMode={ResizeMode.CONTAIN} shouldPlay isLooping isMuted />
+          ) : item.image ? (
+            <Image source={item.image} style={{ width: '100%', height: '100%', borderRadius: 20 }} resizeMode="contain" />
+          ) : (
+            <Text style={{ color: '#666' }}>メディアがありません</Text>
+          )}
+        </View>
+        <Text style={{ color: '#fff', fontSize: 24, fontWeight: 'bold', marginBottom: 15, textAlign: 'center' }}>{item.title}</Text>
+        <Text style={{ color: '#aaa', fontSize: 16, textAlign: 'center', lineHeight: 24, paddingHorizontal: 10 }}>{item.description}</Text>
+
+        {item.detailSlides && (
+          <TouchableOpacity
+            onPress={() => setActiveDetailSlides(item.detailSlides)}
+            style={{ marginTop: 25, paddingVertical: 12, paddingHorizontal: 24, borderRadius: 25, borderWidth: 1, borderColor: '#4facfe' }}
+          >
+            <Text style={{ color: '#4facfe', fontWeight: 'bold', fontSize: 15 }}>もっと詳しく見る ＞</Text>
+          </TouchableOpacity>
+        )}
+      </ScrollView>
+    </View>
+  );
+
+  // ▼ 詳細スライド
+  const renderDetailSlide = ({ item }: { item: any }) => (
+    <View style={{ width, flex: 1 }}>
+      <ScrollView contentContainerStyle={{ alignItems: 'center', padding: 20, paddingBottom: 50 }} showsVerticalScrollIndicator={false}>
+        <View style={{ width: width * 0.7, height: width * 1.3, backgroundColor: '#000', borderRadius: 20, justifyContent: 'center', alignItems: 'center', marginBottom: 20, overflow: 'hidden' }}>
+          {item.video ? (
+            <Video source={item.video} style={{ width: '100%', height: '100%' }} resizeMode={ResizeMode.CONTAIN} shouldPlay isLooping isMuted />
+          ) : item.image ? (
+            <Image source={item.image} style={{ width: '100%', height: '100%', borderRadius: 20 }} resizeMode="contain" />
+          ) : (
+            <Text style={{ color: '#666' }}>メディアがありません</Text>
+          )}
+        </View>
+        <Text style={{ color: '#4facfe', fontSize: 24, fontWeight: 'bold', marginBottom: 15, textAlign: 'center' }}>{item.title}</Text>
+        <Text style={{ color: '#aaa', fontSize: 16, textAlign: 'center', lineHeight: 24, paddingHorizontal: 10 }}>{item.description}</Text>
+      </ScrollView>
+    </View>
+  );
+
   return (
     <Modal visible={visible} animationType="fade" transparent>
       <View style={{ flex: 1, backgroundColor: 'rgba(26, 26, 26, 0.95)' }}>
         <SafeAreaView style={{ flex: 1 }}>
-          <FlatList
-            ref={flatListRef}
-            data={TRAINING_SLIDES}
-            keyExtractor={(item) => item.id}
-            horizontal
-            pagingEnabled
-            showsHorizontalScrollIndicator={false}
-            bounces={false}
-            onViewableItemsChanged={onViewableItemsChanged}
-            viewabilityConfig={viewConfig}
-            renderItem={({ item }) => (
-              <View style={{ width, alignItems: 'center', justifyContent: 'center', padding: 20 }}>
-                <View style={{ width: width * 0.8, height: width * 1.2, backgroundColor: '#333', borderRadius: 20, justifyContent: 'center', alignItems: 'center', marginBottom: 30 }}>
-                  <Text style={{ color: '#666' }}>スクショ用 ({item.id})</Text>
-                  {/* <Image source={item.image} style={{ width: '100%', height: '100%', borderRadius: 20 }} resizeMode="contain" /> */}
-                </View>
-                <Text style={{ color: '#fff', fontSize: 24, fontWeight: 'bold', marginBottom: 15, textAlign: 'center' }}>{item.title}</Text>
-                <Text style={{ color: '#aaa', fontSize: 16, textAlign: 'center', lineHeight: 24, paddingHorizontal: 10 }}>{item.description}</Text>
-              </View>
-            )}
-          />
-          <View style={{ padding: 20, paddingBottom: 40, alignItems: 'center' }}>
-            <View style={{ flexDirection: 'row', marginBottom: 30 }}>
-              {TRAINING_SLIDES.map((_, index) => (
-                <View key={index} style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: currentIndex === index ? '#2ecc71' : '#555', marginHorizontal: 4, ...(currentIndex === index && { width: 24 }) }} />
-              ))}
+          
+          {activeDetailSlides ? (
+            <View style={{ flex: 1 }}>
+              <TouchableOpacity onPress={() => setActiveDetailSlides(null)} style={{ position: 'absolute', top: 10, left: 10, zIndex: 10, padding: 15, flexDirection: 'row', alignItems: 'center' }}>
+                <ChevronLeft color="#fff" size={24} />
+                <Text style={{ color: '#fff', fontSize: 16, fontWeight: 'bold' }}>戻る</Text>
+              </TouchableOpacity>
+              <FlatList
+                key="detail"
+                data={activeDetailSlides}
+                renderItem={renderDetailSlide}
+                horizontal
+                pagingEnabled
+                showsHorizontalScrollIndicator={false}
+                bounces={false}
+                keyExtractor={(item) => item.id}
+                onViewableItemsChanged={onDetailViewableItemsChanged}
+                style={{ marginTop: 40 }}
+              />
             </View>
-            <TouchableOpacity onPress={handleNext} style={{ backgroundColor: '#2ecc71', paddingVertical: 15, paddingHorizontal: 40, borderRadius: 30, width: '90%', alignItems: 'center' }}>
-              <Text style={{ color: '#000', fontSize: 18, fontWeight: 'bold' }}>
-                {currentIndex === TRAINING_SLIDES.length - 1 ? 'はじめる' : '次へ'}
-              </Text>
-            </TouchableOpacity>
-          </View>
+          ) : (
+            <View style={{ flex: 1 }}>
+              <TouchableOpacity onPress={onFinish} style={{ position: 'absolute', top: 10, right: 10, zIndex: 10, padding: 15 }}>
+                <Text style={{ color: '#aaa', fontSize: 16 }}>スキップ</Text>
+              </TouchableOpacity>
+              <FlatList
+                key="main"
+                ref={flatListRef}
+                data={TRAINING_SLIDES}
+                keyExtractor={(item) => item.id}
+                horizontal
+                pagingEnabled
+                showsHorizontalScrollIndicator={false}
+                bounces={false}
+                onViewableItemsChanged={onViewableItemsChanged}
+                viewabilityConfig={viewConfig}
+                renderItem={renderMainSlide}
+              />
+              <View style={{ padding: 20, paddingBottom: 40, alignItems: 'center' }}>
+                <View style={{ flexDirection: 'row', marginBottom: 30 }}>
+                  {TRAINING_SLIDES.map((_, index) => (
+                    <View key={index} style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: currentIndex === index ? '#2ecc71' : '#555', marginHorizontal: 4, ...(currentIndex === index && { width: 24 }) }} />
+                  ))}
+                </View>
+                <TouchableOpacity onPress={handleNext} style={{ backgroundColor: '#2ecc71', paddingVertical: 15, paddingHorizontal: 40, borderRadius: 30, width: '90%', alignItems: 'center' }}>
+                  <Text style={{ color: '#000', fontSize: 18, fontWeight: 'bold' }}>
+                    {currentIndex === TRAINING_SLIDES.length - 1 ? 'はじめる' : '次へ'}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          )}
+
         </SafeAreaView>
       </View>
     </Modal>
   );
 };
-// --- チュートリアルコンポーネントここまで ---
 
 const ExerciseSelectorModal: React.FC<ExerciseSelectorModalProps> = ({
   visible,

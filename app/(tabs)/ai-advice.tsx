@@ -17,6 +17,7 @@ import {
   TextInput,
   TouchableOpacity,
   View,
+  Image,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
@@ -134,6 +135,10 @@ const SlideTutorialModal: React.FC<{ visible: boolean; onFinish: () => void }> =
     <Modal visible={visible} animationType="fade" transparent>
       <View style={{ flex: 1, backgroundColor: 'rgba(26, 26, 26, 0.95)' }}>
         <SafeAreaView style={{ flex: 1 }}>
+          <TouchableOpacity onPress={onFinish} style={{ position: 'absolute', top: 10, right: 10, zIndex: 10, padding: 15 }}>
+            <Text style={{ color: '#aaa', fontSize: 16 }}>スキップ</Text>
+          </TouchableOpacity>
+          
           <FlatList
             ref={flatListRef}
             data={AI_SLIDES}
@@ -144,14 +149,22 @@ const SlideTutorialModal: React.FC<{ visible: boolean; onFinish: () => void }> =
             bounces={false}
             onViewableItemsChanged={onViewableItemsChanged}
             viewabilityConfig={viewConfig}
-            renderItem={({ item }) => (
-              <View style={{ width, alignItems: 'center', justifyContent: 'center', padding: 20 }}>
-                <View style={{ width: width * 0.8, height: width * 1.2, backgroundColor: '#333', borderRadius: 20, justifyContent: 'center', alignItems: 'center', marginBottom: 30 }}>
-                  <Text style={{ color: '#666' }}>スクショ用 ({item.id})</Text>
-                  {/* <Image source={item.image} style={{ width: '100%', height: '100%', borderRadius: 20 }} resizeMode="contain" /> */}
-                </View>
-                <Text style={{ color: '#fff', fontSize: 24, fontWeight: 'bold', marginBottom: 15, textAlign: 'center' }}>{item.title}</Text>
-                <Text style={{ color: '#aaa', fontSize: 16, textAlign: 'center', lineHeight: 24, paddingHorizontal: 10 }}>{item.description}</Text>
+            renderItem={({ item }: { item: any }) => (
+              <View style={{ width, flex: 1 }}>
+                <ScrollView 
+                  contentContainerStyle={{ alignItems: 'center', padding: 20, paddingBottom: 50 }}
+                  showsVerticalScrollIndicator={false}
+                >
+                  <View style={{ width: width * 0.7, height: width * 1.3, borderRadius: 20, justifyContent: 'center', alignItems: 'center', marginBottom: 30, overflow: 'hidden' }}>
+                    {item.image ? (
+                      <Image source={item.image} style={{ width: '100%', height: '100%', borderRadius: 20 }} resizeMode="contain" />
+                    ) : (
+                      <Text style={{ color: '#666' }}>画像がありません</Text>
+                    )}
+                  </View>
+                  <Text style={{ color: '#fff', fontSize: 24, fontWeight: 'bold', marginBottom: 15, textAlign: 'center' }}>{item.title}</Text>
+                  <Text style={{ color: '#aaa', fontSize: 16, textAlign: 'center', lineHeight: 24, paddingHorizontal: 10 }}>{item.description}</Text>
+                </ScrollView>
               </View>
             )}
           />

@@ -91,8 +91,7 @@ const SLIDES = [
         id: '1-1',
         title: '自分好みにカスタマイズ',
         description: 'ウィジェットを長押しすると、表示する項目の追加や削除、並び替えが自由にできます。',
-        // image: require('../../assets/images/tutorial/slide_home1_detail1.png'),
-        // video: require('../../assets/videos/tutorial/slide_home1_detail1.mp4'),
+        video: require('../../assets/images/tutorial/video_home1.mp4'),
       }
     ]
   },
@@ -106,8 +105,7 @@ const SLIDES = [
         id: '2-1',
         title: '1日の詳細画面',
         description: '日付をタップして開いた画面では、その日のトレーニングと食事の確認、新しい記録の追加、間違えた記録の削除がまとめて行えます。',
-        // image: require('../../assets/images/tutorial/slide_home2_detail1.png'),
-        // video: require('../../assets/videos/tutorial/slide_home2_detail1.mp4'),
+        video: require('../../assets/images/tutorial/video_home2.mp4'),
       }
     ]
   },
@@ -121,8 +119,7 @@ const SLIDES = [
         id: '3-1',
         title: '便利なリンクウィジェット',
         description: 'ホーム画面には「カレンダー」「トレーニング」「食事」「AIアドバイス」へ一発で飛べるボタンも配置されています。どんどん活用していきましょう！',
-        // image: require('../../assets/images/tutorial/slide_home3_detail1.png'),
-        // video: require('../../assets/videos/tutorial/slide_home3_detail1.mp4'),
+        video: require('../../assets/images/tutorial/video_home3.mp4'),
       }
     ]
   }
@@ -170,7 +167,7 @@ const SlideTutorialModal: React.FC<{ visible: boolean; onFinish: () => void }> =
   const renderMainSlide = ({ item }: { item: any }) => (
     <View style={{ width, flex: 1 }}>
       <ScrollView contentContainerStyle={{ alignItems: 'center', padding: 20, paddingBottom: 50 }} showsVerticalScrollIndicator={false}>
-        <View style={{ width: width * 0.8, height: width * 1.6, borderRadius: 20, justifyContent: 'center', alignItems: 'center', marginBottom: 20 }}>
+        <View style={{ width: width * 0.7, height: width * 1.3, borderRadius: 20, justifyContent: 'center', alignItems: 'center', marginBottom: 20 }}>
           <Image source={item.image} style={{ width: '100%', height: '100%', borderRadius: 20 }} resizeMode="contain" />
         </View>
         <Text style={{ color: '#fff', fontSize: 24, fontWeight: 'bold', marginBottom: 15, textAlign: 'center' }}>{item.title}</Text>
@@ -192,7 +189,7 @@ const SlideTutorialModal: React.FC<{ visible: boolean; onFinish: () => void }> =
   const renderDetailSlide = ({ item }: { item: any }) => (
     <View style={{ width, flex: 1 }}>
       <ScrollView contentContainerStyle={{ alignItems: 'center', padding: 20, paddingBottom: 50 }} showsVerticalScrollIndicator={false}>
-        <View style={{ width: width * 0.8, height: width * 1.6, backgroundColor: '#000', borderRadius: 20, justifyContent: 'center', alignItems: 'center', marginBottom: 20, overflow: 'hidden' }}>
+        <View style={{ width: width * 0.7, height: width * 1.3, backgroundColor: '#000', borderRadius: 20, justifyContent: 'center', alignItems: 'center', marginBottom: 20, overflow: 'hidden' }}>
           
           {renderTutorialDetailMedia(item)}
 
