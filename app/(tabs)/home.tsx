@@ -39,7 +39,6 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { Video, ResizeMode } from 'expo-av';
 import DraggableFlatList, { RenderItemParams, ScaleDecorator } from "react-native-draggable-flatlist";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -79,7 +78,8 @@ const formatTime = (totalSeconds: number | undefined) => {
 };
 
 // --- スライドチュートリアル用データ ---
-// 動画を入れるときは、コメントアウトを外して video: require('パス.mp4') を設定してね
+// 動画を入れるときは、コメントアウトを外して video: require('パス.mp4') を設定してね。
+// 動画を有効にしたら開発ビルドの再ビルドが必要: npm run android
 const SLIDES = [
   {
     id: '1',
@@ -127,6 +127,19 @@ const SLIDES = [
     ]
   }
 ];
+
+function renderTutorialDetailMedia(item: { video?: number; image?: number }) {
+  if (item.video) {
+    const TutorialDetailVideo = require("../../components/tutorial/TutorialDetailVideo").default;
+    return <TutorialDetailVideo source={item.video} />;
+  }
+  if (item.image) {
+    return (
+      <Image source={item.image} style={{ width: "100%", height: "100%", borderRadius: 20 }} resizeMode="contain" />
+    );
+  }
+  return <Text style={{ color: "#666" }}>メディアがありません</Text>;
+}
 
 // --- チュートリアルモーダル本体 ---
 const SlideTutorialModal: React.FC<{ visible: boolean; onFinish: () => void }> = ({ visible, onFinish }) => {
@@ -181,20 +194,7 @@ const SlideTutorialModal: React.FC<{ visible: boolean; onFinish: () => void }> =
       <ScrollView contentContainerStyle={{ alignItems: 'center', padding: 20, paddingBottom: 50 }} showsVerticalScrollIndicator={false}>
         <View style={{ width: width * 0.8, height: width * 1.6, backgroundColor: '#000', borderRadius: 20, justifyContent: 'center', alignItems: 'center', marginBottom: 20, overflow: 'hidden' }}>
           
-          {item.video ? (
-            <Video
-              source={item.video}
-              style={{ width: '100%', height: '100%' }}
-              resizeMode={ResizeMode.CONTAIN}
-              shouldPlay
-              isLooping
-              isMuted
-            />
-          ) : item.image ? (
-            <Image source={item.image} style={{ width: '100%', height: '100%', borderRadius: 20 }} resizeMode="contain" />
-          ) : (
-            <Text style={{ color: '#666' }}>メディアがありません</Text>
-          )}
+          {renderTutorialDetailMedia(item)}
 
         </View>
         <Text style={{ color: '#4facfe', fontSize: 24, fontWeight: 'bold', marginBottom: 15, textAlign: 'center' }}>{item.title}</Text>
