@@ -79,11 +79,8 @@ const formatTime = (totalSeconds: number | undefined) => {
 };
 
 // --- スライドチュートリアル用データ ---
-<<<<<<< HEAD
-=======
 // 動画を入れるときは、コメントアウトを外して video: require('パス.mp4') を設定してね。
 // 動画を有効にしたら開発ビルドの再ビルドが必要: npm run android
->>>>>>> 56f1dc737049fd462e2651e4bc2894b5cb5c6203
 const SLIDES = [
   {
     id: '1',
@@ -195,7 +192,6 @@ const SlideTutorialModal: React.FC<{ visible: boolean; onFinish: () => void }> =
       <ScrollView contentContainerStyle={{ alignItems: 'center', padding: 20, paddingBottom: 50 }} showsVerticalScrollIndicator={false}>
         <View style={{ width: width * 0.7, height: width * 1.3, borderRadius: 20, justifyContent: 'center', alignItems: 'center', marginBottom: 20, overflow: 'hidden' }}>
           
-<<<<<<< HEAD
           {/* ▼ ここを修正！ */}
           {item.video ? (
             <Video source={item.video} style={{ width: '100%', height: '100%' }} resizeMode={ResizeMode.CONTAIN} shouldPlay isLooping isMuted />
@@ -204,9 +200,7 @@ const SlideTutorialModal: React.FC<{ visible: boolean; onFinish: () => void }> =
           ) : (
             <Text style={{ color: '#666' }}>メディアがありません</Text>
           )}
-=======
           {renderTutorialDetailMedia(item)}
->>>>>>> 56f1dc737049fd462e2651e4bc2894b5cb5c6203
 
         </View>
         <Text style={{ color: '#4facfe', fontSize: 24, fontWeight: 'bold', marginBottom: 15, textAlign: 'center' }}>{item.title}</Text>
