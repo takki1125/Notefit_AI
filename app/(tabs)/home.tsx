@@ -39,12 +39,12 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { Video, ResizeMode } from 'expo-av';
 import DraggableFlatList, { RenderItemParams, ScaleDecorator } from "react-native-draggable-flatlist";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaView } from "react-native-safe-area-context";
 import * as Haptics from "expo-haptics";
 import { usePathname, useRouter } from "expo-router";
+import { Video, ResizeMode } from 'expo-av';
 
 import { HOME_WIDGET_LABELS, type HomeWidgetId, hiddenWidgetIds } from "../../constants/homeWidgets";
 import { auth, db } from "../../firebaseConfig";
@@ -79,7 +79,6 @@ const formatTime = (totalSeconds: number | undefined) => {
 };
 
 // --- スライドチュートリアル用データ ---
-// 動画を入れるときは、コメントアウトを外して video: require('パス.mp4') を設定してね
 const SLIDES = [
   {
     id: '1',
@@ -172,21 +171,15 @@ const SlideTutorialModal: React.FC<{ visible: boolean; onFinish: () => void }> =
     </View>
   );
 
-  // ▼ 詳細スライド（動画と画像両方対応）
+  // ▼ 詳細スライド（画像対応のみ）
   const renderDetailSlide = ({ item }: { item: any }) => (
     <View style={{ width, flex: 1 }}>
       <ScrollView contentContainerStyle={{ alignItems: 'center', padding: 20, paddingBottom: 50 }} showsVerticalScrollIndicator={false}>
-        <View style={{ width: width * 0.7, height: width * 1.3, backgroundColor: '#000', borderRadius: 20, justifyContent: 'center', alignItems: 'center', marginBottom: 20, overflow: 'hidden' }}>
+        <View style={{ width: width * 0.7, height: width * 1.3, borderRadius: 20, justifyContent: 'center', alignItems: 'center', marginBottom: 20, overflow: 'hidden' }}>
           
+          {/* ▼ ここを修正！ */}
           {item.video ? (
-            <Video
-              source={item.video}
-              style={{ width: '100%', height: '100%' }}
-              resizeMode={ResizeMode.CONTAIN}
-              shouldPlay
-              isLooping
-              isMuted
-            />
+            <Video source={item.video} style={{ width: '100%', height: '100%' }} resizeMode={ResizeMode.CONTAIN} shouldPlay isLooping isMuted />
           ) : item.image ? (
             <Image source={item.image} style={{ width: '100%', height: '100%', borderRadius: 20 }} resizeMode="contain" />
           ) : (
@@ -262,6 +255,7 @@ const SlideTutorialModal: React.FC<{ visible: boolean; onFinish: () => void }> =
     </Modal>
   );
 };
+// --- チュートリアルコンポーネントここまで ---
 
 const WorkoutDetailModal: React.FC<{
   visible: boolean;
@@ -655,14 +649,17 @@ function HomeTabContent() {
     );
   };
 
-  const handleEditWorkout = (workoutId: string) => {
+  // ▼ バグ修正：AsyncStorage経由で日付を確実に渡すように変更
+  const handleEditWorkout = async (workoutId: string) => {
     setModalVisible(false);
-    router.push({ pathname: "/training", params: { editWorkoutId: workoutId } });
+    await AsyncStorage.setItem('@target_edit_workout_date', workoutId);
+    router.navigate("/training");
   };
 
-  const handleEditFood = (dateId: string) => {
+  const handleEditFood = async (dateId: string) => {
     setModalVisible(false);
-    router.push({ pathname: "/food", params: { editFoodDateId: dateId } });
+    await AsyncStorage.setItem('@target_edit_food_date', dateId);
+    router.navigate("/food");
   };
 
   const todayTotalCal = todayMeals.reduce((sum, item) => sum + item.cal, 0);
@@ -970,10 +967,11 @@ function HomeTabContent() {
       />
 
       {/* スライドチュートリアル */}
-      <SlideTutorialModal
-        visible={showSlideTutorial}
-        onFinish={handleFinishTutorial}
+      <SlideTutorialModal 
+        visible={showSlideTutorial} 
+        onFinish={handleFinishTutorial} 
       />
+
     </View>
   );
 }
