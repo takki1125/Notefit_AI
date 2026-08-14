@@ -32,8 +32,9 @@ import {
   orderBy,
   query,
   serverTimestamp,
+  Timestamp,
 } from "firebase/firestore";
-import { useLocalSearchParams, useRouter } from "expo-router";
+import { useRouter } from "expo-router";
 import { Video, ResizeMode } from 'expo-av';
 import { FREE_CUSTOM_EXERCISE_LIMIT } from "../../constants/subscriptionLimits";
 import { type CustomExerciseListItem } from "../../hooks/useExerciseMaster";
@@ -157,7 +158,6 @@ const SetValueInput: React.FC<SetValueInputProps> = ({
   );
 };
 
-// --- スライドチュートリアル用コンポーネント ---
 // --- スライドチュートリアル用データ ---
 const TRAINING_SLIDES = [
   {
@@ -1104,7 +1104,8 @@ const TrainingTabContent: React.FC<Props> = ({ navigation }) => {
 
   const startTimeRef = React.useRef<number | null>(null);
 
-  const { editWorkoutId } = useLocalSearchParams<{ editWorkoutId?: string }>();
+  // ▼ バグ修正：URLではなくAsyncStorageとStateを使って確実に対象日を読み取る
+  const [editWorkoutId, setEditWorkoutId] = useState("");
   const [originalDateData, setOriginalDateData] = useState<any>(null);
 
   const getTodayDateString = () => {
@@ -1246,8 +1247,16 @@ const TrainingTabContent: React.FC<Props> = ({ navigation }) => {
         setMenu([]);
         setCurrentRoutineName("自由メニュー");
         setTimerSeconds(0);
-        const newDate = new Date(editWorkoutId); 
-        setOriginalDateData({ dateObj: newDate.toISOString() });
+        
+        // ▼ 修正：文字列から正確なローカル日付（正午）を作る
+        const [y, m, d] = editWorkoutId.split('-').map(Number);
+        const newDate = new Date(y, m - 1, d, 12, 0, 0); // タイムゾーンのズレ防止で一旦お昼の12時にしておく
+
+        setOriginalDateData({ 
+          date: Timestamp.fromDate(newDate), // ★ ここが抜けてたから「今」になってた！
+          dateObj: newDate.toISOString() 
+        });
+        
         setLoading(false);
         setDraftRestored(true);
       } else {
@@ -1329,6 +1338,18 @@ const TrainingTabContent: React.FC<Props> = ({ navigation }) => {
 
   useFocusEffect(
     useCallback(() => {
+      // ▼ バグ修正：Homeから渡された日付をここで受け取る
+      const checkEditTarget = async () => {
+        try {
+          const stored = await AsyncStorage.getItem('@target_edit_workout_date');
+          if (stored) {
+            setEditWorkoutId(stored);
+            await AsyncStorage.removeItem('@target_edit_workout_date');
+          }
+        } catch (e) {}
+      };
+      checkEditTarget();
+
       const loadSetting = async () => {
         const val = await AsyncStorage.getItem('@auto_check_set');
         setAutoCheck(val === 'true');
@@ -1622,9 +1643,16 @@ const TrainingTabContent: React.FC<Props> = ({ navigation }) => {
             }
 
             const now = new Date();
-            const dateStr = `${now.getFullYear()}-${String(
+            let finalDateStr = `${now.getFullYear()}-${String(
               now.getMonth() + 1
             ).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+
+            const isNewForPastDate = editWorkoutId && editWorkoutId.split('-').length === 3;
+            
+            if (isNewForPastDate && editWorkoutId) {
+              finalDateStr = editWorkoutId;
+            }
+
             const timeStr = `${String(now.getHours()).padStart(
               2,
               "0"
@@ -1635,10 +1663,10 @@ const TrainingTabContent: React.FC<Props> = ({ navigation }) => {
             const safeRoutineName = currentRoutineName
               ? currentRoutineName.replace(/[\/]/g, "_")
               : "自由メニュー";
-
-            const isNewForPastDate = editWorkoutId && editWorkoutId.split('-').length === 3;
             
-            const targetDocId = (editWorkoutId && !isNewForPastDate) ? editWorkoutId : `${dateStr}_${timeStr}_${safeRoutineName}`;
+            const targetDocId = (editWorkoutId && !isNewForPastDate) 
+              ? editWorkoutId 
+              : `${finalDateStr}_${timeStr}_${safeRoutineName}`;
 
             const saveData = {
               routineName: currentRoutineName,
@@ -1674,7 +1702,7 @@ const TrainingTabContent: React.FC<Props> = ({ navigation }) => {
                       setMenu([]);
                       startTimeRef.current = null;
 
-                      router.setParams({ editWorkoutId: "" });
+                      setEditWorkoutId(""); // ▼ バグ修正：完了時にStateをクリア
                       setTimeout(() => {
                         router.navigate('/home');
                       }, 50);
@@ -1707,7 +1735,7 @@ const TrainingTabContent: React.FC<Props> = ({ navigation }) => {
               setTimerSeconds(0);
               startTimeRef.current = null;
 
-              router.setParams({ editWorkoutId: "" });
+              setEditWorkoutId(""); // ▼ バグ修正：完了時にStateをクリア
               setTimeout(() => {
                 router.navigate('/home');
               }, 50);
