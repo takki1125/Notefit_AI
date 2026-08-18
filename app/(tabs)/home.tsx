@@ -45,7 +45,6 @@ import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaView } from "react-native-safe-area-context";
 import * as Haptics from "expo-haptics";
 import { usePathname, useRouter } from "expo-router";
-import { Video, ResizeMode } from 'expo-av';
 
 import { HOME_WIDGET_LABELS, type HomeWidgetId, hiddenWidgetIds } from "../../constants/homeWidgets";
 import { auth, db } from "../../firebaseConfig";
@@ -181,17 +180,7 @@ const SlideTutorialModal: React.FC<{ visible: boolean; onFinish: () => void }> =
     <View style={{ width, flex: 1 }}>
       <ScrollView contentContainerStyle={{ alignItems: 'center', padding: 20, paddingBottom: 50 }} showsVerticalScrollIndicator={false}>
         <View style={{ width: width * 0.7, height: width * 1.3, borderRadius: 20, justifyContent: 'center', alignItems: 'center', marginBottom: 20, overflow: 'hidden' }}>
-          
-          {/* ▼ ここを修正！ */}
-          {item.video ? (
-            <Video source={item.video} style={{ width: '100%', height: '100%' }} resizeMode={ResizeMode.CONTAIN} shouldPlay isLooping isMuted />
-          ) : item.image ? (
-            <Image source={item.image} style={{ width: '100%', height: '100%', borderRadius: 20 }} resizeMode="contain" />
-          ) : (
-            <Text style={{ color: '#666' }}>メディアがありません</Text>
-          )}
           <TutorialMedia video={item.video} image={item.image} />
-
         </View>
         <Text style={{ color: '#4facfe', fontSize: 24, fontWeight: 'bold', marginBottom: 15, textAlign: 'center' }}>{item.title}</Text>
         <Text style={{ color: '#aaa', fontSize: 16, textAlign: 'center', lineHeight: 24, paddingHorizontal: 10 }}>{item.description}</Text>

@@ -30,7 +30,6 @@
       "favicon": "./assets/images/icon.png"
     },
     "plugins": [
-      "expo-video",
       "expo-notifications",
       "@react-native-community/datetimepicker",
       "expo-web-browser",
