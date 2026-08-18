@@ -164,7 +164,9 @@ const SlideTutorialModal: React.FC<{ visible: boolean; onFinish: () => void }> =
 
 function FoodTabContent() {
   const router = useRouter();
-  const { editFoodDateId } = useLocalSearchParams<{ editFoodDateId?: string }>();
+  
+  // ▼ バグ修正：URLではなくAsyncStorageとStateを使って確実に対象日を読み取る
+  const [editFoodDateId, setEditFoodDateId] = useState("");
   
   const { flags } = useSubscriptionEntitlements();
   const mealRoutineUnlimited = flags.hideAds || flags.unlockExtraExercises;
@@ -195,8 +197,7 @@ function FoodTabContent() {
 
   // 過去ログ読込中は誤書き込み（今日の値で過去ドキュメントを上書き／逆もまた然り）を防止する
   const [isLoadingPast, setIsLoadingPast] = useState(false);
-  // 「保存ボタンを押した瞬間」の編集対象日付を確定するための ref。
-  // useLocalSearchParams 由来の editFoodDateId はクロージャで stale になり得るため。
+
   const editingDateIdRef = useRef<string | "">("");
   useEffect(() => {
     editingDateIdRef.current = editFoodDateId ?? "";
@@ -246,10 +247,21 @@ function FoodTabContent() {
         const user = auth.currentUser;
         if (!user) return;
 
-        if (editFoodDateId) {
+        // ▼ バグ修正：Homeから渡された日付をここで受け取る
+        let targetDateId = editFoodDateId;
+        try {
+          const stored = await AsyncStorage.getItem('@target_edit_food_date');
+          if (stored) {
+            targetDateId = stored;
+            setEditFoodDateId(stored);
+            await AsyncStorage.removeItem('@target_edit_food_date');
+          }
+        } catch(e) {}
+
+        if (targetDateId) {
           setIsLoadingPast(true);
           try {
-            const docId = `${editFoodDateId}_Food`;
+            const docId = `${targetDateId}_Food`;
             const snap = await getDoc(doc(db, "users", user.uid, "food_logs", docId));
             if (snap.exists()) {
               const data = snap.data();
@@ -826,7 +838,7 @@ function FoodTabContent() {
           </Text>
           <TouchableOpacity 
             onPress={() => {
-              router.setParams({ editFoodDateId: "" });
+              setEditFoodDateId(""); // ▼ バグ修正：完了時にStateをクリア
               setTimeout(() => {
                 router.navigate('/home');
               }, 50);
