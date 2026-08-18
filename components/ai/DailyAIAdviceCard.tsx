@@ -15,7 +15,7 @@ import {
   fetchAdviceWorkouts,
 } from '../../utils/adviceContext';
 import { formatDateId, getDailyMetric, getDailyMetricsLastNDays } from '../../utils/firestoreDailyMetrics';
-import { calcAgeYearsFromBirthDate } from '../../utils/demographics';
+import { toAiDemographicsPayload } from '../../utils/demographics';
 import { fingerprintAiCoachSettings } from '../../utils/aiCoachSettings';
 import { getAiCoachSettings, getUserDemographics, getUserProfile } from '../../utils/firestoreProfile';
 import { getDailyAIAdvice, setDailyAIAdvice } from '../../utils/firestoreDailyAdvice';
@@ -82,10 +82,6 @@ export default function DailyAIAdviceCard() {
       const functions = getFunctions(app, 'asia-northeast1');
       const callable = httpsCallable(functions, 'generateDailyAIAdvice');
 
-      const ageYears = demographics.birthDate
-        ? calcAgeYearsFromBirthDate(demographics.birthDate)
-        : undefined;
-
       const res = await callable({
         phase: profile.phase,
         targetWeight: profile.targetWeight,
@@ -93,13 +89,7 @@ export default function DailyAIAdviceCard() {
         coachStyle: aiCoach.coachStyle,
         tone: aiCoach.tone,
         customInstructions: aiCoach.customInstructions,
-        demographics: {
-          ...(typeof demographics.heightCm === 'number' ? { heightCm: demographics.heightCm } : {}),
-          ...(demographics.birthDate ? { birthDate: demographics.birthDate } : {}),
-          ...(typeof ageYears === 'number' ? { ageYears } : {}),
-          ...(demographics.trainingLevel ? { trainingLevel: demographics.trainingLevel } : {}),
-          ...(typeof demographics.goesToGym === 'boolean' ? { goesToGym: demographics.goesToGym } : {}),
-        },
+        demographics: toAiDemographicsPayload(demographics),
         today: {
           weight: todayMetric.weight,
           ...(typeof todayMetric.bodyFatPercentage === 'number'

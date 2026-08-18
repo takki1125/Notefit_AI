@@ -5,6 +5,7 @@ import { toZonedTime } from "date-fns-tz";
 import { HttpsError, onCall } from "firebase-functions/v2/https";
 
 import { grantMissionRewardInTransaction } from "./coins";
+import { requireAuth } from "./callableAuth";
 import { isPremiumSubscriptionActive } from "./subscriptionMirror";
 
 const TZ = "Asia/Tokyo";
@@ -278,10 +279,7 @@ export type MissionSnapshotRow = {
 };
 
 export const getMissionsSnapshot = onCall(publicCallableOpts, async (request) => {
-  if (!request.auth) {
-    throw new HttpsError("unauthenticated", "ログインが必要です。");
-  }
-  const uid = request.auth.uid;
+  const { uid } = requireAuth(request);
   const premium = await isPremiumSubscriptionActive(uid);
   const today = tokyoYmd();
   const week = weekRangeTokyo();
@@ -321,10 +319,7 @@ export const getMissionsSnapshot = onCall(publicCallableOpts, async (request) =>
 });
 
 export const claimMissionReward = onCall(publicCallableOpts, async (request) => {
-  if (!request.auth) {
-    throw new HttpsError("unauthenticated", "ログインが必要です。");
-  }
-  const uid = request.auth.uid;
+  const { uid } = requireAuth(request);
   const missionId = typeof request.data?.missionId === "string" ? request.data.missionId.trim() : "";
   const bucket = request.data?.bucket === "weekly" ? "weekly" : "daily";
   if (!missionId) {

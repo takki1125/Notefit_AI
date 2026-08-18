@@ -60,6 +60,16 @@ export async function requestRegistrationBonus(): Promise<RegistrationBonusResul
   return res.data as RegistrationBonusResult;
 }
 
+export const TEST_ACCOUNT_GRANT_COINS = 1000;
+
+export type TestAccountGrantResult = { granted: boolean; amount?: number };
+
+export async function requestTestAccountCoins(): Promise<TestAccountGrantResult> {
+  const fn = httpsCallable(getFunctions(getApp(), "asia-northeast1"), "grantTestAccountCoins");
+  const res = await fn({});
+  return res.data as TestAccountGrantResult;
+}
+
 export type GrantRewardAdResult = { granted: boolean; amount?: number };
 
 function isFunctionsNotFound(e: unknown): boolean {

@@ -1,19 +1,23 @@
+import { useVideoPlayer, VideoView } from "expo-video";
 import React from "react";
-import { Video, ResizeMode } from "expo-av";
 
 type Props = {
   source: number;
 };
 
 export default function TutorialDetailVideo({ source }: Props) {
+  const player = useVideoPlayer(source, (videoPlayer) => {
+    videoPlayer.loop = true;
+    videoPlayer.muted = true;
+    videoPlayer.play();
+  });
+
   return (
-    <Video
-      source={source}
+    <VideoView
+      player={player}
       style={{ width: "100%", height: "100%" }}
-      resizeMode={ResizeMode.CONTAIN}
-      shouldPlay
-      isLooping
-      isMuted
+      contentFit="contain"
+      nativeControls={false}
     />
   );
 }

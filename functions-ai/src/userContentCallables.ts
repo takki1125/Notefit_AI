@@ -3,6 +3,7 @@ import { FieldValue } from "firebase-admin/firestore";
 import { HttpsError, onCall } from "firebase-functions/v2/https";
 
 import { isPremiumSubscriptionActive } from "./subscriptionMirror";
+import { requireAuth } from "./callableAuth";
 
 const db = admin.firestore();
 
@@ -45,10 +46,7 @@ function normalizeMealsPayload(raw: unknown): NormalizedMealItem[] {
 
 /** マイ種目追加（無料は最大 5、プレミアムは実質無制限） */
 export const createCustomExercise = onCall(publicCallableOpts, async (request) => {
-  if (!request.auth) {
-    throw new HttpsError("unauthenticated", "ログインが必要です。");
-  }
-  const uid = request.auth.uid;
+  const { uid } = requireAuth(request);
   const name =
     typeof request.data?.name === "string" ? request.data.name.replace(/\0/g, "").trim().slice(0, 80) : "";
   const categoryLabel =
@@ -86,10 +84,7 @@ export const createCustomExercise = onCall(publicCallableOpts, async (request) =
 
 /** マイ種目の名前・カテゴリ変更（書き込みは Functions のみ） */
 export const updateCustomExercise = onCall(publicCallableOpts, async (request) => {
-  if (!request.auth) {
-    throw new HttpsError("unauthenticated", "ログインが必要です。");
-  }
-  const uid = request.auth.uid;
+  const { uid } = requireAuth(request);
   const exerciseId =
     typeof request.data?.exerciseId === "string" ? request.data.exerciseId.trim() : "";
   const name =
@@ -123,10 +118,7 @@ export const updateCustomExercise = onCall(publicCallableOpts, async (request) =
 });
 
 export const deleteCustomExercise = onCall(publicCallableOpts, async (request) => {
-  if (!request.auth) {
-    throw new HttpsError("unauthenticated", "ログインが必要です。");
-  }
-  const uid = request.auth.uid;
+  const { uid } = requireAuth(request);
   const exerciseId =
     typeof request.data?.exerciseId === "string" ? request.data.exerciseId.trim() : "";
   if (!exerciseId) {
@@ -143,10 +135,7 @@ export const deleteCustomExercise = onCall(publicCallableOpts, async (request) =
 
 /** 食事ルーティーン作成（無料は 3 件まで、プレミアムは実質無制限） */
 export const createMealRoutine = onCall(publicCallableOpts, async (request) => {
-  if (!request.auth) {
-    throw new HttpsError("unauthenticated", "ログインが必要です。");
-  }
-  const uid = request.auth.uid;
+  const { uid } = requireAuth(request);
   const name =
     typeof request.data?.name === "string" ? request.data.name.replace(/\0/g, "").trim().slice(0, 80) : "";
   if (!name) {
@@ -175,10 +164,7 @@ export const createMealRoutine = onCall(publicCallableOpts, async (request) => {
 });
 
 export const deleteMealRoutine = onCall(publicCallableOpts, async (request) => {
-  if (!request.auth) {
-    throw new HttpsError("unauthenticated", "ログインが必要です。");
-  }
-  const uid = request.auth.uid;
+  const { uid } = requireAuth(request);
   const routineId = typeof request.data?.routineId === "string" ? request.data.routineId.trim() : "";
   if (!routineId) {
     throw new HttpsError("invalid-argument", "routineId が必要です。");

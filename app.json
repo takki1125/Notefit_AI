@@ -1,7 +1,7 @@
 {
   "expo": {
     "name": "NoteFit AI",
-    "slug": "notefit-AI_dev",
+    "slug": "notefit-ai",
     "scheme": "fitness-app",
     "version": "1.0.3",
     "orientation": "portrait",
@@ -30,6 +30,7 @@
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
+      "expo-video",
       "expo-notifications",
       "@react-native-community/datetimepicker",
       "expo-web-browser",

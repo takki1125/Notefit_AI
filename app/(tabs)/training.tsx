@@ -14,7 +14,6 @@ import {
   View,
   FlatList,
   Dimensions,
-  Image,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useFocusEffect } from "@react-navigation/native";
@@ -34,8 +33,8 @@ import {
   serverTimestamp,
 } from "firebase/firestore";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { Video, ResizeMode } from 'expo-av';
 import { FREE_CUSTOM_EXERCISE_LIMIT } from "../../constants/subscriptionLimits";
+import TutorialMedia from "../../components/tutorial/TutorialMedia";
 import { type CustomExerciseListItem } from "../../hooks/useExerciseMaster";
 import { auth, db } from "../../firebaseConfig";
 import { styles } from "../../theme/styles";
@@ -219,13 +218,7 @@ const SlideTutorialModal: React.FC<{ visible: boolean; onFinish: () => void }> =
     <View style={{ width, flex: 1 }}>
       <ScrollView contentContainerStyle={{ alignItems: 'center', padding: 20, paddingBottom: 50 }} showsVerticalScrollIndicator={false}>
         <View style={{ width: width * 0.7, height: width * 1.3, borderRadius: 20, justifyContent: 'center', alignItems: 'center', marginBottom: 20, overflow: 'hidden' }}>
-          {item.video ? (
-            <Video source={item.video} style={{ width: '100%', height: '100%' }} resizeMode={ResizeMode.CONTAIN} shouldPlay isLooping isMuted />
-          ) : item.image ? (
-            <Image source={item.image} style={{ width: '100%', height: '100%', borderRadius: 20 }} resizeMode="contain" />
-          ) : (
-            <Text style={{ color: '#666' }}>メディアがありません</Text>
-          )}
+          <TutorialMedia video={item.video} image={item.image} />
         </View>
         <Text style={{ color: '#fff', fontSize: 24, fontWeight: 'bold', marginBottom: 15, textAlign: 'center' }}>{item.title}</Text>
         <Text style={{ color: '#aaa', fontSize: 16, textAlign: 'center', lineHeight: 24, paddingHorizontal: 10 }}>{item.description}</Text>
@@ -247,13 +240,7 @@ const SlideTutorialModal: React.FC<{ visible: boolean; onFinish: () => void }> =
     <View style={{ width, flex: 1 }}>
       <ScrollView contentContainerStyle={{ alignItems: 'center', padding: 20, paddingBottom: 50 }} showsVerticalScrollIndicator={false}>
         <View style={{ width: width * 0.7, height: width * 1.3, backgroundColor: '#000', borderRadius: 20, justifyContent: 'center', alignItems: 'center', marginBottom: 20, overflow: 'hidden' }}>
-          {item.video ? (
-            <Video source={item.video} style={{ width: '100%', height: '100%' }} resizeMode={ResizeMode.CONTAIN} shouldPlay isLooping isMuted />
-          ) : item.image ? (
-            <Image source={item.image} style={{ width: '100%', height: '100%', borderRadius: 20 }} resizeMode="contain" />
-          ) : (
-            <Text style={{ color: '#666' }}>メディアがありません</Text>
-          )}
+          <TutorialMedia video={item.video} image={item.image} />
         </View>
         <Text style={{ color: '#4facfe', fontSize: 24, fontWeight: 'bold', marginBottom: 15, textAlign: 'center' }}>{item.title}</Text>
         <Text style={{ color: '#aaa', fontSize: 16, textAlign: 'center', lineHeight: 24, paddingHorizontal: 10 }}>{item.description}</Text>

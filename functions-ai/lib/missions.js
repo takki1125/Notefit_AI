@@ -40,6 +40,7 @@ const date_fns_1 = require("date-fns");
 const date_fns_tz_1 = require("date-fns-tz");
 const https_1 = require("firebase-functions/v2/https");
 const coins_1 = require("./coins");
+const callableAuth_1 = require("./callableAuth");
 const subscriptionMirror_1 = require("./subscriptionMirror");
 const TZ = "Asia/Tokyo";
 const publicCallableOpts = {
@@ -269,10 +270,7 @@ async function evaluateMission(uid, m, today, week) {
     }
 }
 exports.getMissionsSnapshot = (0, https_1.onCall)(publicCallableOpts, async (request) => {
-    if (!request.auth) {
-        throw new https_1.HttpsError("unauthenticated", "ログインが必要です。");
-    }
-    const uid = request.auth.uid;
+    const { uid } = (0, callableAuth_1.requireAuth)(request);
     const premium = await (0, subscriptionMirror_1.isPremiumSubscriptionActive)(uid);
     const today = tokyoYmd();
     const week = weekRangeTokyo();
@@ -308,10 +306,7 @@ exports.getMissionsSnapshot = (0, https_1.onCall)(publicCallableOpts, async (req
     };
 });
 exports.claimMissionReward = (0, https_1.onCall)(publicCallableOpts, async (request) => {
-    if (!request.auth) {
-        throw new https_1.HttpsError("unauthenticated", "ログインが必要です。");
-    }
-    const uid = request.auth.uid;
+    const { uid } = (0, callableAuth_1.requireAuth)(request);
     const missionId = typeof request.data?.missionId === "string" ? request.data.missionId.trim() : "";
     const bucket = request.data?.bucket === "weekly" ? "weekly" : "daily";
     if (!missionId) {

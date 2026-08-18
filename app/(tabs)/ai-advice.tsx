@@ -5,6 +5,7 @@ import {
   Alert,
   Animated,
   Dimensions,
+  Easing,
   FlatList,
   Keyboard,
   KeyboardAvoidingView,
@@ -18,7 +19,9 @@ import {
   TouchableOpacity,
   View,
   Image,
+  type KeyboardEvent,
 } from "react-native";
+import { useBottomTabBarHeight } from "@react-navigation/bottom-tabs";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
 import { useRouter } from "expo-router";
@@ -30,7 +33,7 @@ import { auth } from "../../firebaseConfig";
 import { useCoinBalance } from "../../hooks/useCoinBalance";
 import { styles as themeStyles } from "../../theme/styles";
 import { fetchAdviceNutrition, fetchAdviceWorkouts } from "../../utils/adviceContext";
-import { calcAgeYearsFromBirthDate } from "../../utils/demographics";
+import { toAiDemographicsPayload } from "../../utils/demographics";
 import { formatDateId, getDailyMetric, getDailyMetricsLastNDays } from "../../utils/firestoreDailyMetrics";
 import { getAiCoachSettings, getUserDemographics, getUserProfile } from "../../utils/firestoreProfile";
 import type { AiCoachSettings } from "../../utils/models";
@@ -92,6 +95,59 @@ function formatRelativeTime(ts: number): string {
   const day = Math.floor(h / 24);
   if (day < 7) return `${day}日前`;
   return new Date(ts).toLocaleDateString("ja-JP", { month: "short", day: "numeric" });
+}
+
+/** Lift the composer by the keyboard overlap that sits above the tab bar. */
+function useChatKeyboardInset() {
+  const tabBarHeight = useBottomTabBarHeight();
+  const inset = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    const animateTo = (next: number, duration: number) => {
+      Animated.timing(inset, {
+        toValue: next,
+        duration: Platform.OS === "ios" ? Math.max(duration, 1) : 80,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: false,
+      }).start();
+    };
+
+    const overlapAboveTabBar = (e: KeyboardEvent) => {
+      const kbH = e.endCoordinates.height;
+      if (kbH <= 0) return 0;
+      if (Platform.OS === "android") {
+        return Math.max(0, kbH - tabBarHeight);
+      }
+      const windowH = Dimensions.get("window").height;
+      const overlap = Math.max(0, windowH - e.endCoordinates.screenY);
+      return Math.max(0, overlap - tabBarHeight);
+    };
+
+    const onShow = (e: KeyboardEvent) => {
+      animateTo(overlapAboveTabBar(e), e.duration ?? 250);
+    };
+    const onHide = (e: KeyboardEvent) => {
+      animateTo(0, e.duration ?? 200);
+    };
+
+    const subs =
+      Platform.OS === "ios"
+        ? [
+            Keyboard.addListener("keyboardWillChangeFrame", (e) => {
+              animateTo(overlapAboveTabBar(e), e.duration ?? 250);
+            }),
+          ]
+        : [
+            Keyboard.addListener("keyboardDidShow", onShow),
+            Keyboard.addListener("keyboardDidHide", onHide),
+          ];
+
+    return () => {
+      subs.forEach((s) => s.remove());
+    };
+  }, [inset, tabBarHeight]);
+
+  return inset;
 }
 
 // --- スライドチュートリアル用コンポーネント ---
@@ -191,6 +247,7 @@ const SlideTutorialModal: React.FC<{ visible: boolean; onFinish: () => void }> =
 function AiAdviceTabContent() {
   const router = useRouter();
   const scrollRef = useRef<ScrollView>(null);
+  const keyboardInset = useChatKeyboardInset();
   const slideAnim = useRef(new Animated.Value(-DRAWER_WIDTH)).current;
   const [input, setInput] = useState("");
   const [sessions, setSessions] = useState<ChatSession[]>([]);
@@ -380,15 +437,23 @@ function AiAdviceTabContent() {
     );
   }, []);
 
-  const scrollToBottom = useCallback(() => {
+  const scrollToBottom = useCallback((animated = true) => {
     requestAnimationFrame(() => {
-      scrollRef.current?.scrollToEnd({ animated: true });
+      scrollRef.current?.scrollToEnd({ animated });
     });
   }, []);
 
   useEffect(() => {
     scrollToBottom();
-  }, [messages, scrollToBottom]);
+  }, [messages, sending, scrollToBottom]);
+
+  useEffect(() => {
+    const sub = Keyboard.addListener(
+      Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow",
+      () => scrollToBottom(true),
+    );
+    return () => sub.remove();
+  }, [scrollToBottom]);
 
   const createSession = useCallback(() => {
     const id = newSessionId();
@@ -535,6 +600,8 @@ function AiAdviceTabContent() {
     }));
     setInput("");
     setSending(true);
+    Keyboard.dismiss();
+    scrollToBottom();
 
     try {
       const todayId = formatDateId(new Date());
@@ -556,10 +623,6 @@ function AiAdviceTabContent() {
         coach ?? getAiCoachSettings(user.uid),
       ]);
 
-      const ageYears = demographics.birthDate
-        ? calcAgeYearsFromBirthDate(demographics.birthDate)
-        : undefined;
-
       const recentPoints = recentMetrics.map((m) => ({
         dateId: m.date,
         weight: m.weight,
@@ -575,13 +638,7 @@ function AiAdviceTabContent() {
         coachStyle: aiCoach.coachStyle,
         tone: aiCoach.tone,
         customInstructions: aiCoach.customInstructions,
-        demographics: {
-          ...(typeof demographics.heightCm === "number" ? { heightCm: demographics.heightCm } : {}),
-          ...(demographics.birthDate ? { birthDate: demographics.birthDate } : {}),
-          ...(typeof ageYears === "number" ? { ageYears } : {}),
-          ...(demographics.trainingLevel ? { trainingLevel: demographics.trainingLevel } : {}),
-          ...(typeof demographics.goesToGym === "boolean" ? { goesToGym: demographics.goesToGym } : {}),
-        },
+        demographics: toAiDemographicsPayload(demographics),
         ...(profile
           ? {
               phase: profile.phase,
@@ -644,7 +701,7 @@ function AiAdviceTabContent() {
     } finally {
       setSending(false);
     }
-  }, [activeId, coach, input, patchSessionById, sending, sessions]);
+  }, [activeId, coach, input, patchSessionById, scrollToBottom, sending, sessions]);
 
   if (!hydrated) {
     return (
@@ -656,11 +713,7 @@ function AiAdviceTabContent() {
 
   return (
     <SafeAreaView style={themeStyles.container} edges={["top"]}>
-      <KeyboardAvoidingView
-        style={local.flex}
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
-        keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 0}
-      >
+      <Animated.View style={[local.flex, { paddingBottom: keyboardInset }]}>
         <View style={local.header}>
           <TouchableOpacity
             onPress={openDrawer}
@@ -701,6 +754,7 @@ function AiAdviceTabContent() {
           contentContainerStyle={local.scrollContent}
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode="interactive"
+          onContentSizeChange={() => scrollToBottom(true)}
         >
           {messages.length === 0 ? (
             <View style={local.emptyWrap}>
@@ -741,7 +795,26 @@ function AiAdviceTabContent() {
               </View>
             ))
           )}
+          {sending ? (
+            <View
+              style={[local.bubbleWrap, local.bubbleWrapAssistant]}
+              accessibilityLiveRegion="polite"
+              accessibilityLabel="AIが応答を作成中"
+            >
+              <View style={[local.bubble, local.bubbleAssistant, local.typingBubble]}>
+                <ActivityIndicator color="#2ecc71" size="small" />
+                <Text style={local.typingText}>考えています…</Text>
+              </View>
+            </View>
+          ) : null}
         </ScrollView>
+
+        {sending ? (
+          <View style={local.sendingBar}>
+            <ActivityIndicator color="#2ecc71" size="small" />
+            <Text style={local.sendingBarText}>AIが回答を作成しています…</Text>
+          </View>
+        ) : null}
 
         <View style={local.inputRow}>
           <TextInput
@@ -754,6 +827,7 @@ function AiAdviceTabContent() {
             maxLength={4000}
             editable={!sending}
             textAlignVertical="top"
+            onFocus={() => scrollToBottom(true)}
           />
           <TouchableOpacity
             style={[local.sendBtn, (!input.trim() || sending) && local.sendBtnDisabled]}
@@ -768,7 +842,7 @@ function AiAdviceTabContent() {
             )}
           </TouchableOpacity>
         </View>
-      </KeyboardAvoidingView>
+      </Animated.View>
 
       <Modal visible={drawerOpen} transparent animationType="none" onRequestClose={closeDrawer}>
         <View style={local.drawerRoot}>
@@ -947,6 +1021,24 @@ const local = StyleSheet.create({
   bubbleAssistant: { backgroundColor: "#333" },
   bubbleTextUser: { color: "#000", fontSize: 15, lineHeight: 22 },
   bubbleTextAssistant: { color: "#eee", fontSize: 15, lineHeight: 22 },
+  typingBubble: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    minWidth: 148,
+  },
+  typingText: { color: "#bbb", fontSize: 14 },
+  sendingBar: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderTopWidth: 1,
+    borderTopColor: "#333",
+    backgroundColor: "#222",
+  },
+  sendingBarText: { color: "#9aa0a6", fontSize: 13, fontWeight: "600" },
   inputRow: {
     flexDirection: "row",
     alignItems: "flex-end",

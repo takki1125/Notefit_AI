@@ -191,6 +191,34 @@ export async function grantSubscriptionCoinsFromRevenueCatWebhook(
   }
 }
 
+const TEST_ACCOUNT_EMAIL_SUFFIX = "@notefit-dev.test";
+/** テストアカウントの手動付与（1 タップあたり） */
+export const TEST_ACCOUNT_GRANT_AMOUNT = 1000;
+
+export function isTestAccountAuthEmail(email?: string | null): boolean {
+  return typeof email === "string" && email.toLowerCase().endsWith(TEST_ACCOUNT_EMAIL_SUFFIX);
+}
+
+/** テストアカウント限定のデバッグ付与。回数制限なし。Auth のメールだけを信じる。 */
+export async function grantTestAccountDebugCoins(
+  uid: string,
+  email?: string | null,
+): Promise<{ granted: boolean; amount: number }> {
+  if (!isTestAccountAuthEmail(email)) {
+    throw new HttpsError("permission-denied", "テストアカウント専用です。");
+  }
+  const amount = TEST_ACCOUNT_GRANT_AMOUNT;
+  const ref = db.collection("users").doc(uid).collection("coin_transactions").doc();
+  await ref.set({
+    amount,
+    type: "test_grant",
+    expires_at: expiryTimestamp(),
+    created_at: FieldValue.serverTimestamp(),
+    note: "test_account_debug",
+  });
+  return { granted: true, amount };
+}
+
 /** リワード広告 1 回あたりの付与（固定。変更はこの定数で） */
 const REWARD_AD_COINS_PER_VIEW = 10;
 /** 東京日付ごとのリワード広告付与上限 */

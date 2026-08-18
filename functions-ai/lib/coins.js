@@ -33,13 +33,15 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.COIN_EXPIRY_DAYS = void 0;
+exports.TEST_ACCOUNT_GRANT_AMOUNT = exports.COIN_EXPIRY_DAYS = void 0;
 exports.getAiConsultCoinCost = getAiConsultCoinCost;
 exports.getRegistrationBonusAmount = getRegistrationBonusAmount;
 exports.resolveAiCoachChatModel = resolveAiCoachChatModel;
 exports.getSubscriptionInitialPurchaseCoins = getSubscriptionInitialPurchaseCoins;
 exports.getSubscriptionRenewalCoins = getSubscriptionRenewalCoins;
 exports.grantSubscriptionCoinsFromRevenueCatWebhook = grantSubscriptionCoinsFromRevenueCatWebhook;
+exports.isTestAccountAuthEmail = isTestAccountAuthEmail;
+exports.grantTestAccountDebugCoins = grantTestAccountDebugCoins;
 exports.applyRewardAdCoinGrant = applyRewardAdCoinGrant;
 exports.computeCoinBalance = computeCoinBalance;
 exports.spendCoinsForAiChatOrThrow = spendCoinsForAiChatOrThrow;
@@ -212,6 +214,28 @@ async function grantSubscriptionCoinsFromRevenueCatWebhook(uid, revenueCatEventI
         logger.error("grantSubscriptionCoinsFromRevenueCatWebhook create error", e);
         throw new https_1.HttpsError("internal", "サブスクリプションコイン付与に失敗しました。");
     }
+}
+const TEST_ACCOUNT_EMAIL_SUFFIX = "@notefit-dev.test";
+/** テストアカウントの手動付与（1 タップあたり） */
+exports.TEST_ACCOUNT_GRANT_AMOUNT = 1000;
+function isTestAccountAuthEmail(email) {
+    return typeof email === "string" && email.toLowerCase().endsWith(TEST_ACCOUNT_EMAIL_SUFFIX);
+}
+/** テストアカウント限定のデバッグ付与。回数制限なし。Auth のメールだけを信じる。 */
+async function grantTestAccountDebugCoins(uid, email) {
+    if (!isTestAccountAuthEmail(email)) {
+        throw new https_1.HttpsError("permission-denied", "テストアカウント専用です。");
+    }
+    const amount = exports.TEST_ACCOUNT_GRANT_AMOUNT;
+    const ref = db.collection("users").doc(uid).collection("coin_transactions").doc();
+    await ref.set({
+        amount,
+        type: "test_grant",
+        expires_at: expiryTimestamp(),
+        created_at: firestore_1.FieldValue.serverTimestamp(),
+        note: "test_account_debug",
+    });
+    return { granted: true, amount };
 }
 /** リワード広告 1 回あたりの付与（固定。変更はこの定数で） */
 const REWARD_AD_COINS_PER_VIEW = 10;

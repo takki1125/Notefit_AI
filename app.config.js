@@ -44,6 +44,7 @@ module.exports = ({ config }) => {
     ...base,
     ...config,
     name: isDev ? "NoteFit AI (Dev)" : "NoteFit AI",
+    icon: isDev ? "./assets/images/icon-dev.png" : "./assets/images/icon.png",
     scheme: isDev ? DEVELOPMENT_SCHEME : PRODUCTION_SCHEME,
     ios: {
       ...(base.ios || {}),
@@ -57,6 +58,14 @@ module.exports = ({ config }) => {
       googleServicesFile: isDev
         ? "./google-services.dev.json"
         : "./google-services.json",
+      adaptiveIcon: {
+        ...((base.android && base.android.adaptiveIcon) || {}),
+        ...((config.android && config.android.adaptiveIcon) || {}),
+        foregroundImage: isDev
+          ? "./assets/images/icon-dev.png"
+          : "./assets/images/adaptive-icon.png",
+        backgroundColor: isDev ? "#111111" : "#ffffff",
+      },
     },
     extra: {
       ...(base.extra || {}),

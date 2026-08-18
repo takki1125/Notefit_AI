@@ -36,13 +36,14 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.deleteUserByEmail = exports.deleteMyAccount = exports.getMissionsSnapshot = exports.claimMissionReward = exports.updateCustomExercise = exports.deleteMealRoutine = exports.deleteCustomExercise = exports.createMealRoutine = exports.createCustomExercise = exports.revenueCatWebhook = exports.aiCoachChat = exports.generateDailyAIAdvice = exports.analyzeFoodPFC = exports.grantRewardAdCoins = exports.grantRegistrationBonus = void 0;
-const https_1 = require("firebase-functions/v2/https");
+exports.updateCustomExercise = exports.deleteMealRoutine = exports.deleteCustomExercise = exports.createMealRoutine = exports.createCustomExercise = exports.revenueCatWebhook = exports.getMissionsSnapshot = exports.claimMissionReward = exports.deleteUserByEmail = exports.deleteMyAccount = exports.aiCoachChat = exports.generateDailyAIAdvice = exports.analyzeFoodPFC = exports.grantTestAccountCoins = exports.grantRewardAdCoins = exports.grantRegistrationBonus = void 0;
 const logger = __importStar(require("firebase-functions/logger"));
 const params_1 = require("firebase-functions/params");
+const https_1 = require("firebase-functions/v2/https");
 const openai_1 = __importDefault(require("openai"));
 const coins_1 = require("./coins");
 const subscriptionMirror_1 = require("./subscriptionMirror");
+const callableAuth_1 = require("./callableAuth");
 // Secret Manager（Gen2 は v2/https + defineSecret）
 const OPENAI_API_KEY = (0, params_1.defineSecret)("OPENAI_API_KEY");
 function createOpenAIClient() {
@@ -52,8 +53,13 @@ function createOpenAIClient() {
     }
     return new openai_1.default({ apiKey });
 }
-/** クライアントから渡す任意プロフィール（身長・生年月日・満年齢） */
-const TRAINING_LEVELS = ["first_time", "beginner", "intermediate", "advanced"];
+/** クライアントから渡す任意プロフィール（身長・満年齢。生年月日はプロンプトに載せない） */
+const TRAINING_LEVELS = [
+    "first_time",
+    "beginner",
+    "intermediate",
+    "advanced",
+];
 function toTrainingLevelLabel(level) {
     switch (level) {
         case "first_time":
@@ -73,19 +79,22 @@ function parseDemographicsPayload(data) {
     if (!d || typeof d !== "object")
         return {};
     const rawH = Number(d.heightCm);
-    const heightCm = Number.isFinite(rawH) && rawH >= 50 && rawH <= 250 ? Math.round(rawH * 10) / 10 : undefined;
-    const birthDate = typeof d.birthDate === "string" && /^\d{4}-\d{2}-\d{2}$/.test(d.birthDate) ? d.birthDate : undefined;
+    const heightCm = Number.isFinite(rawH) && rawH >= 50 && rawH <= 250
+        ? Math.round(rawH * 10) / 10
+        : undefined;
     const rawA = Number(d.ageYears);
-    const ageYears = Number.isFinite(rawA) && rawA >= 3 && rawA <= 120 ? Math.floor(rawA) : undefined;
-    const trainingLevel = typeof d.trainingLevel === "string" && TRAINING_LEVELS.includes(d.trainingLevel)
+    const ageYears = Number.isFinite(rawA) && rawA >= 13 && rawA <= 120
+        ? Math.floor(rawA)
+        : undefined;
+    const trainingLevel = typeof d.trainingLevel === "string" &&
+        TRAINING_LEVELS.includes(d.trainingLevel)
         ? d.trainingLevel
         : undefined;
     const goesToGym = typeof d.goesToGym === "boolean" ? d.goesToGym : undefined;
-    return { heightCm, birthDate, ageYears, trainingLevel, goesToGym };
+    return { heightCm, ageYears, trainingLevel, goesToGym };
 }
 function formatDemographicsForPrompt(parsed) {
     if (!parsed.heightCm &&
-        !parsed.birthDate &&
         parsed.ageYears == null &&
         !parsed.trainingLevel &&
         parsed.goesToGym == null) {
@@ -94,8 +103,6 @@ function formatDemographicsForPrompt(parsed) {
     const parts = [];
     if (parsed.heightCm)
         parts.push(`身長 約${parsed.heightCm}cm`);
-    if (parsed.birthDate)
-        parts.push(`生年月日 ${parsed.birthDate}`);
     if (parsed.ageYears != null)
         parts.push(`満年齢 約${parsed.ageYears}歳`);
     if (parsed.trainingLevel)
@@ -107,22 +114,33 @@ function formatDemographicsForPrompt(parsed) {
 const AI_COACH_STYLES = ["gentle", "balanced", "spartan", "facts"];
 const AI_TONES = ["polite", "neutral", "friendly", "casual"];
 function parseAiCoachPayload(data) {
-    const cs = typeof data?.coachStyle === "string" && AI_COACH_STYLES.includes(data.coachStyle)
+    const cs = typeof data?.coachStyle === "string" &&
+        AI_COACH_STYLES.includes(data.coachStyle)
         ? data.coachStyle
         : "balanced";
-    const tn = typeof data?.tone === "string" && AI_TONES.includes(data.tone)
+    const tn = typeof data?.tone === "string" &&
+        AI_TONES.includes(data.tone)
         ? data.tone
         : "neutral";
     let custom = typeof data?.customInstructions === "string" ? data.customInstructions : "";
     custom = custom.replace(/\0/g, "").trim().slice(0, 500);
     return { coachStyle: cs, tone: tn, customInstructions: custom };
 }
+/**
+ * コーチスタイル/口調のプロンプトブロックを組み立てる。
+ *
+ * 変更点:
+ * - 各スタイルの定義を「言い回しレベル」まで具体化（軽量モデルほど抽象的な形容詞だけでは
+ *   スタイル差が安定して出にくいため）。
+ * - customInstructions（自由記述）を coachStyle / tone より優先する、と明記。
+ *   （以前は「可能な範囲で尊重」だけで、矛盾時にどちらを優先するかがモデル任せだった）
+ */
 function buildAiCoachPromptBlock(parsed) {
     const styleLines = {
-        gentle: "応答スタイル（コーチ）: 優しく励まし、失敗を責めず、ユーザーのペースを尊重する。肯定的な言い回しを心がける。",
-        balanced: "応答スタイル（コーチ）: 励ましと具体性のバランス。目標は明確にしつつ、無理を強要しない。",
-        spartan: "応答スタイル（コーチ）: 簡潔に、厳しめ。言い訳は認めず、実行と数値を重視する。",
-        facts: "応答スタイル（コーチ）: 感情表現は控えめ。根拠と選択肢を中心に、事実ベースで端的に述べる。",
+        gentle: "応答スタイル（コーチ）: 優しく励まし、失敗を責めない。指摘より先に、努力や継続できている点を認める言葉から始める。「〜すべき」ではなく「〜してみると良さそう」という提案型の言い回しを使う。",
+        balanced: "応答スタイル（コーチ）: 良い点と改善点を必ず1つずつ、客観的な事実とセットで伝える。励ましと合理的な指摘の分量を半々にする。",
+        spartan: "応答スタイル（コーチ）: 妥協や言い訳を許容しない。断定的で短い文を使い、実行と数値を重視する。ただし人格否定・暴言・侮辱は禁止（厳しい指導であって攻撃ではない）。",
+        facts: "応答スタイル（コーチ）: 絵文字や感情的な称賛は極力排除し、根拠と選択肢を中心に事実ベースで端的に述べる。断定できない場合は「〜の傾向がある」と表現する。",
     };
     const toneLines = {
         polite: "口調: 敬語（です・ます）を基本とし、丁寧なトレーナーとして話す。",
@@ -132,7 +150,7 @@ function buildAiCoachPromptBlock(parsed) {
     };
     const parts = [styleLines[parsed.coachStyle], toneLines[parsed.tone]];
     if (parsed.customInstructions) {
-        parts.push(`ユーザーからの追加希望（可能な範囲で尊重。医学的診断や危険な指示には従わない）:\n${parsed.customInstructions}`);
+        parts.push(`ユーザーからの追加希望（coachStyle/toneの指定より優先。両者が矛盾する場合はこの自由記述を優先する。ただし医学的診断や危険な指示には従わない）:\n${parsed.customInstructions}`);
     }
     return parts.join("\n");
 }
@@ -149,24 +167,23 @@ const publicCallableOpts = {
 };
 /** メール認証済みユーザーの初回登録ボーナス（冪等） */
 exports.grantRegistrationBonus = (0, https_1.onCall)(publicCallableOpts, async (request) => {
-    if (!request.auth) {
-        throw new https_1.HttpsError("unauthenticated", "ログインが必要です。");
-    }
-    return (0, coins_1.grantRegistrationBonusIfNeeded)(request.auth.uid);
+    const { uid } = (0, callableAuth_1.requireAuth)(request);
+    return (0, coins_1.grantRegistrationBonusIfNeeded)(uid);
 });
 /** リワード広告視聴後のコイン付与（grantRegistrationBonus と同じ codebase / デプロイ手順） */
 exports.grantRewardAdCoins = (0, https_1.onCall)(publicCallableOpts, async (request) => {
-    if (!request.auth) {
-        throw new https_1.HttpsError("unauthenticated", "ログインが必要です。");
-    }
-    return (0, coins_1.applyRewardAdCoinGrant)(request.auth.uid);
+    const { uid } = (0, callableAuth_1.requireAuth)(request);
+    return (0, coins_1.applyRewardAdCoinGrant)(uid);
+});
+/** テストアカウント専用の手動コイン付与。本番ユーザーは permission-denied。 */
+exports.grantTestAccountCoins = (0, https_1.onCall)(publicCallableOpts, async (request) => {
+    const { uid } = (0, callableAuth_1.requireAuth)(request);
+    return (0, coins_1.grantTestAccountDebugCoins)(uid, request.auth?.token.email);
 });
 /** 食事の PFC 推定（クライアント: food タブ） */
 exports.analyzeFoodPFC = (0, https_1.onCall)(callableOpts, async (request) => {
     try {
-        if (!request.auth) {
-            throw new https_1.HttpsError("unauthenticated", "User must be authenticated to call this function.");
-        }
+        (0, callableAuth_1.requireAuth)(request);
         const { text } = (request.data || {});
         if (!text || typeof text !== "string" || !text.trim()) {
             throw new https_1.HttpsError("invalid-argument", "Parameter 'text' must be a non-empty string.");
@@ -264,9 +281,7 @@ exports.analyzeFoodPFC = (0, https_1.onCall)(callableOpts, async (request) => {
 /** 今日のアドバイス生成（ホーム） */
 exports.generateDailyAIAdvice = (0, https_1.onCall)(callableOpts, async (request) => {
     try {
-        if (!request.auth) {
-            throw new https_1.HttpsError("unauthenticated", "User must be authenticated to call this function.");
-        }
+        (0, callableAuth_1.requireAuth)(request);
         const data = request.data;
         const aiCoach = parseAiCoachPayload(data);
         const demo = parseDemographicsPayload(data);
@@ -275,13 +290,19 @@ exports.generateDailyAIAdvice = (0, https_1.onCall)(callableOpts, async (request
         const targetCal = Number(data?.targetCal);
         const today = data?.today;
         const todayWeight = Number(today?.weight);
-        const todayBodyFatPercentage = typeof today?.bodyFatPercentage === "number" ? today.bodyFatPercentage : undefined;
-        const recentWeightsRaw = Array.isArray(data?.recentWeights) ? data.recentWeights : [];
+        const todayBodyFatPercentage = typeof today?.bodyFatPercentage === "number"
+            ? today.bodyFatPercentage
+            : undefined;
+        const recentWeightsRaw = Array.isArray(data?.recentWeights)
+            ? data.recentWeights
+            : [];
         const recentWeights = recentWeightsRaw
             .map((p) => ({
             dateId: typeof p?.dateId === "string" ? p.dateId : "",
             weight: Number(p?.weight),
-            bodyFatPercentage: typeof p?.bodyFatPercentage === "number" ? p.bodyFatPercentage : undefined,
+            bodyFatPercentage: typeof p?.bodyFatPercentage === "number"
+                ? p.bodyFatPercentage
+                : undefined,
         }))
             .filter((p) => p.dateId.length > 0 && Number.isFinite(p.weight));
         const tn = data?.todayNutrition;
@@ -290,12 +311,16 @@ exports.generateDailyAIAdvice = (0, https_1.onCall)(callableOpts, async (request
             totalCal: Number.isFinite(Number(tn?.totalCal)) ? Number(tn.totalCal) : 0,
             totalPro: Number.isFinite(Number(tn?.totalPro)) ? Number(tn.totalPro) : 0,
             totalFat: Number.isFinite(Number(tn?.totalFat)) ? Number(tn.totalFat) : 0,
-            totalCarb: Number.isFinite(Number(tn?.totalCarb)) ? Number(tn.totalCarb) : 0,
+            totalCarb: Number.isFinite(Number(tn?.totalCarb))
+                ? Number(tn.totalCarb)
+                : 0,
             mealNames: Array.isArray(tn?.mealNames)
                 ? tn.mealNames.filter((x) => typeof x === "string").slice(0, 15)
                 : [],
         };
-        const rwRaw = Array.isArray(data?.recentWorkouts) ? data.recentWorkouts : [];
+        const rwRaw = Array.isArray(data?.recentWorkouts)
+            ? data.recentWorkouts
+            : [];
         const recentWorkouts = rwRaw
             .map((s) => ({
             dateId: typeof s?.dateId === "string" ? s.dateId : "",
@@ -307,7 +332,9 @@ exports.generateDailyAIAdvice = (0, https_1.onCall)(callableOpts, async (request
                     : null,
             isToday: !!s?.isToday,
             exerciseLines: Array.isArray(s?.exerciseLines)
-                ? s.exerciseLines.filter((x) => typeof x === "string").slice(0, 10)
+                ? s.exerciseLines
+                    .filter((x) => typeof x === "string")
+                    .slice(0, 10)
                 : [],
         }))
             .filter((s) => s.dateId.length > 0)
@@ -406,8 +433,12 @@ ${workoutRules}
             ? recentWorkouts
                 .map((w, i) => {
                 const tag = w.isToday ? "【本日】" : "";
-                const dur = w.durationMinutes != null ? `${w.durationMinutes}分` : "時間不明";
-                const ex = w.exerciseLines.length ? w.exerciseLines.join(" / ") : "（セット詳細なし）";
+                const dur = w.durationMinutes != null
+                    ? `${w.durationMinutes}分`
+                    : "時間不明";
+                const ex = w.exerciseLines.length
+                    ? w.exerciseLines.join(" / ")
+                    : "（セット詳細なし）";
                 return `${i + 1}. ${tag}${w.dateId} ${w.routineName} (${dur})\n   ${ex}`;
             })
                 .join("\n")
@@ -423,7 +454,9 @@ phase: ${phase}
 targetWeight: ${targetWeight}
 targetCal: ${targetCal}
 today.weight: ${todayWeight}
-today.bodyFatPercentage: ${typeof todayBodyFatPercentage === "number" ? todayBodyFatPercentage : "N/A"}
+today.bodyFatPercentage: ${typeof todayBodyFatPercentage === "number"
+            ? todayBodyFatPercentage
+            : "N/A"}
 userDemographics: ${formatDemographicsForPrompt(demo)}
 
 recentWeights:
@@ -457,7 +490,9 @@ ${workoutBlock}
         }
         const title = typeof parsed?.title === "string" ? parsed.title : "今日の行動プラン";
         const bulletsRaw = Array.isArray(parsed?.bullets) ? parsed.bullets : [];
-        const bullets = bulletsRaw.filter((b) => typeof b === "string").slice(0, 3);
+        const bullets = bulletsRaw
+            .filter((b) => typeof b === "string")
+            .slice(0, 3);
         const calorieAdvice = typeof parsed?.calorieAdvice === "string"
             ? parsed.calorieAdvice
             : hasNutritionData
@@ -499,16 +534,36 @@ function inferTrainingStyle(recentWorkouts) {
             rationale: "直近ワークアウト記録がないため判定不可",
         };
     }
-    const pushKeywords = ["push", "プッシュ", "胸肩三頭", "胸・肩・三頭", "胸肩腕"];
+    const pushKeywords = [
+        "push",
+        "プッシュ",
+        "胸肩三頭",
+        "胸・肩・三頭",
+        "胸肩腕",
+    ];
     const pullKeywords = ["pull", "プル", "背中二頭", "背中・二頭", "背中腕"];
     const legsKeywords = ["legs", "leg day", "脚", "下半身", "脚トレ"];
-    const fullBodyKeywords = ["full body", "fullbody", "full-body", "全身", "全身法"];
+    const fullBodyKeywords = [
+        "full body",
+        "fullbody",
+        "full-body",
+        "全身",
+        "全身法",
+    ];
     const upperKeywords = ["upper", "上半身"];
     const lowerKeywords = ["lower", "下半身", "脚"];
     const chestKeywords = ["chest", "胸"];
     const backKeywords = ["back", "背中"];
     const shoulderKeywords = ["shoulder", "肩"];
-    const armsKeywords = ["arms", "arm", "腕", "二頭", "三頭", "biceps", "triceps"];
+    const armsKeywords = [
+        "arms",
+        "arm",
+        "腕",
+        "二頭",
+        "三頭",
+        "biceps",
+        "triceps",
+    ];
     let pushDays = 0;
     let pullDays = 0;
     let legsDays = 0;
@@ -543,11 +598,18 @@ function inferTrainingStyle(recentWorkouts) {
             armsDays += 1;
     }
     const n = recentWorkouts.length;
-    const bodyPartHits = [chestDays > 0, backDays > 0, shoulderDays > 0, legsDays > 0, armsDays > 0].filter(Boolean).length;
+    const bodyPartHits = [
+        chestDays > 0,
+        backDays > 0,
+        shoulderDays > 0,
+        legsDays > 0,
+        armsDays > 0,
+    ].filter(Boolean).length;
     const pplDetected = pushDays > 0 && pullDays > 0 && legsDays > 0;
     const fullBodyRatio = fullBodyDays / n;
     const upperLowerDetected = upperDays > 0 && lowerDays > 0;
-    if (pplDetected && pushDays + pullDays + legsDays >= Math.max(3, Math.floor(n * 1.2))) {
+    if (pplDetected &&
+        pushDays + pullDays + legsDays >= Math.max(3, Math.floor(n * 1.2))) {
         return {
             key: "ppl",
             label: "PPL法",
@@ -563,7 +625,8 @@ function inferTrainingStyle(recentWorkouts) {
             rationale: `全身系キーワードを含む日が多い（${fullBodyDays}/${n}日）`,
         };
     }
-    if (upperLowerDetected && upperDays + lowerDays >= Math.max(3, Math.floor(n * 0.8))) {
+    if (upperLowerDetected &&
+        upperDays + lowerDays >= Math.max(3, Math.floor(n * 0.8))) {
         return {
             key: "upper_lower",
             label: "上半身/下半身分割",
@@ -611,13 +674,19 @@ function buildChatAdviceContextBlock(data) {
         targetCal > 0;
     const today = data?.today;
     const todayWeight = Number(today?.weight);
-    const todayBodyFatPercentage = typeof today?.bodyFatPercentage === "number" ? today.bodyFatPercentage : undefined;
-    const recentWeightsRaw = Array.isArray(data?.recentWeights) ? data.recentWeights : [];
+    const todayBodyFatPercentage = typeof today?.bodyFatPercentage === "number"
+        ? today.bodyFatPercentage
+        : undefined;
+    const recentWeightsRaw = Array.isArray(data?.recentWeights)
+        ? data.recentWeights
+        : [];
     const recentWeights = recentWeightsRaw
         .map((p) => ({
         dateId: typeof p?.dateId === "string" ? p.dateId : "",
         weight: Number(p?.weight),
-        bodyFatPercentage: typeof p?.bodyFatPercentage === "number" ? p.bodyFatPercentage : undefined,
+        bodyFatPercentage: typeof p?.bodyFatPercentage === "number"
+            ? p.bodyFatPercentage
+            : undefined,
     }))
         .filter((p) => p.dateId.length > 0 && Number.isFinite(p.weight));
     const tn = data?.todayNutrition;
@@ -626,12 +695,16 @@ function buildChatAdviceContextBlock(data) {
         totalCal: Number.isFinite(Number(tn?.totalCal)) ? Number(tn.totalCal) : 0,
         totalPro: Number.isFinite(Number(tn?.totalPro)) ? Number(tn.totalPro) : 0,
         totalFat: Number.isFinite(Number(tn?.totalFat)) ? Number(tn.totalFat) : 0,
-        totalCarb: Number.isFinite(Number(tn?.totalCarb)) ? Number(tn.totalCarb) : 0,
+        totalCarb: Number.isFinite(Number(tn?.totalCarb))
+            ? Number(tn.totalCarb)
+            : 0,
         mealNames: Array.isArray(tn?.mealNames)
             ? tn.mealNames.filter((x) => typeof x === "string").slice(0, 15)
             : [],
     };
-    const rwRaw = Array.isArray(data?.recentWorkouts) ? data.recentWorkouts : [];
+    const rwRaw = Array.isArray(data?.recentWorkouts)
+        ? data.recentWorkouts
+        : [];
     const recentWorkouts = rwRaw
         .map((s) => ({
         dateId: typeof s?.dateId === "string" ? s.dateId : "",
@@ -677,14 +750,20 @@ function buildChatAdviceContextBlock(data) {
             .map((w, i) => {
             const tag = w.isToday ? "【本日】" : "";
             const dur = w.durationMinutes != null ? `${w.durationMinutes}分` : "時間不明";
-            const ex = w.exerciseLines.length ? w.exerciseLines.join(" / ") : "（セット詳細なし）";
+            const ex = w.exerciseLines.length
+                ? w.exerciseLines.join(" / ")
+                : "（セット詳細なし）";
             return `${i + 1}. ${tag}${w.dateId} ${w.routineName} (${dur})\n   ${ex}`;
         })
             .join("\n")
         : `- （直近のトレーニング記録なし／未同期）※筋トレをしていない可能性あり。セッション内容は推測しない`;
     const style = inferTrainingStyle(recentWorkouts);
-    const todayWeightLine = Number.isFinite(todayWeight) && todayWeight > 0 ? String(todayWeight) : "未記録";
-    const todayBfLine = typeof todayBodyFatPercentage === "number" ? String(todayBodyFatPercentage) : "N/A";
+    const todayWeightLine = Number.isFinite(todayWeight) && todayWeight > 0
+        ? String(todayWeight)
+        : "未記録";
+    const todayBfLine = typeof todayBodyFatPercentage === "number"
+        ? String(todayBodyFatPercentage)
+        : "N/A";
     const goalSection = hasGoal
         ? `phase: ${phase}
 targetWeight: ${targetWeight}
@@ -720,9 +799,7 @@ ${workoutBlock}
 /** フリー相談チャット（AIアドバイスタブ） */
 exports.aiCoachChat = (0, https_1.onCall)(callableOpts, async (request) => {
     try {
-        if (!request.auth) {
-            throw new https_1.HttpsError("unauthenticated", "User must be authenticated to call this function.");
-        }
+        const { uid } = (0, callableAuth_1.requireAuth)(request);
         const raw = (request.data || {});
         if (!Array.isArray(raw.messages) || raw.messages.length === 0) {
             throw new https_1.HttpsError("invalid-argument", "Parameter 'messages' must be a non-empty array.");
@@ -730,17 +807,19 @@ exports.aiCoachChat = (0, https_1.onCall)(callableOpts, async (request) => {
         const sanitized = raw.messages
             .map((m) => {
             const role = m?.role === "user" || m?.role === "assistant" ? m.role : null;
-            const content = typeof m?.content === "string" ? m.content.replace(/\0/g, "").trim().slice(0, 8000) : "";
+            const content = typeof m?.content === "string"
+                ? m.content.replace(/\0/g, "").trim().slice(0, 8000)
+                : "";
             if (!role || !content)
                 return null;
             return { role, content };
         })
             .filter((x) => x !== null)
             .slice(-40);
-        if (sanitized.length === 0 || sanitized[sanitized.length - 1].role !== "user") {
+        if (sanitized.length === 0 ||
+            sanitized[sanitized.length - 1].role !== "user") {
             throw new https_1.HttpsError("invalid-argument", "Last message must be from the user with non-empty content.");
         }
-        const uid = request.auth.uid;
         const isPremium = await (0, subscriptionMirror_1.isPremiumSubscriptionActive)(uid);
         const chatModel = await (0, coins_1.resolveAiCoachChatModel)(isPremium);
         const coinCost = await (0, coins_1.getAiConsultCoinCost)();
@@ -784,6 +863,8 @@ ${buildAiCoachPromptBlock(aiCoach)}
 
 ## 行動指針
 - ユーザーの相談・質問に、実用的で分かりやすく答える。短文だけで終わらず、必要なら手順や目安を添える。
+- 「アプリから同期された記録」に該当データがある場合、必ず具体的な数値・メニュー名・種目名のいずれかに触れて回答する。一般論だけで終わらせない。データがない軸には触れない・でっち上げない。
+- 回答は日本語で、目安300〜500字。長くなる場合のみ箇条書きを使う。前置きの挨拶や自己紹介は不要、本題から答える。
 - 身長・年齢・トレーニング段階・ジム通い情報がある場合は、提案の強度や難易度、設備前提をその条件に合わせる。
 - 目標設定（phase/targetWeight/targetCal）がある場合、「目標や好みによって変わる」だけで終わらせない。まず現在の目標に沿った具体案を提示し、その後に必要なら代替案を短く添える。
 - 目標設定がある場合、目標を再質問しない（不整合がある場合のみ確認質問可）。
@@ -794,20 +875,37 @@ ${buildAiCoachPromptBlock(aiCoach)}
 - ユーザーの文脈が不明なときは、確認の質問をしてよい。
 
 参考（身長・年齢・トレーニング段階・ジム通い情報など、ユーザーがアプリに登録している場合のみ）: ${formatDemographicsForPrompt(demo)}
-目標設定の有無: ${hasGoalInChat ? "あり（既存目標を前提に具体提案する）" : "なし（必要なら最小限の確認質問をする）"}
+目標設定の有無: ${hasGoalInChat
+            ? "あり（既存目標を前提に具体提案する）"
+            : "なし（必要なら最小限の確認質問をする）"}
 
 ${adviceContextBlock}
 `.trim();
+        /**
+         * 会話履歴が長くなるほど、system prompt（先頭1回だけ）の指示は
+         * 相対的に埋もれて効きにくくなる（lost-in-the-middle）。
+         * 直近ユーザー発言の直前に短いリマインダーを挟み、
+         * コーチスタイル/口調/データ活用/文字数の指示を毎ターン再提示する。
+         */
+        const reminderBlock = `[出力ルール再確認]
+- コーチスタイル: ${aiCoach.coachStyle} / 口調: ${aiCoach.tone} を厳守する。
+- ユーザーからの追加希望がある場合はそちらを最優先する。
+- 「アプリから同期された記録」に該当データがあれば、必ず具体的な数値・メニュー名・種目名のいずれかに触れる。データがない軸には触れない・でっち上げない。
+- 回答は日本語で目安300〜500字。長くなる場合のみ箇条書きを使う。`;
+        const history = sanitized.slice(0, -1);
+        const lastTurn = sanitized[sanitized.length - 1];
         let reply;
         try {
             const completion = await openai.chat.completions.create({
                 model: chatModel,
                 messages: [
                     { role: "system", content: systemPrompt },
-                    ...sanitized.map((m) => ({ role: m.role, content: m.content })),
+                    ...history.map((m) => ({ role: m.role, content: m.content })),
+                    { role: "system", content: reminderBlock },
+                    { role: lastTurn.role, content: lastTurn.content },
                 ],
-                temperature: 0.45,
-                max_tokens: 1200,
+                temperature: 0.4,
+                max_tokens: 800,
             });
             reply = completion.choices[0]?.message?.content?.trim() ?? "";
             if (!reply) {
@@ -815,7 +913,8 @@ ${adviceContextBlock}
             }
         }
         catch (error) {
-            if (charged > 0 && !(error instanceof https_1.HttpsError && error.code === "failed-precondition")) {
+            if (charged > 0 &&
+                !(error instanceof https_1.HttpsError && error.code === "failed-precondition")) {
                 try {
                     await (0, coins_1.refundAiChatCoins)(uid, charged);
                 }
@@ -837,6 +936,12 @@ ${adviceContextBlock}
         throw new https_1.HttpsError("internal", error?.message || "Unknown error in aiCoachChat.");
     }
 });
+var accountDeletion_1 = require("./accountDeletion");
+Object.defineProperty(exports, "deleteMyAccount", { enumerable: true, get: function () { return accountDeletion_1.deleteMyAccount; } });
+Object.defineProperty(exports, "deleteUserByEmail", { enumerable: true, get: function () { return accountDeletion_1.deleteUserByEmail; } });
+var missions_1 = require("./missions");
+Object.defineProperty(exports, "claimMissionReward", { enumerable: true, get: function () { return missions_1.claimMissionReward; } });
+Object.defineProperty(exports, "getMissionsSnapshot", { enumerable: true, get: function () { return missions_1.getMissionsSnapshot; } });
 var revenueCatWebhook_1 = require("./revenueCatWebhook");
 Object.defineProperty(exports, "revenueCatWebhook", { enumerable: true, get: function () { return revenueCatWebhook_1.revenueCatWebhook; } });
 var userContentCallables_1 = require("./userContentCallables");
@@ -845,9 +950,3 @@ Object.defineProperty(exports, "createMealRoutine", { enumerable: true, get: fun
 Object.defineProperty(exports, "deleteCustomExercise", { enumerable: true, get: function () { return userContentCallables_1.deleteCustomExercise; } });
 Object.defineProperty(exports, "deleteMealRoutine", { enumerable: true, get: function () { return userContentCallables_1.deleteMealRoutine; } });
 Object.defineProperty(exports, "updateCustomExercise", { enumerable: true, get: function () { return userContentCallables_1.updateCustomExercise; } });
-var missions_1 = require("./missions");
-Object.defineProperty(exports, "claimMissionReward", { enumerable: true, get: function () { return missions_1.claimMissionReward; } });
-Object.defineProperty(exports, "getMissionsSnapshot", { enumerable: true, get: function () { return missions_1.getMissionsSnapshot; } });
-var accountDeletion_1 = require("./accountDeletion");
-Object.defineProperty(exports, "deleteMyAccount", { enumerable: true, get: function () { return accountDeletion_1.deleteMyAccount; } });
-Object.defineProperty(exports, "deleteUserByEmail", { enumerable: true, get: function () { return accountDeletion_1.deleteUserByEmail; } });

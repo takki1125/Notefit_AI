@@ -1,6 +1,6 @@
-import { ChevronRight, Coins } from "lucide-react-native";
+import { ChevronRight, Coins, Plus } from "lucide-react-native";
 import React from "react";
-import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { ActivityIndicator, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 
 import { DISPLAY_FALLBACK_AI_CHAT_COIN_COST } from "../../utils/monetizationTypes";
 
@@ -9,53 +9,95 @@ type Props = {
   onPress: () => void;
   /** 編集モード中はナビ用の小さなチップ */
   compact?: boolean;
+  /** テストアカウント専用。あるときだけ + ボタンを出す */
+  onAddTestCoins?: () => void;
+  addingTestCoins?: boolean;
 };
 
-export function CoinHubSummary({ balance, onPress, compact }: Props) {
+export function CoinHubSummary({
+  balance,
+  onPress,
+  compact,
+  onAddTestCoins,
+  addingTestCoins,
+}: Props) {
   const display = balance === null ? "…" : balance;
 
   if (compact) {
     return (
-      <TouchableOpacity style={styles.compactWrap} onPress={onPress} hitSlop={8}>
-        <Coins color="#f1c40f" size={18} />
-        <Text style={styles.compactText}>{display}</Text>
-      </TouchableOpacity>
+      <View style={styles.compactRow}>
+        <TouchableOpacity style={styles.compactWrap} onPress={onPress} hitSlop={8}>
+          <Coins color="#f1c40f" size={18} />
+          <Text style={styles.compactText}>{display}</Text>
+        </TouchableOpacity>
+        {onAddTestCoins ? (
+          <TouchableOpacity
+            style={styles.compactAdd}
+            onPress={onAddTestCoins}
+            disabled={addingTestCoins}
+            hitSlop={8}
+            accessibilityLabel="テスト用コインを追加"
+          >
+            {addingTestCoins ? (
+              <ActivityIndicator color="#f1c40f" size="small" />
+            ) : (
+              <Plus color="#f1c40f" size={16} strokeWidth={3} />
+            )}
+          </TouchableOpacity>
+        ) : null}
+      </View>
     );
   }
 
   return (
-    <TouchableOpacity style={styles.card} onPress={onPress} activeOpacity={0.85}>
-      <View style={styles.rowTop}>
-        <View style={styles.iconCircle}>
-          <Coins color="#f1c40f" size={22} />
+    <View style={styles.card}>
+      <TouchableOpacity onPress={onPress} activeOpacity={0.85}>
+        <View style={styles.rowTop}>
+          <View style={styles.iconCircle}>
+            <Coins color="#f1c40f" size={22} />
+          </View>
+          <View style={styles.textCol}>
+            <Text style={styles.kicker}>コイン・プレミアム・ミッション</Text>
+            <Text style={styles.balanceLine}>
+              利用可能 <Text style={styles.balanceNum}>{display}</Text>
+              <Text style={styles.balanceUnit}> コイン</Text>
+            </Text>
+            <Text style={styles.hint}>
+              AI相談 1 回 約 {DISPLAY_FALLBACK_AI_CHAT_COIN_COST} コイン〜（サーバー・Remote Config で変更）
+            </Text>
+          </View>
+          <ChevronRight color="#666" size={22} />
         </View>
-        <View style={styles.textCol}>
-          <Text style={styles.kicker}>コイン・プレミアム・ミッション</Text>
-          <Text style={styles.balanceLine}>
-            利用可能 <Text style={styles.balanceNum}>{display}</Text>
-            <Text style={styles.balanceUnit}> コイン</Text>
-          </Text>
-          <Text style={styles.hint}>
-            AI相談 1 回 約 {DISPLAY_FALLBACK_AI_CHAT_COIN_COST} コイン〜（サーバー・Remote Config で変更）
-          </Text>
+        <View style={styles.pillRow}>
+          <View style={styles.pill}>
+            <Text style={styles.pillText}>登録ボーナス</Text>
+            <FeatureStatusDot ok />
+          </View>
+          <View style={styles.pill}>
+            <Text style={styles.pillText}>デイリーミッション</Text>
+            <FeatureStatusDot ok={false} />
+          </View>
+          <View style={styles.pill}>
+            <Text style={styles.pillText}>サブスク・広告</Text>
+            <FeatureStatusDot ok={false} />
+          </View>
         </View>
-        <ChevronRight color="#666" size={22} />
-      </View>
-      <View style={styles.pillRow}>
-        <View style={styles.pill}>
-          <Text style={styles.pillText}>登録ボーナス</Text>
-          <FeatureStatusDot ok />
-        </View>
-        <View style={styles.pill}>
-          <Text style={styles.pillText}>デイリーミッション</Text>
-          <FeatureStatusDot ok={false} />
-        </View>
-        <View style={styles.pill}>
-          <Text style={styles.pillText}>サブスク・広告</Text>
-          <FeatureStatusDot ok={false} />
-        </View>
-      </View>
-    </TouchableOpacity>
+      </TouchableOpacity>
+      {onAddTestCoins ? (
+        <TouchableOpacity
+          style={styles.testGrantBtn}
+          onPress={onAddTestCoins}
+          disabled={addingTestCoins}
+          activeOpacity={0.85}
+        >
+          {addingTestCoins ? (
+            <ActivityIndicator color="#111" />
+          ) : (
+            <Text style={styles.testGrantText}>テスト用 +1000 コイン</Text>
+          )}
+        </TouchableOpacity>
+      ) : null}
+    </View>
   );
 }
 
@@ -105,5 +147,22 @@ const styles = StyleSheet.create({
   dotOn: { backgroundColor: "#2ecc71" },
   dotOff: { backgroundColor: "#4a6a8a" },
   compactWrap: { flexDirection: "row", alignItems: "center", gap: 6, paddingVertical: 6, paddingHorizontal: 8, marginRight: 4 },
+  compactRow: { flexDirection: "row", alignItems: "center", marginRight: 4 },
+  compactAdd: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: "#352a10",
+    alignItems: "center",
+    justifyContent: "center",
+  },
   compactText: { color: "#f1c40f", fontSize: 15, fontWeight: "800" },
+  testGrantBtn: {
+    marginTop: 14,
+    backgroundColor: "#f1c40f",
+    borderRadius: 12,
+    paddingVertical: 12,
+    alignItems: "center",
+  },
+  testGrantText: { color: "#111", fontSize: 14, fontWeight: "800" },
 });

@@ -1,7 +1,10 @@
 import * as admin from "firebase-admin";
+import { timingSafeEqual } from "crypto";
 import { HttpsError, onCall, onRequest } from "firebase-functions/v2/https";
 import { defineSecret } from "firebase-functions/params";
 import * as logger from "firebase-functions/logger";
+
+import { requireAuth } from "./callableAuth";
 
 if (!admin.apps.length) {
   admin.initializeApp();
@@ -16,6 +19,18 @@ const publicCallableOpts = {
   invoker: "public" as const,
 };
 
+function tokenMatchesSecret(token: unknown, secret: string): boolean {
+  if (typeof token !== "string" || !secret) return false;
+  try {
+    const a = Buffer.from(token, "utf8");
+    const b = Buffer.from(secret, "utf8");
+    if (a.length !== b.length) return false;
+    return timingSafeEqual(a, b);
+  } catch {
+    return false;
+  }
+}
+
 /**
  * アカウント削除（審査要件対応）
  * 1) users/{uid} 配下を Admin SDK で再帰削除
@@ -25,11 +40,7 @@ const publicCallableOpts = {
  * 必ずサーバー側で実行する。
  */
 export const deleteMyAccount = onCall(publicCallableOpts, async (request) => {
-  if (!request.auth?.uid) {
-    throw new HttpsError("unauthenticated", "ログインが必要です。");
-  }
-
-  const uid = request.auth.uid;
+  const { uid } = requireAuth(request, { emailVerified: false });
   const userRootRef = admin.firestore().collection("users").doc(uid);
 
   try {
@@ -70,9 +81,8 @@ export const deleteUserByEmail = onRequest(
 
     const { email, token } = req.body ?? {};
 
-    // Secret Manager の GAS_WEBHOOK_SECRET は secrets オプションにより実行時に process.env に注入される
     const secret = process.env.GAS_WEBHOOK_SECRET;
-    if (!secret || typeof token !== "string" || token !== secret) {
+    if (!secret || !tokenMatchesSecret(token, secret)) {
       res.status(403).send("Forbidden: Invalid Token");
       return;
     }
@@ -91,23 +101,22 @@ export const deleteUserByEmail = onRequest(
       // Firestore: users/{uid} 配下のサブコレクションを含めて再帰削除
       const userRootRef = admin.firestore().collection("users").doc(uid);
       await admin.firestore().recursiveDelete(userRootRef);
-      logger.info(`deleteUserByEmail: Firestore data deleted`, { uid, email: emailTrimmed });
+      logger.info("deleteUserByEmail: Firestore data deleted", { uid });
 
       // Firebase Auth ユーザーを削除
       await admin.auth().deleteUser(uid);
-      logger.info(`deleteUserByEmail: Auth user deleted`, { uid, email: emailTrimmed });
+      logger.info("deleteUserByEmail: Auth user deleted", { uid });
 
-      res.status(200).send(`User data for ${emailTrimmed} deleted successfully.`);
+      res.status(200).send("User data deleted successfully.");
     } catch (error: any) {
-      logger.error("deleteUserByEmail error:", { email: emailTrimmed, error });
+      logger.error("deleteUserByEmail error:", { error });
 
       if (error.code === "auth/user-not-found") {
-        // Auth にユーザーが見つからない場合（既に削除済み等）
-        res.status(404).send(`User not found: ${emailTrimmed}`);
+        res.status(404).send("User not found");
         return;
       }
 
-      res.status(500).send(`Error: ${error.message}`);
+      res.status(500).send("Error deleting user data");
     }
   },
 );

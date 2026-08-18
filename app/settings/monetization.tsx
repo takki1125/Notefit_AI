@@ -28,6 +28,7 @@ import { RewardedAdOfferRow } from "../../components/ads/RewardedAdOfferRow";
 import { FeatureStatusBadge } from "../../components/monetization/FeatureStatusBadge";
 import { PREVIEW_COIN_PACKS, PREVIEW_LOGIN_STREAK_DAYS, PREVIEW_SUBSCRIPTION_TIERS } from "../../constants/monetizationPreview";
 import { useCoinBalance } from "../../hooks/useCoinBalance";
+import { useTestAccountCoinGrant } from "../../hooks/useTestAccountCoinGrant";
 import { useSubscriptionEntitlements } from "../../hooks/useSubscriptionEntitlements";
 import { styles as theme } from "../../theme/styles";
 import {
@@ -50,6 +51,8 @@ function plannedAlert(name: string) {
 export default function MonetizationScreen() {
   const router = useRouter();
   const balance = useCoinBalance();
+  const { enabled: canGrantTestCoins, busy: addingTestCoins, addCoins: addTestCoins } =
+    useTestAccountCoinGrant();
   const slotsFree = dailyMissionSlotCount("free");
   const slotsPaid = dailyMissionSlotCount("tier1");
   const { flags, refreshCustomerInfo, revenueCatReady, loading: entitlementsLoading } =
@@ -199,6 +202,20 @@ export default function MonetizationScreen() {
           <Text style={local.heroSub}>
             付与から {COIN_EXPIRY_DAYS_FROM_GRANT} 日で失効するコインがあります（サーバー記録に準拠）。
           </Text>
+          {canGrantTestCoins ? (
+            <TouchableOpacity
+              style={local.testGrantBtn}
+              onPress={() => void addTestCoins()}
+              disabled={addingTestCoins}
+              activeOpacity={0.85}
+            >
+              {addingTestCoins ? (
+                <ActivityIndicator color="#111" />
+              ) : (
+                <Text style={local.testGrantText}>テスト用 +1000 コイン</Text>
+              )}
+            </TouchableOpacity>
+          ) : null}
         </View>
 
         {/* --- 実装済み --- */}
@@ -483,6 +500,16 @@ const local = StyleSheet.create({
   heroLabel: { color: "#888", fontSize: 13, marginBottom: 6 },
   heroBalance: { color: "#f1c40f", fontSize: 42, fontWeight: "800" },
   heroSub: { color: "#666", fontSize: 11, textAlign: "center", marginTop: 10, lineHeight: 16, paddingHorizontal: 12 },
+  testGrantBtn: {
+    marginTop: 16,
+    backgroundColor: "#f1c40f",
+    borderRadius: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    minWidth: 220,
+    alignItems: "center",
+  },
+  testGrantText: { color: "#111", fontSize: 14, fontWeight: "800" },
   sectionBlock: { marginTop: 20 },
   sectionTitleRow: {
     flexDirection: "row",

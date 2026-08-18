@@ -9,11 +9,8 @@ import {
   TextInput,
   TouchableOpacity,
   View,
-  Modal,
-  ScrollView
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { Check, Eye, EyeOff, X } from 'lucide-react-native';
+import { Check, Eye, EyeOff } from 'lucide-react-native';
 import {
   createUserWithEmailAndPassword,
   sendEmailVerification,
@@ -22,8 +19,8 @@ import {
   sendPasswordResetEmail,
 } from 'firebase/auth';
 
+import { PrivacyPolicyModal } from '../../components/legal/PrivacyPolicyModal';
 import { auth, emailVerificationActionCodeSettings } from '../../firebaseConfig';
-import Markdown from 'react-native-markdown-display';
 
 const LoginScreen: React.FC = () => {
   const [email, setEmail] = useState('');
@@ -35,9 +32,6 @@ const LoginScreen: React.FC = () => {
   
   const [termsModalVisible, setTermsModalVisible] = useState(false);
   const [termsOpened, setTermsOpened] = useState(false);
-  
-  const [termsText, setTermsText] = useState('');
-  const [termsLoading, setTermsLoading] = useState(false);
 
   const handleAuthAction = async () => {
     if (isSignUp && !agreed) {
@@ -96,26 +90,9 @@ const LoginScreen: React.FC = () => {
     }
   };
 
-  const openTerms = async () => {
+  const openTerms = () => {
     setTermsModalVisible(true);
     setTermsOpened(true);
-    
-    if (termsText) return;
-
-    setTermsLoading(true);
-    try {
-      const response = await fetch('https://raw.githubusercontent.com/takki1125/Notefit_AI/main/docs/PRIVACY_POLICY.md');
-      if (!response.ok) {
-        throw new Error('Network response was not ok');
-      }
-      const text = await response.text();
-      setTermsText(text);
-    } catch (error) {
-      setTermsText('利用規約の読み込みに失敗しました。インターネット接続を確認してください。');
-      console.error(error);
-    } finally {
-      setTermsLoading(false);
-    }
   };
 
   const handleCheckboxPress = () => {
@@ -223,28 +200,10 @@ const LoginScreen: React.FC = () => {
         </View>
       </KeyboardAvoidingView>
 
-      <Modal visible={termsModalVisible} animationType="slide" presentationStyle="pageSheet">
-        <SafeAreaView style={styles.modalContainer} edges={['top', 'left', 'right', 'bottom']}>
-          <View style={styles.modalHeader}>
-            <Text style={styles.modalTitle}>利用規約 兼 プライバシーポリシー</Text>
-            <TouchableOpacity onPress={() => setTermsModalVisible(false)}>
-              <X color="#fff" size={28} />
-            </TouchableOpacity>
-          </View>
-          <ScrollView 
-            style={styles.modalScroll}
-            contentInsetAdjustmentBehavior="automatic"
-          >
-            {termsLoading ? (
-              <ActivityIndicator size="large" color="#2ecc71" style={{ marginTop: 50 }} />
-            ) : (
-              <Markdown style={markdownStyles}>
-                {termsText}
-              </Markdown>
-            )}
-          </ScrollView>
-        </SafeAreaView>
-      </Modal>
+      <PrivacyPolicyModal
+        visible={termsModalVisible}
+        onClose={() => setTermsModalVisible(false)}
+      />
     </>
   );
 };
@@ -347,70 +306,6 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     textDecorationLine: 'underline',
   },
-  modalContainer: {
-    flex: 1,
-    backgroundColor: '#1a1a1a',
-  },
-  modalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: 20,
-    borderBottomWidth: 1,
-    borderColor: '#333',
-  },
-  modalTitle: {
-    color: '#fff',
-    fontSize: 18,
-    fontWeight: 'bold',
-  },
-  modalScroll: {
-    padding: 20,
-  },
-});
-
-const markdownStyles = StyleSheet.create({
-  body: {
-    color: '#ccc',
-    fontSize: 15,
-    lineHeight: 24,
-    paddingBottom: 40,
-  },
-  heading1: {
-    color: '#fff',
-    fontSize: 22,
-    fontWeight: 'bold',
-    marginTop: 20,
-    marginBottom: 10,
-  },
-  heading2: {
-    color: '#fff',
-    fontSize: 18,
-    fontWeight: 'bold',
-    marginTop: 15,
-    marginBottom: 8,
-  },
-  heading3: {
-    color: '#eee',
-    fontSize: 16,
-    fontWeight: 'bold',
-    marginTop: 10,
-    marginBottom: 5,
-  },
-  list_item: {
-    marginBottom: 5,
-  },
-  bullet_list: {
-    marginBottom: 15,
-  },
-  strong: {
-    fontWeight: 'bold',
-    color: '#fff',
-  },
-  link: {
-    color: '#2ecc71',
-    textDecorationLine: 'none',
-  }
 });
 
 export default LoginScreen;

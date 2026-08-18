@@ -3,22 +3,32 @@ import { useRouter } from 'expo-router';
 import { Alert, ScrollView, Switch, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 // ★ 追加: Lock アイコン（パスワード用）
-import { LogOut, Trash2, X, User, ChevronRight, Target, Bell, Sparkles, CheckSquare, Coins, BookOpen, Lock } from 'lucide-react-native';
+import { LogOut, Trash2, X, User, ChevronRight, Target, Bell, Sparkles, CheckSquare, Coins, BookOpen, Lock, FileText } from 'lucide-react-native';
 // ★ 追加: sendPasswordResetEmail
 import { signOut, sendPasswordResetEmail } from 'firebase/auth';
 import { getApp } from 'firebase/app';
 import { getFunctions, httpsCallable } from 'firebase/functions';
+import { PrivacyPolicyModal } from '../../components/legal/PrivacyPolicyModal';
 import { auth } from '../../firebaseConfig';
 import { styles } from '../../theme/styles';
 import { getUserProfile, setDetailedTrackingEnabled } from '../../utils/firestoreProfile';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { clearHomeTutorialSeen, TUTORIAL_REPLAY_PENDING_KEY } from '../../utils/homeTutorialStorage';
+import { TestAccountPicker } from '../../components/TestAccountPicker';
+import {
+  canUseTestAccountSwitcher,
+  signInToTestAccount,
+  type TestAccount,
+} from '../../utils/testAccounts';
 
 export default function SettingsScreen() {
   const router = useRouter();
   const [detailedEnabled, setDetailedEnabled] = useState(false);
   const [autoCheckEnabled, setAutoCheckEnabled] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [switchingTestAccount, setSwitchingTestAccount] = useState(false);
+  const [privacyVisible, setPrivacyVisible] = useState(false);
+  const showTestAccountSwitcher = canUseTestAccountSwitcher(auth.currentUser?.email);
 
   useEffect(() => {
     const run = async () => {
@@ -40,6 +50,17 @@ export default function SettingsScreen() {
     };
     run();
   }, []);
+
+  const handleSwitchTestAccount = async (account: TestAccount) => {
+    if (auth.currentUser?.email === account.email) return;
+    setSwitchingTestAccount(true);
+    try {
+      await signInToTestAccount(account.email);
+    } catch {
+      Alert.alert('切り替え失敗', 'テストアカウントの切り替えに失敗しました。シード済みか確認してください。');
+      setSwitchingTestAccount(false);
+    }
+  };
 
   const handleSignOut = () => {
     Alert.alert('ログアウト', 'ログアウトしますか？', [
@@ -328,6 +349,39 @@ export default function SettingsScreen() {
           </TouchableOpacity>
         </View>
 
+        {showTestAccountSwitcher ? (
+          <View style={{ marginTop: 30 }}>
+            <Text style={[styles.sectionHeaderText, { marginBottom: 10 }]}>テストアカウント（開発用）</Text>
+            <Text style={[styles.routineDescText, { marginBottom: 12 }]}>
+              ログイン画面を通さず、シード済みのテストユーザーへ切り替えます。
+            </Text>
+            <TestAccountPicker
+              currentEmail={auth.currentUser?.email}
+              disabled={switchingTestAccount}
+              onSelect={handleSwitchTestAccount}
+            />
+          </View>
+        ) : null}
+
+        <View style={{ marginTop: 30 }}>
+          <Text style={[styles.sectionHeaderText, { marginBottom: 10 }]}>LEGAL</Text>
+          <TouchableOpacity
+            style={styles.routineItem}
+            onPress={() => setPrivacyVisible(true)}
+          >
+            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+              <View style={{ backgroundColor: '#333', padding: 8, borderRadius: 10, marginRight: 15 }}>
+                <FileText color="#2ecc71" size={20} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.routineNameText}>プライバシーポリシー</Text>
+                <Text style={styles.routineDescText}>収集する情報と第三者提供の内容</Text>
+              </View>
+              <ChevronRight color="#444" size={20} />
+            </View>
+          </TouchableOpacity>
+        </View>
+
         {/* セクション：アカウント */}
         <View style={{ marginTop: 30 }}>
           <Text style={[styles.sectionHeaderText, { marginBottom: 10 }]}>ACCOUNT</Text>
@@ -367,6 +421,7 @@ export default function SettingsScreen() {
           </TouchableOpacity>
         </View>
       </ScrollView>
+      <PrivacyPolicyModal visible={privacyVisible} onClose={() => setPrivacyVisible(false)} />
     </SafeAreaView>
   );
 }

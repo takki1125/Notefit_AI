@@ -16,11 +16,10 @@ import {
   Modal,
   FlatList,
   Dimensions,
-  Image,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { Video, ResizeMode } from 'expo-av';
 import { FREE_MEAL_ROUTINE_LIMIT } from "../../constants/subscriptionLimits";
+import TutorialMedia from "../../components/tutorial/TutorialMedia";
 import { useRouter, useLocalSearchParams } from "expo-router";
 
 import { auth, db } from "../../firebaseConfig";
@@ -136,20 +135,7 @@ const SlideTutorialModal: React.FC<{ visible: boolean; onFinish: () => void }> =
                   showsVerticalScrollIndicator={false}
                 >
                   <View style={{ width: width * 0.7, height: width * 1.3, borderRadius: 20, justifyContent: 'center', alignItems: 'center', marginBottom: 30, overflow: 'hidden' }}>
-                    {item.video ? (
-                      <Video
-                        source={item.video}
-                        style={{ width: '100%', height: '100%' }}
-                        resizeMode={ResizeMode.CONTAIN}
-                        shouldPlay
-                        isLooping
-                        isMuted
-                      />
-                    ) : item.image ? (
-                      <Image source={item.image} style={{ width: '100%', height: '100%', borderRadius: 20 }} resizeMode="contain" />
-                    ) : (
-                      <Text style={{ color: '#666' }}>メディアがありません</Text>
-                    )}
+                    <TutorialMedia video={item.video} image={item.image} />
                   </View>
                   <Text style={{ color: '#fff', fontSize: 24, fontWeight: 'bold', marginBottom: 15, textAlign: 'center' }}>{item.title}</Text>
                   <Text style={{ color: '#aaa', fontSize: 16, textAlign: 'center', lineHeight: 24, paddingHorizontal: 10 }}>{item.description}</Text>

@@ -38,6 +38,7 @@ const admin = __importStar(require("firebase-admin"));
 const firestore_1 = require("firebase-admin/firestore");
 const https_1 = require("firebase-functions/v2/https");
 const subscriptionMirror_1 = require("./subscriptionMirror");
+const callableAuth_1 = require("./callableAuth");
 const db = admin.firestore();
 const publicCallableOpts = {
     region: "asia-northeast1",
@@ -73,10 +74,7 @@ function normalizeMealsPayload(raw) {
 }
 /** マイ種目追加（無料は最大 5、プレミアムは実質無制限） */
 exports.createCustomExercise = (0, https_1.onCall)(publicCallableOpts, async (request) => {
-    if (!request.auth) {
-        throw new https_1.HttpsError("unauthenticated", "ログインが必要です。");
-    }
-    const uid = request.auth.uid;
+    const { uid } = (0, callableAuth_1.requireAuth)(request);
     const name = typeof request.data?.name === "string" ? request.data.name.replace(/\0/g, "").trim().slice(0, 80) : "";
     const categoryLabel = typeof request.data?.categoryLabel === "string"
         ? request.data.categoryLabel.replace(/\0/g, "").trim().slice(0, 80)
@@ -105,10 +103,7 @@ exports.createCustomExercise = (0, https_1.onCall)(publicCallableOpts, async (re
 });
 /** マイ種目の名前・カテゴリ変更（書き込みは Functions のみ） */
 exports.updateCustomExercise = (0, https_1.onCall)(publicCallableOpts, async (request) => {
-    if (!request.auth) {
-        throw new https_1.HttpsError("unauthenticated", "ログインが必要です。");
-    }
-    const uid = request.auth.uid;
+    const { uid } = (0, callableAuth_1.requireAuth)(request);
     const exerciseId = typeof request.data?.exerciseId === "string" ? request.data.exerciseId.trim() : "";
     const name = typeof request.data?.name === "string" ? request.data.name.replace(/\0/g, "").trim().slice(0, 80) : "";
     const categoryLabel = typeof request.data?.categoryLabel === "string"
@@ -136,10 +131,7 @@ exports.updateCustomExercise = (0, https_1.onCall)(publicCallableOpts, async (re
     return { ok: true };
 });
 exports.deleteCustomExercise = (0, https_1.onCall)(publicCallableOpts, async (request) => {
-    if (!request.auth) {
-        throw new https_1.HttpsError("unauthenticated", "ログインが必要です。");
-    }
-    const uid = request.auth.uid;
+    const { uid } = (0, callableAuth_1.requireAuth)(request);
     const exerciseId = typeof request.data?.exerciseId === "string" ? request.data.exerciseId.trim() : "";
     if (!exerciseId) {
         throw new https_1.HttpsError("invalid-argument", "exerciseId が必要です。");
@@ -154,10 +146,7 @@ exports.deleteCustomExercise = (0, https_1.onCall)(publicCallableOpts, async (re
 });
 /** 食事ルーティーン作成（無料は 3 件まで、プレミアムは実質無制限） */
 exports.createMealRoutine = (0, https_1.onCall)(publicCallableOpts, async (request) => {
-    if (!request.auth) {
-        throw new https_1.HttpsError("unauthenticated", "ログインが必要です。");
-    }
-    const uid = request.auth.uid;
+    const { uid } = (0, callableAuth_1.requireAuth)(request);
     const name = typeof request.data?.name === "string" ? request.data.name.replace(/\0/g, "").trim().slice(0, 80) : "";
     if (!name) {
         throw new https_1.HttpsError("invalid-argument", "ルーティーン名を入力してください。");
@@ -179,10 +168,7 @@ exports.createMealRoutine = (0, https_1.onCall)(publicCallableOpts, async (reque
     return { id: ref.id };
 });
 exports.deleteMealRoutine = (0, https_1.onCall)(publicCallableOpts, async (request) => {
-    if (!request.auth) {
-        throw new https_1.HttpsError("unauthenticated", "ログインが必要です。");
-    }
-    const uid = request.auth.uid;
+    const { uid } = (0, callableAuth_1.requireAuth)(request);
     const routineId = typeof request.data?.routineId === "string" ? request.data.routineId.trim() : "";
     if (!routineId) {
         throw new https_1.HttpsError("invalid-argument", "routineId が必要です。");

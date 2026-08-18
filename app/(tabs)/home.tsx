@@ -20,6 +20,7 @@ import {
   X,
   Flame,
   Utensils,
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
 } from "lucide-react-native";
@@ -48,13 +49,17 @@ import { usePathname, useRouter } from "expo-router";
 import { HOME_WIDGET_LABELS, type HomeWidgetId, hiddenWidgetIds } from "../../constants/homeWidgets";
 import { auth, db } from "../../firebaseConfig";
 import DailyAIAdviceCard from "../../components/ai/DailyAIAdviceCard";
+import TutorialMedia from "../../components/tutorial/TutorialMedia";
 import GoalProgressCard from "../../components/goal/GoalProgressCard";
 import { CoinHubSummary } from "../../components/monetization/CoinHubSummary";
+import { TestAccountSwitcherModal } from "../../components/TestAccountSwitcherModal";
 import { DailyMetricQuickInput } from "../../components/metrics/DailyMetricQuickInput";
 import { useCoinBalance } from "../../hooks/useCoinBalance";
 import { useHomeWidgetOrder } from "../../hooks/useHomeWidgetOrder";
 import { styles } from "../../theme/styles";
 import { requestRegistrationBonus } from "../../utils/coinBalance";
+import { canUseTestAccountSwitcher } from "../../utils/testAccounts";
+import { useTestAccountCoinGrant } from "../../hooks/useTestAccountCoinGrant";
 import {
   hasSeenHomeTutorial,
   markHomeTutorialSeen,
@@ -78,8 +83,6 @@ const formatTime = (totalSeconds: number | undefined) => {
 };
 
 // --- スライドチュートリアル用データ ---
-// 動画を入れるときは、コメントアウトを外して video: require('パス.mp4') を設定してね。
-// 動画を有効にしたら開発ビルドの再ビルドが必要: npm run android
 const SLIDES = [
   {
     id: '1',
@@ -124,19 +127,6 @@ const SLIDES = [
     ]
   }
 ];
-
-function renderTutorialDetailMedia(item: { video?: number; image?: number }) {
-  if (item.video) {
-    const TutorialDetailVideo = require("../../components/tutorial/TutorialDetailVideo").default;
-    return <TutorialDetailVideo source={item.video} />;
-  }
-  if (item.image) {
-    return (
-      <Image source={item.image} style={{ width: "100%", height: "100%", borderRadius: 20 }} resizeMode="contain" />
-    );
-  }
-  return <Text style={{ color: "#666" }}>メディアがありません</Text>;
-}
 
 // --- チュートリアルモーダル本体 ---
 const SlideTutorialModal: React.FC<{ visible: boolean; onFinish: () => void }> = ({ visible, onFinish }) => {
@@ -191,7 +181,7 @@ const SlideTutorialModal: React.FC<{ visible: boolean; onFinish: () => void }> =
       <ScrollView contentContainerStyle={{ alignItems: 'center', padding: 20, paddingBottom: 50 }} showsVerticalScrollIndicator={false}>
         <View style={{ width: width * 0.7, height: width * 1.3, backgroundColor: '#000', borderRadius: 20, justifyContent: 'center', alignItems: 'center', marginBottom: 20, overflow: 'hidden' }}>
           
-          {renderTutorialDetailMedia(item)}
+          <TutorialMedia video={item.video} image={item.image} />
 
         </View>
         <Text style={{ color: '#4facfe', fontSize: 24, fontWeight: 'bold', marginBottom: 15, textAlign: 'center' }}>{item.title}</Text>
@@ -483,6 +473,8 @@ function HomeTabContent() {
   const isFocused = useIsFocused();
   const uid = auth.currentUser?.uid;
   const coinBalance = useCoinBalance();
+  const { enabled: canGrantTestCoins, busy: addingTestCoins, addCoins: addTestCoins } =
+    useTestAccountCoinGrant();
   const { order, persistOrder, addWidget, hydrated } = useHomeWidgetOrder(uid);
 
   const [isEditMode, setIsEditMode] = useState(false);
@@ -497,6 +489,8 @@ function HomeTabContent() {
 
   const [todayMeals, setTodayMeals] = useState<Meal[]>([]);
   const [displayName, setDisplayName] = useState("");
+  const [testAccountSwitcherVisible, setTestAccountSwitcherVisible] = useState(false);
+  const canSwitchTestAccount = canUseTestAccountSwitcher(auth.currentUser?.email);
 
   const [showSlideTutorial, setShowSlideTutorial] = useState(false);
 
@@ -855,19 +849,42 @@ function HomeTabContent() {
                   <Plus color="#2ecc71" size={26} strokeWidth={2.5} />
                 </TouchableOpacity>
               )}
-              <CoinHubSummary balance={coinBalance} compact onPress={() => router.push("/settings/monetization")} />
+              <CoinHubSummary
+                balance={coinBalance}
+                compact
+                onPress={() => router.push("/settings/monetization")}
+                onAddTestCoins={canGrantTestCoins ? addTestCoins : undefined}
+                addingTestCoins={addingTestCoins}
+              />
               <TouchableOpacity onPress={() => router.push("/settings")} style={styles.iconButton}>
                 <SettingsIcon color="#fff" size={24} />
               </TouchableOpacity>
             </>
           ) : (
             <>
-              <View>
+              <TouchableOpacity
+                onPress={canSwitchTestAccount ? () => setTestAccountSwitcherVisible(true) : undefined}
+                disabled={!canSwitchTestAccount}
+                activeOpacity={canSwitchTestAccount ? 0.7 : 1}
+              >
                 <Text style={styles.homeWelcomeText}>Welcome back,</Text>
-                <Text style={styles.routineText}>{displayName}</Text>
-              </View>
+                <View style={{ flexDirection: "row", alignItems: "center" }}>
+                  <Text style={styles.routineText}>{displayName}</Text>
+                  {canSwitchTestAccount ? (
+                    <View style={{ marginLeft: 4, marginTop: 2 }}>
+                      <ChevronDown color="#888" size={18} />
+                    </View>
+                  ) : null}
+                </View>
+              </TouchableOpacity>
               <View style={{ flexDirection: "row", alignItems: "center" }}>
-                <CoinHubSummary balance={coinBalance} compact onPress={() => router.push("/settings/monetization")} />
+                <CoinHubSummary
+                  balance={coinBalance}
+                  compact
+                  onPress={() => router.push("/settings/monetization")}
+                  onAddTestCoins={canGrantTestCoins ? addTestCoins : undefined}
+                  addingTestCoins={addingTestCoins}
+                />
                 <TouchableOpacity onPress={() => router.push("/settings")} style={styles.iconButton}>
                   <SettingsIcon color="#fff" size={24} />
                 </TouchableOpacity>
@@ -878,7 +895,12 @@ function HomeTabContent() {
 
         {!isEditMode && (
           <>
-            <CoinHubSummary balance={coinBalance} onPress={() => router.push("/settings/monetization")} />
+            <CoinHubSummary
+              balance={coinBalance}
+              onPress={() => router.push("/settings/monetization")}
+              onAddTestCoins={canGrantTestCoins ? addTestCoins : undefined}
+              addingTestCoins={addingTestCoins}
+            />
             <Text style={{ color: "#666", fontSize: 12, paddingHorizontal: 20, marginBottom: 14 }}>
               任意のウィジェットを長押しで編集モード
             </Text>
@@ -886,7 +908,7 @@ function HomeTabContent() {
         )}
       </>
     ),
-    [isEditMode, displayName, router, hiddenIds.length, coinBalance],
+    [isEditMode, displayName, router, hiddenIds.length, coinBalance, canSwitchTestAccount, canGrantTestCoins, addingTestCoins, addTestCoins],
   );
 
   const listFooter = useMemo(() => {
@@ -957,6 +979,11 @@ function HomeTabContent() {
           </View>
         </View>
       </Modal>
+
+      <TestAccountSwitcherModal
+        visible={testAccountSwitcherVisible}
+        onClose={() => setTestAccountSwitcherVisible(false)}
+      />
 
       <WorkoutDetailModal
         visible={modalVisible}

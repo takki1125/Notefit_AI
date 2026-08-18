@@ -16,6 +16,24 @@ export function calcAgeYearsFromBirthDate(birthDate: string): number | undefined
   if (md < 0 || (md === 0 && today.getDate() < birth.getDate())) {
     age -= 1;
   }
-  if (age < 3 || age > 120) return undefined;
+  if (age < 13 || age > 120) return undefined;
   return age;
+}
+
+/** OpenAI へ渡す身体情報。生年月日は送らず満年齢のみ。 */
+export function toAiDemographicsPayload(demographics: {
+  heightCm?: number;
+  birthDate?: string;
+  trainingLevel?: string;
+  goesToGym?: boolean;
+}) {
+  const ageYears = demographics.birthDate
+    ? calcAgeYearsFromBirthDate(demographics.birthDate)
+    : undefined;
+  return {
+    ...(typeof demographics.heightCm === 'number' ? { heightCm: demographics.heightCm } : {}),
+    ...(typeof ageYears === 'number' ? { ageYears } : {}),
+    ...(demographics.trainingLevel ? { trainingLevel: demographics.trainingLevel } : {}),
+    ...(typeof demographics.goesToGym === 'boolean' ? { goesToGym: demographics.goesToGym } : {}),
+  };
 }
