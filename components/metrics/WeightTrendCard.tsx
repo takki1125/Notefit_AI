@@ -1,5 +1,5 @@
 import React, { useCallback, useMemo, useState } from 'react';
-import { ActivityIndicator, Dimensions, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Dimensions, StyleSheet, Text, View, ScrollView} from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { LineChart, BarChart } from 'react-native-chart-kit';
 
@@ -80,28 +80,37 @@ export default function WeightTrendCard({ days = 14 }: { days?: number }) {
         <Text style={local.muted}>体重を記録するとグラフに表示されます</Text>
       ) : (
         <View style={local.chartWrap}>
-          {chartData.values.length > 1 ? (
-            <LineChart
-              data={{ labels: chartData.labels, datasets: [{ data: chartData.values }] }}
-              width={screenWidth - 40}
-              height={220}
-              chartConfig={chartConfig}
-              bezier
-              style={local.chart}
-            />
-          ) : (
-            <BarChart
-              data={{ labels: chartData.labels, datasets: [{ data: chartData.values }] }}
-              width={screenWidth - 40}
-              height={220}
-              chartConfig={chartConfig}
-              yAxisLabel=""
-              yAxisSuffix="kg"
-              fromZero
-              showValuesOnTopOfBars
-              style={local.chart}
-            />
-          )}
+          {/* ▼ 横スクロールさせるためのScrollViewを追加！ */}
+          <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+            {chartData.values.length > 1 ? (
+              <LineChart
+                data={{ labels: chartData.labels, datasets: [{ data: chartData.values }] }}
+                // ▼ ここがミソ！データ1件につき45px確保して、画面幅を超えたらスクロール可能にする
+                width={Math.max(screenWidth - 40, chartData.labels.length * 45)}
+                height={220}
+                chartConfig={chartConfig}
+                bezier
+                style={local.chart}
+                verticalLabelRotation={-45} // 斜め文字はそのまま残す
+                xLabelsOffset={10}
+              />
+            ) : (
+              <BarChart
+                data={{ labels: chartData.labels, datasets: [{ data: chartData.values }] }}
+                // ▼ こっちの幅も同じように変更
+                width={Math.max(screenWidth - 40, chartData.labels.length * 45)}
+                height={220}
+                chartConfig={chartConfig}
+                yAxisLabel=""
+                yAxisSuffix="kg"
+                fromZero
+                showValuesOnTopOfBars
+                style={local.chart}
+                verticalLabelRotation={-45}
+                xLabelsOffset={10}
+              />
+            )}
+          </ScrollView>
         </View>
       )}
     </View>
