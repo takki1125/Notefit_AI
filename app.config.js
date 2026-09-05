@@ -63,7 +63,7 @@ module.exports = ({ config }) => {
         ...((config.android && config.android.adaptiveIcon) || {}),
         foregroundImage: isDev
           ? "./assets/images/icon-dev.png"
-          : "./assets/images/adaptive-icon.png",
+          : "./assets/images/icon.png",
         backgroundColor: isDev ? "#111111" : "#ffffff",
       },
     },
