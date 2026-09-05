@@ -476,7 +476,7 @@ function FoodTabContent() {
       fat: m.fat,
       carb: m.carb,
     }));
-    await saveMealsToAll([...meals, ...add]);
+    await saveMealsToAll([...add, ...meals]);
   };
 
   const closeRoutineEditor = () => {
@@ -764,7 +764,7 @@ function FoodTabContent() {
       carb: parseInt(carb) || 0,
     };
 
-    await saveMealsToAll([...meals, newFood]);
+    await saveMealsToAll([newFood, ...meals]);
 
     const user = auth.currentUser;
     if (user) {
